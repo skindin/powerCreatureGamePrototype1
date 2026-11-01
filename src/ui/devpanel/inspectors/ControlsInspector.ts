@@ -72,6 +72,26 @@ export class ControlsInspector {
     if (!schema.keyboardMouse.channels) {
       schema.keyboardMouse.channels = JSON.parse(JSON.stringify(DefaultPrebuiltChannels));
     }
+
+    const migratePipeline = (pl: any[]) => {
+      if (!Array.isArray(pl)) return;
+      for (const b of pl) {
+        if (b && b.source && (b.source as any).chordModifiers && Array.isArray((b.source as any).chordModifiers)) {
+          const chords: string[] = (b.source as any).chordModifiers;
+          if (chords.length > 0) {
+            if (!b.source.additionalCodes) b.source.additionalCodes = [];
+            for (const c of chords) {
+              if (c && !b.source.additionalCodes.includes(c)) {
+                b.source.additionalCodes.push(c);
+              }
+            }
+          }
+          delete (b.source as any).chordModifiers;
+        }
+      }
+    };
+    if (schema.keyboardMouse.pipeline) migratePipeline(schema.keyboardMouse.pipeline);
+    if (schema.pipeline) migratePipeline(schema.pipeline);
   }
 
   public static ensureSchemaTags(schema: ControlSchema): void {
@@ -1336,12 +1356,13 @@ export class ControlsInspector {
             let sourceHtml = "";
             if (source.type === "button") {
               const listening = isListening(b.id, "button");
-              const label = this.formatChannelKeyLabel(source.code, source.chordModifiers);
+              const label = this.formatChannelKeyLabel(source.code);
               const extraCodes = source.additionalCodes || [];
+              const hasMultipleKeys = extraCodes.length > 0;
               sourceHtml = `
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">RAW BUTTON / CHORD</span>
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">RAW BUTTON / COMBO</span>
                     <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
                       <option value="button" selected>Button</option>
                       <option value="composite_4key">4-Key WASD</option>
@@ -1350,16 +1371,29 @@ export class ControlsInspector {
                     </select>
                   </div>
                   <div style="display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
-                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="button" type="button" style="
-                      font-size: 0.72rem;
-                      padding: 3px 8px;
-                      font-weight: 600;
-                      border-radius: 4px;
-                      border: 1px solid rgba(148, 163, 184, 0.3);
-                      ${listening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "background: rgba(255, 255, 255, 0.08); color: #fff;"}
-                    " title="Click to bind primary key or mouse button">
-                      ${listening ? "🔴 Press key..." : `⌨️ ${label}`}
-                    </button>
+                    <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; padding: 1px 4px;">
+                      <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="button" type="button" style="
+                        font-size: 0.72rem;
+                        padding: 2px 6px;
+                        font-weight: 600;
+                        border: none;
+                        background: transparent;
+                        ${listening ? "color: #ef4444; font-weight: 700; animation: pulse 1s infinite;" : "color: #fff;"}
+                      " title="Click to bind primary key or mouse button">
+                        ${listening ? "🔴 Press key..." : `⌨️ ${label}`}
+                      </button>
+                      ${hasMultipleKeys ? `
+                        <button class="btn-pipe-remove-primary-key" data-binding-id="${b.id}" type="button" style="
+                          font-size: 0.64rem;
+                          color: #ef4444;
+                          background: transparent;
+                          border: none;
+                          cursor: pointer;
+                          padding: 0 2px;
+                          line-height: 1;
+                        " title="Remove this key from combo">✕</button>
+                      ` : ""}
+                    </div>
                     ${extraCodes.map((exCode, idx) => {
                       const isListeningExtra = isListening(b.id, `extraKey_${idx}`);
                       const exLabel = this.formatChannelKeyLabel(exCode);
@@ -1604,6 +1638,7 @@ export class ControlsInspector {
                       </optgroup>
                       <optgroup label="Interaction & Consumables">
                         <option value="pickup.grab" ${b.target === "pickup.grab" ? "selected" : ""}>📦 Pickup.Grab Ground Item</option>
+                        <option value="pickup.drop" ${b.target === "pickup.drop" ? "selected" : ""}>📤 Pickup.Drop Held Item</option>
                         <option value="pickup.swap" ${b.target === "pickup.swap" ? "selected" : ""}>🔄 Pickup.Quick Swap</option>
                         <option value="consume.bite" ${b.target === "consume.bite" ? "selected" : ""}>🍎 Consume.Bite / Eat</option>
                       </optgroup>
@@ -1657,10 +1692,7 @@ export class ControlsInspector {
     const binding = pipeline.find((b) => b.id === bindingId);
     if (!binding) return;
 
-    let heldModifier: string | null = null;
-    let chordTimer: any = null;
-
-    const commitTrigger = (device: "keyboard" | "mouse", code: string, chordModifiers?: string[]) => {
+    const commitTrigger = (device: "keyboard" | "mouse", code: string) => {
       if (subKey === "gate") {
         if (binding.processor.type === "1d_scalar") {
           binding.processor.gateButton = {
@@ -1680,19 +1712,16 @@ export class ControlsInspector {
           binding.source.additionalCodes[extraIdx] = code;
         }
       } else {
-        // Main button
+        // Main button - strictly 1 key per slot, no chords in a single block
         if (binding.source.type === "button") {
           binding.source.device = device;
           binding.source.code = code;
-          if (chordModifiers && chordModifiers.length > 0) {
-            binding.source.chordModifiers = chordModifiers;
-          }
+          delete (binding.source as any).chordModifiers;
         } else {
           binding.source = {
             type: "button",
             device,
             code,
-            chordModifiers: chordModifiers && chordModifiers.length > 0 ? chordModifiers : undefined,
           };
         }
       }
@@ -1700,9 +1729,6 @@ export class ControlsInspector {
       this.listeningPipelineTarget = null;
       this.renderActiveView();
     };
-
-    const isModifier = (code: string) =>
-      ["AltLeft", "AltRight", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "MetaLeft", "MetaRight"].includes(code);
 
     const onKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();
@@ -1715,19 +1741,7 @@ export class ControlsInspector {
         return;
       }
 
-      if (isModifier(e.code)) {
-        if (!heldModifier) {
-          heldModifier = e.code;
-          chordTimer = setTimeout(() => {
-            commitTrigger("keyboard", heldModifier!);
-          }, 350);
-        }
-        return;
-      }
-
-      if (chordTimer) clearTimeout(chordTimer);
-      const chordMods = heldModifier ? [heldModifier] : undefined;
-      commitTrigger("keyboard", e.code, chordMods);
+      commitTrigger("keyboard", e.code);
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -1742,13 +1756,10 @@ export class ControlsInspector {
         4: "MouseForward",
       };
       const code = buttonMap[e.button] || `MouseButton${e.button}`;
-      if (chordTimer) clearTimeout(chordTimer);
-      const chordMods = heldModifier ? [heldModifier] : undefined;
-      commitTrigger("mouse", code, chordMods);
+      commitTrigger("mouse", code);
     };
 
     const cleanup = () => {
-      if (chordTimer) clearTimeout(chordTimer);
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("mousedown", onMouseDown, true);
       if (this.popoutWindow && !this.popoutWindow.closed) {
@@ -2553,6 +2564,20 @@ export class ControlsInspector {
           const b = pipeline.find((p) => p.id === bId);
           if (b && b.source.type === "button" && b.source.additionalCodes && keyIdx >= 0) {
             b.source.additionalCodes.splice(keyIdx, 1);
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Remove Primary Key from Multi-Button Chord (promote first extra key to primary)
+      root.querySelectorAll(".btn-pipe-remove-primary-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.source.type === "button" && b.source.additionalCodes && b.source.additionalCodes.length > 0) {
+            const nextCode = b.source.additionalCodes.shift()!;
+            b.source.code = nextCode;
+            b.source.device = nextCode.startsWith("Mouse") ? "mouse" : "keyboard";
             this.renderActiveView();
           }
         });

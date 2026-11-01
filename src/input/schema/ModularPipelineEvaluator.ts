@@ -85,6 +85,7 @@ export class ModularPipelineEvaluator {
     let isSprinting = false;
     let isJumpHeld = false;
     let isGrabHeld = false;
+    let isDrop = false;
     let isSwap = false;
     let isThrow = false;
     let isUsingItem = false;
@@ -259,6 +260,12 @@ export class ModularPipelineEvaluator {
               if (!execCtx.isHoldingItem && execCtx.targetInReach) {
                 isGrabHeld = true;
                 claimAll("pickup.grab");
+              }
+              break;
+            case "pickup.drop":
+              if (execCtx.isHoldingItem) {
+                isDrop = true;
+                claimAll("pickup.drop");
               }
               break;
             case "pickup.swap":
@@ -436,7 +443,7 @@ export class ModularPipelineEvaluator {
       isJumpHeld,
       isGrabHeld,
       grabTargetObjectId: (isGrabHeld || isSwap) && execCtx.targetInReach ? execCtx.targetInReach.id : null,
-      isDrop: false,
+      isDrop,
       isThrow,
       isSwap,
       isUsingItem,

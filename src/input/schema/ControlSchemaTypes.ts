@@ -192,6 +192,7 @@ export type ModuleTargetSocket =
   | "throw.fire"
   | "consume.bite"
   | "pickup.grab"
+  | "pickup.drop"
   | "pickup.swap"
   | "melee.punch"
   | "laser.aim"

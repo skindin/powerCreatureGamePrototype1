@@ -1,6 +1,6 @@
 {
-  "version": 167,
-  "lastSaved": "2026-11-01T07:56:42.484Z",
+  "version": 169,
+  "lastSaved": "2026-11-01T08:20:46.002Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1760,16 +1760,16 @@
             },
             "processor": {
               "type": "button",
-              "triggerMode": "timedHold",
+              "triggerMode": "hold",
               "requireCleanPress": true
             },
-            "target": "throw.aim"
+            "target": "throw.chargeBow"
           },
           {
             "id": "pipe-throw-fire",
             "name": "Throw Fire Release",
             "enabled": true,
-            "condition": "holdingItem",
+            "condition": "holdingThrowable",
             "source": {
               "type": "button",
               "device": "mouse",
@@ -1800,6 +1800,24 @@
               "claimOnFire": true
             },
             "target": "pickup.grab"
+          },
+          {
+            "id": "pipe-pickup-drop",
+            "name": "Drop Held Item",
+            "enabled": true,
+            "condition": "holdingItem",
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "KeyQ"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "down",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "pickup.drop"
           },
           {
             "id": "pipe-consume-bite",
@@ -1844,7 +1862,7 @@
               "type": "button",
               "device": "mouse",
               "code": "MouseRight",
-              "chordModifiers": [
+              "additionalCodes": [
                 "AltLeft"
               ]
             },
@@ -1861,7 +1879,10 @@
             "source": {
               "type": "button",
               "device": "mouse",
-              "code": "MouseRight"
+              "code": "MouseRight",
+              "additionalCodes": [
+                "KeyD"
+              ]
             },
             "processor": {
               "type": "button",
@@ -2392,7 +2413,7 @@
             "type": "button",
             "device": "mouse",
             "code": "MouseRight",
-            "chordModifiers": [
+            "additionalCodes": [
               "AltLeft"
             ]
           },
@@ -4941,16 +4962,16 @@
               },
               "processor": {
                 "type": "button",
-                "triggerMode": "timedHold",
+                "triggerMode": "hold",
                 "requireCleanPress": true
               },
-              "target": "throw.aim"
+              "target": "throw.chargeBow"
             },
             {
               "id": "pipe-throw-fire",
               "name": "Throw Fire Release",
               "enabled": true,
-              "condition": "holdingItem",
+              "condition": "holdingThrowable",
               "source": {
                 "type": "button",
                 "device": "mouse",
@@ -5025,7 +5046,7 @@
                 "type": "button",
                 "device": "mouse",
                 "code": "MouseRight",
-                "chordModifiers": [
+                "additionalCodes": [
                   "AltLeft"
                 ]
               },
@@ -5042,7 +5063,10 @@
               "source": {
                 "type": "button",
                 "device": "mouse",
-                "code": "MouseRight"
+                "code": "MouseRight",
+                "additionalCodes": [
+                  "KeyD"
+                ]
               },
               "processor": {
                 "type": "button",
@@ -5531,6 +5555,24 @@
             "target": "pickup.grab"
           },
           {
+            "id": "pipe-pickup-drop",
+            "name": "Drop Held Item",
+            "enabled": true,
+            "condition": "holdingItem",
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "KeyQ"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "down",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "pickup.drop"
+          },
+          {
             "id": "pipe-consume-bite",
             "name": "Bite / Eat Held Item",
             "enabled": true,
@@ -5573,7 +5615,7 @@
               "type": "button",
               "device": "mouse",
               "code": "MouseRight",
-              "chordModifiers": [
+              "additionalCodes": [
                 "AltLeft"
               ]
             },
