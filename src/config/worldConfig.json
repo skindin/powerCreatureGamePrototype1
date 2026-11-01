@@ -1,6 +1,6 @@
 {
-  "version": 183,
-  "lastSaved": "2026-11-01T08:59:14.114Z",
+  "version": 187,
+  "lastSaved": "2026-11-01T09:07:42.681Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1908,7 +1908,7 @@
             },
             "processor": {
               "type": "button",
-              "triggerMode": "down",
+              "triggerMode": "hold",
               "requireCleanPress": true,
               "claimOnFire": true
             },
@@ -5131,7 +5131,7 @@
               },
               "processor": {
                 "type": "button",
-                "triggerMode": "down",
+                "triggerMode": "hold",
                 "requireCleanPress": true,
                 "claimOnFire": true
               },

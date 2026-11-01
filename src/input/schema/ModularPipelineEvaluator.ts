@@ -114,7 +114,7 @@ export class ModularPipelineEvaluator {
 
         // All required keys in this multi-button / chord combination must be held
         const areAllDown = allCodes.every((c) => tokens.isDown(c));
-        const anyFresh = allCodes.some((c) => tokens.isFresh(c));
+        const anyConsumed = allCodes.some((c) => tokens.isConsumed(c));
 
         const isCodeJustReleased = (c: string): boolean => {
           if (c.startsWith("Mouse")) {
@@ -129,6 +129,11 @@ export class ModularPipelineEvaluator {
             tokens.claim(c, binding.id, tgt);
           }
         };
+        const consumeAll = (tgt: string) => {
+          for (const c of allCodes) {
+            tokens.consume(c, binding.id, tgt);
+          }
+        };
 
         let signalActive = false;
 
@@ -136,18 +141,19 @@ export class ModularPipelineEvaluator {
           if (processor.requireCleanPress) {
             signalActive =
               areAllDown &&
-              anyFresh &&
+              !anyConsumed &&
               allCodes.every((c) => tokens.canExecute(c, "requireCleanPress", binding.id, target));
           } else {
-            signalActive = areAllDown && anyFresh;
+            signalActive = areAllDown && !anyConsumed;
           }
         } else if (processor.triggerMode === "hold") {
           if (processor.requireCleanPress) {
             signalActive =
               areAllDown &&
+              !anyConsumed &&
               allCodes.every((c) => tokens.canExecute(c, "requireCleanPress", binding.id, target));
           } else {
-            signalActive = areAllDown;
+            signalActive = areAllDown && !anyConsumed;
           }
         } else if (processor.triggerMode === "up") {
           if (processor.requireCleanPress) {
@@ -163,9 +169,10 @@ export class ModularPipelineEvaluator {
           if (processor.requireCleanPress) {
             signalActive =
               reached &&
+              !anyConsumed &&
               allCodes.every((c) => tokens.canExecute(c, "requireCleanPress", binding.id, target));
           } else {
-            signalActive = reached;
+            signalActive = reached && !anyConsumed;
           }
         }
 
@@ -241,7 +248,7 @@ export class ModularPipelineEvaluator {
                   char.throwModule.hasUserSetArcRatio = false;
                 }
                 isThrow = true;
-                claimAll("throw.fire");
+                consumeAll("throw.fire");
               }
               break;
             case "throw.fire":
@@ -258,12 +265,12 @@ export class ModularPipelineEvaluator {
                   char.throwChargeProgress = 0;
                   char.activeTrajectory = null;
                   char.isThrowCancelZone = false;
-                  claimAll("throw.cancel");
+                  consumeAll("throw.cancel");
                 } else {
                   isThrow = true;
                   char.isChargingThrow = false;
                   char.throwChargeStartTime = null;
-                  claimAll("throw.fire");
+                  consumeAll("throw.fire");
                 }
               }
               break;
@@ -276,24 +283,24 @@ export class ModularPipelineEvaluator {
             case "pickup.grab":
               if (!execCtx.isHoldingItem && execCtx.targetInReach) {
                 isGrabHeld = true;
-                claimAll("pickup.grab");
+                consumeAll("pickup.grab");
               }
               break;
             case "pickup.drop":
               if (execCtx.isHoldingItem) {
                 isDrop = true;
-                claimAll("pickup.drop");
+                consumeAll("pickup.drop");
               }
               break;
             case "pickup.swap":
               if (execCtx.targetInReach && !isAimingTrajectory) {
                 isSwap = true;
-                claimAll("pickup.swap");
+                consumeAll("pickup.swap");
               }
               break;
             case "melee.punch":
               isMeleeRequested = true;
-              claimAll("melee.punch");
+              consumeAll("melee.punch");
               break;
             case "laser.aim":
               isLaserAiming = true;

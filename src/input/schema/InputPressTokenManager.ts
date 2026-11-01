@@ -22,6 +22,11 @@ export interface InputTokenState {
   claimedByBindingId: string | null;
   claimedByTarget: string | null;
 
+  // Discrete action consumption: marks button press as spent once an action actually executes on this press
+  isConsumed: boolean;
+  consumedBy: string | null;
+  consumedByTarget: string | null;
+
   // Snapshot preserved exclusively on the single frame the key transitions from down to up
   wasReleasedThisFrame: boolean;
   releasedClaimedBy: string | null;
@@ -63,6 +68,9 @@ export class InputPressTokenManager {
           claimedBy: null,
           claimedByBindingId: null,
           claimedByTarget: null,
+          isConsumed: false,
+          consumedBy: null,
+          consumedByTarget: null,
           wasReleasedThisFrame: false,
           releasedClaimedBy: null,
           releasedClaimedByBindingId: null,
@@ -85,6 +93,9 @@ export class InputPressTokenManager {
         token.claimedBy = null;
         token.claimedByBindingId = null;
         token.claimedByTarget = null;
+        token.isConsumed = false;
+        token.consumedBy = null;
+        token.consumedByTarget = null;
       }
     }
   }
@@ -120,6 +131,25 @@ export class InputPressTokenManager {
     return true;
   }
 
+  public consume(code: string, actionId: string, target?: string): boolean {
+    const t = this.tokens.get(code);
+    if (!t || !t.isDown) return false;
+    t.isFresh = false;
+    t.isConsumed = true;
+    t.consumedBy = actionId;
+    t.consumedByTarget = target ?? null;
+    t.claimedBy = actionId;
+    t.claimedByBindingId = actionId;
+    if (target) {
+      t.claimedByTarget = target;
+    }
+    return true;
+  }
+
+  public isConsumed(code: string): boolean {
+    return Boolean(this.tokens.get(code)?.isConsumed);
+  }
+
   public isClaimedBy(code: string, actionId: string): boolean {
     const t = this.tokens.get(code);
     return Boolean(
@@ -140,6 +170,9 @@ export class InputPressTokenManager {
   ): boolean {
     const t = this.tokens.get(code);
     if (!t || !t.isDown) return false;
+
+    // A press consumed by a discrete one-shot action cannot execute again until physically released
+    if (t.isConsumed) return false;
 
     if (policy === "requireCleanPress") {
       // Must be fresh OR already actively claimed by THIS action / target / domain
