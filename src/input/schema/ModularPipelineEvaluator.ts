@@ -286,7 +286,7 @@ export class ModularPipelineEvaluator {
               }
               break;
             case "pickup.swap":
-              if (execCtx.isHoldingItem && execCtx.targetInReach && !isAimingTrajectory) {
+              if (execCtx.targetInReach && !isAimingTrajectory) {
                 isSwap = true;
                 claimAll("pickup.swap");
               }

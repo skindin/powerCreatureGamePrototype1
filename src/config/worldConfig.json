@@ -1,6 +1,6 @@
 {
-  "version": 175,
-  "lastSaved": "2026-11-01T08:44:33.480Z",
+  "version": 181,
+  "lastSaved": "2026-11-01T08:55:50.479Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1760,11 +1760,11 @@
             },
             "processor": {
               "type": "button",
-              "triggerMode": "down",
+              "triggerMode": "hold",
               "requireCleanPress": true,
               "claimOnFire": true
             },
-            "target": "throw.quickOptimal"
+            "target": "throw.chargeBow"
           },
           {
             "id": "pipe-pickup-grab",
@@ -1827,7 +1827,7 @@
             "source": {
               "type": "button",
               "device": "keyboard",
-              "code": "KeyF"
+              "code": "KeyS"
             },
             "processor": {
               "type": "button",
@@ -1884,18 +1884,35 @@
             "processor": {
               "type": "1d_scalar",
               "mode": "accumulator",
-              "sensitivity": 0.05,
+              "sensitivity": 0.005,
               "clampMin": 0,
               "clampMax": 1,
               "initialValue": 0.5,
-              "autoCursorLock": false,
+              "autoCursorLock": true,
               "gateButton": {
-                "device": "mouse",
-                "code": "MouseLeft",
+                "device": "keyboard",
+                "code": "KeyD",
                 "mode": "hold"
               }
             },
-            "target": "laser.power"
+            "target": "throw.arcHeight"
+          },
+          {
+            "id": "pipe-mvxlcfjepx7",
+            "name": "New Binding",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "KeyF"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "down",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "pickup.swap"
           }
         ]
       },
@@ -2312,11 +2329,11 @@
           },
           "processor": {
             "type": "button",
-            "triggerMode": "down",
+            "triggerMode": "hold",
             "requireCleanPress": true,
             "claimOnFire": true
           },
-          "target": "throw.quickOptimal"
+          "target": "throw.chargeBow"
         },
         {
           "id": "pipe-pickup-grab",
@@ -2379,7 +2396,7 @@
           "source": {
             "type": "button",
             "device": "keyboard",
-            "code": "KeyF"
+            "code": "KeyS"
           },
           "processor": {
             "type": "button",
@@ -2436,18 +2453,35 @@
           "processor": {
             "type": "1d_scalar",
             "mode": "accumulator",
-            "sensitivity": 0.05,
+            "sensitivity": 0.005,
             "clampMin": 0,
             "clampMax": 1,
             "initialValue": 0.5,
-            "autoCursorLock": false,
+            "autoCursorLock": true,
             "gateButton": {
-              "device": "mouse",
-              "code": "MouseLeft",
+              "device": "keyboard",
+              "code": "KeyD",
               "mode": "hold"
             }
           },
-          "target": "laser.power"
+          "target": "throw.arcHeight"
+        },
+        {
+          "id": "pipe-mvxlcfjepx7",
+          "name": "New Binding",
+          "enabled": true,
+          "source": {
+            "type": "button",
+            "device": "keyboard",
+            "code": "KeyF"
+          },
+          "processor": {
+            "type": "button",
+            "triggerMode": "down",
+            "requireCleanPress": true,
+            "claimOnFire": true
+          },
+          "target": "pickup.swap"
         }
       ]
     },
@@ -4949,11 +4983,11 @@
               },
               "processor": {
                 "type": "button",
-                "triggerMode": "down",
+                "triggerMode": "hold",
                 "requireCleanPress": true,
                 "claimOnFire": true
               },
-              "target": "throw.quickOptimal"
+              "target": "throw.chargeBow"
             },
             {
               "id": "pipe-pickup-grab",
@@ -5016,7 +5050,7 @@
               "source": {
                 "type": "button",
                 "device": "keyboard",
-                "code": "KeyF"
+                "code": "KeyS"
               },
               "processor": {
                 "type": "button",
@@ -5073,18 +5107,35 @@
               "processor": {
                 "type": "1d_scalar",
                 "mode": "accumulator",
-                "sensitivity": 0.05,
+                "sensitivity": 0.005,
                 "clampMin": 0,
                 "clampMax": 1,
                 "initialValue": 0.5,
-                "autoCursorLock": false,
+                "autoCursorLock": true,
                 "gateButton": {
-                  "device": "mouse",
-                  "code": "MouseLeft",
+                  "device": "keyboard",
+                  "code": "KeyD",
                   "mode": "hold"
                 }
               },
-              "target": "laser.power"
+              "target": "throw.arcHeight"
+            },
+            {
+              "id": "pipe-mvxlcfjepx7",
+              "name": "New Binding",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyF"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "pickup.swap"
             }
           ]
         },
@@ -5501,11 +5552,11 @@
             },
             "processor": {
               "type": "button",
-              "triggerMode": "down",
+              "triggerMode": "hold",
               "requireCleanPress": true,
               "claimOnFire": true
             },
-            "target": "throw.quickOptimal"
+            "target": "throw.chargeBow"
           },
           {
             "id": "pipe-pickup-grab",
@@ -5568,7 +5619,7 @@
             "source": {
               "type": "button",
               "device": "keyboard",
-              "code": "KeyF"
+              "code": "KeyS"
             },
             "processor": {
               "type": "button",
@@ -5625,18 +5676,35 @@
             "processor": {
               "type": "1d_scalar",
               "mode": "accumulator",
-              "sensitivity": 0.05,
+              "sensitivity": 0.005,
               "clampMin": 0,
               "clampMax": 1,
               "initialValue": 0.5,
-              "autoCursorLock": false,
+              "autoCursorLock": true,
               "gateButton": {
-                "device": "mouse",
-                "code": "MouseLeft",
+                "device": "keyboard",
+                "code": "KeyD",
                 "mode": "hold"
               }
             },
-            "target": "laser.power"
+            "target": "throw.arcHeight"
+          },
+          {
+            "id": "pipe-mvxlcfjepx7",
+            "name": "New Binding",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "KeyF"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "down",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "pickup.swap"
           }
         ]
       }
