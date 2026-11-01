@@ -1,6 +1,6 @@
 {
-  "version": 181,
-  "lastSaved": "2026-11-01T08:55:50.479Z",
+  "version": 183,
+  "lastSaved": "2026-11-01T08:59:14.114Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1888,14 +1888,14 @@
               "clampMin": 0,
               "clampMax": 1,
               "initialValue": 0.5,
-              "autoCursorLock": true,
+              "autoCursorLock": false,
               "gateButton": {
                 "device": "keyboard",
                 "code": "KeyD",
                 "mode": "hold"
               }
             },
-            "target": "throw.arcHeight"
+            "target": "laser.power"
           },
           {
             "id": "pipe-mvxlcfjepx7",
@@ -2457,14 +2457,14 @@
             "clampMin": 0,
             "clampMax": 1,
             "initialValue": 0.5,
-            "autoCursorLock": true,
+            "autoCursorLock": false,
             "gateButton": {
               "device": "keyboard",
               "code": "KeyD",
               "mode": "hold"
             }
           },
-          "target": "throw.arcHeight"
+          "target": "laser.power"
         },
         {
           "id": "pipe-mvxlcfjepx7",
@@ -5111,14 +5111,14 @@
                 "clampMin": 0,
                 "clampMax": 1,
                 "initialValue": 0.5,
-                "autoCursorLock": true,
+                "autoCursorLock": false,
                 "gateButton": {
                   "device": "keyboard",
                   "code": "KeyD",
                   "mode": "hold"
                 }
               },
-              "target": "throw.arcHeight"
+              "target": "laser.power"
             },
             {
               "id": "pipe-mvxlcfjepx7",
@@ -5680,14 +5680,14 @@
               "clampMin": 0,
               "clampMax": 1,
               "initialValue": 0.5,
-              "autoCursorLock": true,
+              "autoCursorLock": false,
               "gateButton": {
                 "device": "keyboard",
                 "code": "KeyD",
                 "mode": "hold"
               }
             },
-            "target": "throw.arcHeight"
+            "target": "laser.power"
           },
           {
             "id": "pipe-mvxlcfjepx7",

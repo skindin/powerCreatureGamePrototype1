@@ -291,8 +291,8 @@ export class TrajectoryRenderer {
       }
 
       // Trajectory Modulation Guide Rail (when holding right-click):
-      // Dotted vertical rail at the 2D average position with optimal detent notch and clamped slider pip
-      const rail = character ? TrajectoryRenderer.calculateMidpointRail(character, arena, traj, ppu, hoverScale) : null;
+      // Dotted vertical rail at the 2D average position with optimal detent notch and clamped slider pip (hidden when charging over time)
+      const rail = (character && !isCharging) ? TrajectoryRenderer.calculateMidpointRail(character, arena, traj, ppu, hoverScale) : null;
       if (rail) {
         const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, effScreenY } = rail;
 
