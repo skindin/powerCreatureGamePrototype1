@@ -207,6 +207,7 @@ export class ModularBlockEvaluator {
     let isMeleeRequested = false;
     let isAimingTrajectory = false;
     let activeRawDragThisFrame = false;
+    let isSteerCursorActive = false;
 
     // Reticle/Aim target position (works seamlessly for mouse and gamepad reticle)
     const targetAimPos = execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos;
@@ -223,21 +224,30 @@ export class ModularBlockEvaluator {
           const b = block as LocomotionControlBlock;
           const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
 
-          const isSteerCursorActive = (b.cursorSteerMode === "whenHoldingButton" && isSlotActive(b.cursorSteerTrigger, "hold", false, b.id, "locomotion.cursorSteer")) ||
+          isSteerCursorActive = (b.cursorSteerMode === "whenHoldingButton" && isSlotActive(b.cursorSteerTrigger, "hold", false, b.id, "locomotion.cursorSteer")) ||
             (b.cursorSteerMode === "whenAiming" && isAimingTrajectory);
 
-          if (isSteerCursorActive && gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
+          if (isSteerCursorActive) {
             claimSlot(b.cursorSteerTrigger, b.id, "locomotion.cursorSteer", false);
-            const cursorSpeed = 17.0;
-            targetAimPos.x += gpLeftStick.x * cursorSpeed * execCtx.dt;
-            targetAimPos.y += gpLeftStick.y * cursorSpeed * execCtx.dt;
-            if (execCtx.gamepadStates) {
-              const slot = input.gamepadSlots.get(execCtx.gamepadStates.slotIndex);
-              if (slot) {
-                slot.aimPos.x = targetAimPos.x;
-                slot.aimPos.y = targetAimPos.y;
-                slot.hasMovedAimStick = true;
-                slot.aimMovedWhileInRange = true;
+            if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
+              const cursorSpeed = 17.0;
+              targetAimPos.x += gpLeftStick.x * cursorSpeed * execCtx.dt;
+              targetAimPos.y += gpLeftStick.y * cursorSpeed * execCtx.dt;
+              if (execCtx.arena) {
+                targetAimPos.x = Math.max(0.1, Math.min(execCtx.arena.width - 0.1, targetAimPos.x));
+                targetAimPos.y = Math.max(0.1, Math.min(execCtx.arena.height - 0.1, targetAimPos.y));
+              }
+              if (execCtx.gamepadStates) {
+                const slot = input.gamepadSlots.get(execCtx.gamepadStates.slotIndex);
+                if (slot) {
+                  slot.aimPos.x = targetAimPos.x;
+                  slot.aimPos.y = targetAimPos.y;
+                  slot.hasMovedAimStick = true;
+                  slot.aimMovedWhileInRange = true;
+                  if (!slot.aimOffset) slot.aimOffset = { x: 0, y: 0 };
+                  slot.aimOffset.x = slot.aimPos.x - char.position.x;
+                  slot.aimOffset.y = slot.aimPos.y - char.position.y;
+                }
               }
             }
           } else if (b.mode === "stickDirectionDriveButton") {
@@ -689,9 +699,18 @@ export class ModularBlockEvaluator {
 
         case "facing": {
           const b = block as FacingControlBlock;
-          const gpRightStick = (execCtx.gamepadStates as any)?.rightStick ?? execCtx.getGamepadAxis(0, "RightStick");
-          if (gpRightStick && Math.hypot(gpRightStick.x, gpRightStick.y) > 0.15) {
-            char.facingAngle = Math.atan2(gpRightStick.y, gpRightStick.x);
+          // Right stick MUST NOT control direction anywhere
+          // Left stick should not change character direction when moving cursor
+          if (isSteerCursorActive) {
+            break;
+          }
+          if (execCtx.gamepadStates) {
+            const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
+            if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
+              char.facingAngle = Math.atan2(gpLeftStick.y, gpLeftStick.x);
+            } else if (Math.hypot(moveX, moveY) > 0.05) {
+              char.facingAngle = Math.atan2(moveY, moveX);
+            }
           } else if (b.mode === "mouseWorldPos") {
             const aimDx = targetAimPos.x - char.position.x;
             const aimDy = targetAimPos.y - char.position.y;
@@ -722,13 +741,7 @@ export class ModularBlockEvaluator {
 
     // Face toward aim target if aiming trajectory, laser, or melee
     if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory) {
-      const gpRightStick = (execCtx.gamepadStates as any)?.rightStick ?? execCtx.getGamepadAxis(0, "RightStick");
-      if (gpRightStick && Math.hypot(gpRightStick.x, gpRightStick.y) > 0.15) {
-        char.facingAngle = Math.atan2(gpRightStick.y, gpRightStick.x);
-        if (isAimingTrajectory) {
-          char.lastThrowAimAngle = char.facingAngle;
-        }
-      } else {
+      if (!isSteerCursorActive) {
         const aimDx = targetAimPos.x - char.position.x;
         const aimDy = targetAimPos.y - char.position.y;
         if (Math.hypot(aimDx, aimDy) > 0.05) {

@@ -101,7 +101,7 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
     pickup: { code: "GamepadX", requireCleanPress: true },
     drop: { code: "GamepadY", requireCleanPress: true },
     swap: { code: "GamepadB", requireCleanPress: true },
-    consume: { code: "GamepadLB", requireCleanPress: false },
+    consume: { code: "GamepadRB", requireCleanPress: false },
     swapRequiresHolding: false,
     triggerPickupWhenEmptyHanded: true,
   },

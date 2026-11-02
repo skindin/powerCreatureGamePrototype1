@@ -1127,15 +1127,14 @@ export class InputManager {
    */
   public pollGamepadSlots(
     playersMap: Map<string, { character: Character; slotIndex?: number; isKeyboard?: boolean }>,
-    objects: GameObject[],
+    _objects: GameObject[],
     arena: Arena,
-    allCharacters?: Character[],
+    _allCharacters?: Character[],
     _getVisualPosition?: (entity: GameObject) => Vector2D
   ): void {
     if (!navigator.getGamepads) return;
     const gamepads = navigator.getGamepads();
     const deadzone = 0.18;
-    const dt = 1 / 60;
     let anyConnected = false;
 
     for (let i = 0; i < gamepads.length; i++) {
@@ -1186,15 +1185,6 @@ export class InputManager {
         const b = gp.buttons[btnIndex];
         if (!b) return false;
         return typeof b === "object" ? b.pressed || b.value > threshold : (b as unknown as number) > threshold;
-      };
-
-      const getButtonValue = (btnIndex: number): number => {
-        const b = gp.buttons[btnIndex];
-        if (!b) return 0;
-        if (typeof b === "object") {
-          return typeof b.value === "number" ? b.value : (b.pressed ? 1.0 : 0.0);
-        }
-        return typeof b === "number" ? b : 0;
       };
 
       const isPrevPressed = (btnIndex: number): boolean => slot.prevButtons[btnIndex] === true;
@@ -1300,309 +1290,31 @@ export class InputManager {
         slot.movementVector.y = 0;
       }
 
-      // Right Joystick for absolute arena aim reticle:
-      // Operates like a free-floating mouse cursor in world coordinates (unleashed from character)
-      const isHolding = char.heldObject !== null;
-      if (isHolding && !slot.wasHoldingObject) {
-        // Just picked up an object: place cursor directly in front in latest movement input direction
-        if (rMag <= deadzone) {
-          slot.hasMovedAimStick = false;
-        }
-        slot.aimMovedWhileInRange = false;
-        slot.lastThrowAimAngle = undefined;
-        char.lastThrowAimAngle = undefined;
-        const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-        const inputAngle = moveMag > 0.05
-          ? Math.atan2(slot.movementVector.y, slot.movementVector.x)
-          : (char.facingAngle ?? 0);
-        slot.lastMovementInputAngle = inputAngle;
-        char.lastMovementInputAngle = inputAngle;
-        char.facingAngle = inputAngle;
-        const forwardDist = 3.0;
-        const clamped = calculateClampedForwardAimPos(char.position, Math.cos(inputAngle), Math.sin(inputAngle), forwardDist, arena.width, arena.height);
-        slot.aimPos.x = clamped.x;
-        slot.aimPos.y = clamped.y;
-        slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-        slot.aimOffset.x = clamped.x - char.position.x;
-        slot.aimOffset.y = clamped.y - char.position.y;
+      // Right Joystick reading
+      if (rMag > deadzone) {
+        const normalizedMag = Math.min(1.0, (rMag - deadzone) / (1.0 - deadzone));
+        slot.aimStickVector = {
+          x: (rx / rMag) * normalizedMag,
+          y: (ry / rMag) * normalizedMag,
+        };
+      } else {
+        slot.aimStickVector = { x: 0, y: 0 };
       }
-      if (!isHolding && slot.wasHoldingObject) {
-        slot.hasMovedAimStick = false;
-        slot.aimMovedWhileInRange = false;
-      }
-      slot.wasHoldingObject = isHolding;
 
-      if (!slot.aimOffset) {
-        slot.aimOffset = { x: 0, y: 0 };
-      }
+      // Initialize aimPos & aimOffset if uninitialized
       if (!slot.aimPos) {
         slot.aimPos = { x: char.position.x, y: char.position.y };
       }
-
-      if (!slot.aimOffsetInitialized) {
-        slot.aimPos = {
-          x: char.position.x,
-          y: char.position.y,
-        };
-        slot.aimOffset = {
-          x: 0,
-          y: 0,
-        };
-        slot.aimOffsetInitialized = true;
-        slot.hasMovedAimStick = false;
+      if (!slot.aimOffset) {
+        slot.aimOffset = { x: 0, y: 0 };
       }
 
-      // Grabbable target candidates include freebody objects and other characters
-      const grabbableTargets = allCharacters
-        ? [...allCharacters.filter((c) => c !== char), ...objects]
-        : objects;
+      // Keep aimPos bounded within arena
+      const clampedX = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
+      const clampedY = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));
+      slot.aimPos.x = clampedX;
+      slot.aimPos.y = clampedY;
 
-      const hasReachable = !isHolding && Boolean(
-        char.pickupModule &&
-        char.pickupModule.enabled &&
-        grabbableTargets.some((obj) => char.pickupModule!.isObjectInReach(char, obj, arena.wallHeight))
-      );
-
-      // Button 4 (LB / L1): Enter Laser Mode
-      const isLbPressed = isButtonPressed(4, 0.3);
-      const isLbJustPressed = isLbPressed && !isPrevPressed(4);
-      const isLbJustReleased = !isLbPressed && isPrevPressed(4);
-      slot.isLaserAiming = isLbPressed;
-
-      if (isLbJustPressed) {
-        // Entering laser mode starts in forward-leading mode before right JS is touched
-        slot.hasMovedAimStick = false;
-        slot.aimMovedWhileInRange = true;
-      } else if (isLbJustReleased) {
-        slot.hasMovedAimStick = false;
-      }
-
-      if (slot.isLaserAiming) {
-        if (!slot.hasMovedAimStick) {
-          let dirX = 1;
-          let dirY = 0;
-          const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-          if (moveMag > 0.05) {
-            dirX = slot.movementVector.x / moveMag;
-            dirY = slot.movementVector.y / moveMag;
-            const moveAngle = Math.atan2(dirY, dirX);
-            slot.lastMovementInputAngle = moveAngle;
-            char.lastMovementInputAngle = moveAngle;
-            char.facingAngle = moveAngle;
-            char.lastThrowAimAngle = moveAngle;
-            slot.lastThrowAimAngle = moveAngle;
-          } else {
-            const facing = char.facingAngle ?? char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? 0;
-            dirX = Math.cos(facing);
-            dirY = Math.sin(facing);
-          }
-          const forwardDist = 5.0;
-          const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, forwardDist, arena.width, arena.height);
-          slot.aimPos.x = clamped.x;
-          slot.aimPos.y = clamped.y;
-          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = clamped.x - char.position.x;
-          slot.aimOffset.y = clamped.y - char.position.y;
-        }
-      } else if (isHolding) {
-        // If holding an object and player has NOT moved the right aim stick yet
-        if (!slot.hasMovedAimStick) {
-          const isThrowActive = Boolean(char.isAimingTrajectory || slot.isLockHeld || slot.isAltHeld);
-          if (isThrowActive) {
-            let dirX = 1;
-            let dirY = 0;
-            const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-            if (moveMag > 0.05) {
-              dirX = slot.movementVector.x / moveMag;
-              dirY = slot.movementVector.y / moveMag;
-              const moveAngle = Math.atan2(dirY, dirX);
-              slot.lastMovementInputAngle = moveAngle;
-              char.lastMovementInputAngle = moveAngle;
-              char.facingAngle = moveAngle;
-              char.lastThrowAimAngle = moveAngle;
-              slot.lastThrowAimAngle = moveAngle;
-            } else {
-              const facing = char.facingAngle ?? 0;
-              dirX = Math.cos(facing);
-              dirY = Math.sin(facing);
-            }
-            const forwardDist = 3.0;
-            const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, forwardDist, arena.width, arena.height);
-            slot.aimPos.x = clamped.x;
-            slot.aimPos.y = clamped.y;
-            slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-            slot.aimOffset.x = clamped.x - char.position.x;
-            slot.aimOffset.y = clamped.y - char.position.y;
-          }
-        }
-      } else {
-        // Empty-handed:
-        if (!hasReachable && !slot.isLaserAiming) {
-          // Out of range: reset aimMovedWhileInRange and keep cursor at character
-          slot.aimMovedWhileInRange = false;
-          slot.aimPos.x = char.position.x;
-          slot.aimPos.y = char.position.y;
-          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = 0;
-          slot.aimOffset.y = 0;
-        } else if (!slot.aimMovedWhileInRange && !slot.isLaserAiming) {
-          // Around something to grab: start cursor AT character instead of latest offset!
-          slot.aimPos.x = char.position.x;
-          slot.aimPos.y = char.position.y;
-          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = 0;
-          slot.aimOffset.y = 0;
-        }
-      }
-
-      // Button 6 (LT / L2): Act like Alt (switches from dynamic primary ability e.g. eating to explicit throwing mode)
-      const isLtPressed = isButtonPressed(6, 0.2);
-      const isLtJustPressed = isLtPressed && !slot.wasAltHeld;
-      const isLtJustReleased = !isLtPressed && Boolean(slot.wasAltHeld);
-      slot.wasAltHeld = isLtPressed;
-      slot.isAltHeld = isLtPressed;
-
-      if (isHolding && char.isPrimaryAbilityNonDirectional()) {
-        if (isLtJustPressed) {
-          // Entering throwing mode: reset cursor to default forward distance (3.0 units) directly in front of character
-          slot.hasMovedAimStick = false;
-          slot.aimMovedWhileInRange = false;
-
-          const facing = char.facingAngle ?? 0;
-          const dirX = Math.cos(facing);
-          const dirY = Math.sin(facing);
-          const forwardDist = 3.0;
-          const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, forwardDist, arena.width, arena.height);
-          slot.aimPos.x = clamped.x;
-          slot.aimPos.y = clamped.y;
-          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = clamped.x - char.position.x;
-          slot.aimOffset.y = clamped.y - char.position.y;
-          char.lastThrowAimAngle = facing;
-          slot.lastThrowAimAngle = facing;
-        } else if (isLtJustReleased && !slot.isLaserAiming) {
-          slot.hasMovedAimStick = false;
-          slot.aimMovedWhileInRange = false;
-        }
-      }
-
-      // Button 5 (RB / R1): Holding enters Trajectory Scaler Mode
-      const isRbPressed = isButtonPressed(5);
-      const canModulateTrajectory = isHolding && Boolean(char.throwModule && char.throwModule.enabled) &&
-        (Boolean(char.isAimingTrajectory || slot.isLockHeld || slot.isAltHeld));
-
-      if (isRbPressed && canModulateTrajectory) {
-        if (!slot.isLockHeld) {
-          slot.lockedAimPos = { x: slot.aimPos.x, y: slot.aimPos.y };
-          slot.isLockHeld = true;
-          slot.arcModulationDeltaY = 0;
-          slot.hasMovedAimStick = true;
-          slot.aimMovedWhileInRange = true;
-        }
-
-        // Freeze cursor at lockedAimPos while RB is held
-        if (slot.lockedAimPos) {
-          slot.aimPos.x = slot.lockedAimPos.x;
-          slot.aimPos.y = slot.lockedAimPos.y;
-        }
-
-        // Directional input from right joystick does NOT move cursor, but vertical deflection scales trajectory height
-        if (Math.abs(ry) > deadzone) {
-          const modulationSpeed = 450.0; // pixels per second on the rail
-          slot.arcModulationDeltaY = (slot.arcModulationDeltaY ?? 0) + ry * modulationSpeed * dt;
-          slot.hasMovedAimStick = true;
-          slot.aimMovedWhileInRange = true;
-        }
-      } else {
-        if (slot.isLockHeld) {
-          slot.lockedAimPos = null;
-          slot.isLockHeld = false;
-          slot.arcModulationCursor = null;
-          slot.arcModulationDeltaY = 0;
-        }
-      }
-
-
-      if (slot.isLaserAiming) {
-        // Read analog trigger float values (0.0 to 1.0)
-        // Primary trigger is Right Trigger (RT, Button 7); also check Left Trigger (LT, Button 6)
-        const rtFloat = getButtonValue(7);
-        const ltFloat = getButtonValue(6);
-        const triggerDepth = Math.max(rtFloat, ltFloat);
-
-        if (triggerDepth > 0.03) {
-          slot.isLaserFiring = true;
-          slot.laserTriggerValue = triggerDepth;
-        } else {
-          slot.isLaserFiring = false;
-          slot.laserTriggerValue = 0;
-        }
-
-        // Orient character towards laser aim target while in laser mode (only if aim stick manually moved)
-        if (slot.hasMovedAimStick) {
-          const aimDx = slot.aimPos.x - char.position.x;
-          const aimDy = slot.aimPos.y - char.position.y;
-          if (Math.hypot(aimDx, aimDy) > 0.05) {
-            char.facingAngle = Math.atan2(aimDy, aimDx);
-          }
-        }
-      } else {
-        slot.isLaserFiring = false;
-        slot.laserTriggerValue = 0;
-      }
-
-      if (rMag > deadzone && !slot.isLockHeld) {
-        // Move aim cursor if aiming is enabled: throwing mode (LT held or throwable held), laser mode (LB held), or selecting nearby grabbable objects
-        const canAim = slot.isLaserAiming || (isHolding && (Boolean(char.isAimingTrajectory || slot.isLockHeld || slot.isAltHeld))) || (!isHolding && hasReachable);
-        if (canAim) {
-          const cursorSpeed = 17.0;
-          if (!isHolding && hasReachable && !slot.aimMovedWhileInRange) {
-            // Starting to aim around grabbables: start directly at the character!
-            slot.aimPos.x = char.position.x;
-            slot.aimPos.y = char.position.y;
-            slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-            slot.aimOffset.x = 0;
-            slot.aimOffset.y = 0;
-          }
-          slot.hasMovedAimStick = true;
-          slot.aimPos.x += rx * cursorSpeed * dt;
-          slot.aimPos.y += ry * cursorSpeed * dt;
-          slot.lastAimMoveTime = performance.now();
-          slot.aimMovedWhileInRange = true;
-
-          const aimDx = slot.aimPos.x - char.position.x;
-          const aimDy = slot.aimPos.y - char.position.y;
-          if (Math.hypot(aimDx, aimDy) > 0.05) {
-            const angle = Math.atan2(aimDy, aimDx);
-            slot.lastThrowAimAngle = angle;
-            char.lastThrowAimAngle = angle;
-          }
-        }
-      }
-
-      if (isHolding && (Boolean(char.isAimingTrajectory || slot.isLockHeld || slot.isAltHeld))) {
-        if (slot.hasMovedAimStick) {
-          const aimDx = slot.aimPos.x - char.position.x;
-          const aimDy = slot.aimPos.y - char.position.y;
-          if (Math.hypot(aimDx, aimDy) > 0.05) {
-            const angle = Math.atan2(aimDy, aimDx);
-            slot.lastThrowAimAngle = angle;
-            char.lastThrowAimAngle = angle;
-          }
-        }
-      }
-
-      if (slot.hasMovedAimStick) {
-        const clampedX = Math.max(0.1, Math.min(arena.width - 0.1, slot.aimPos.x));
-        const clampedY = Math.max(0.1, Math.min(arena.height - 0.1, slot.aimPos.y));
-        slot.aimPos.x = clampedX;
-        slot.aimPos.y = clampedY;
-        slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-        slot.aimOffset.x = clampedX - char.position.x;
-        slot.aimOffset.y = clampedY - char.position.y;
-      }
-
-      // In Play Mode, gamepad actions (jump, sprint, grab, throw, melee, eat) are evaluated via the character's active ControlSchema in PlayerManager.
       slot.prevButtons = slot.buttons ? [...slot.buttons] : [];
     }
 

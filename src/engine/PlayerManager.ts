@@ -2,7 +2,7 @@ import { Arena } from "./Arena.js";
 import { Character } from "../character/Character.js";
 import { HealthModule } from "../character/HealthModule.js";
 import { GameObject } from "./GameObject.js";
-import { InputManager, calculateClampedForwardAimPos, type GamepadSlotState } from "../ui/InputManager.js";
+import { InputManager, type GamepadSlotState } from "../ui/InputManager.js";
 import { ActiveAimCursor } from "./Renderer.js";
 import { PlayerInputPacket, ReliableActionCommand } from "./physics/StateHistoryBuffer.js";
 import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
@@ -562,7 +562,6 @@ export class PlayerManager {
         );
         if (target) {
           grabTargetObject = target;
-          grabTargetObjectId = target.id;
         }
       }
 
@@ -872,7 +871,6 @@ export class PlayerManager {
       let aimX = slot.aimPos.x;
       let aimY = slot.aimPos.y;
 
-      let grabTargetObjectId: string | null = null;
       let grabTargetObject: GameObject | null = null;
       if (cChar.pickupModule) {
         const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects].filter((c) => c !== cChar.heldObject);
@@ -885,7 +883,6 @@ export class PlayerManager {
         );
         if (target) {
           grabTargetObject = target;
-          grabTargetObjectId = target.id;
         }
       }
 
@@ -933,224 +930,24 @@ export class PlayerManager {
         gamepadStates: gpStates,
       };
 
-      // 1. Stick Mode Evaluation (Dynamic Override)
-      let gpMoveX = slot.movementVector.x;
-      let gpMoveY = slot.movementVector.y;
-
-      let isOverridden = false;
-      if (gpSchema.gamepad.leftStick.dynamicOverride) {
-        const cond = gpSchema.gamepad.leftStick.dynamicOverride.triggerCondition;
-        if (cond === "whenLtHeld" && gpStates.isDown(6)) {
-          isOverridden = true;
-        } else if (cond === "whenHoldingItem" && isCharHolding) {
-          isOverridden = true;
-        } else if (cond === "whenAiming" && (cChar.stagedAction === "laser" || isCharHolding || cChar.isLaserAiming)) {
-          isOverridden = true;
-        }
-      }
-
-      const activeLeftMode = (isOverridden && gpSchema.gamepad.leftStick.dynamicOverride)
-        ? gpSchema.gamepad.leftStick.dynamicOverride.overrideMode
-        : gpSchema.gamepad.leftStick.primaryMode;
-
-      if (activeLeftMode === "cursorSteer") {
-        gpMoveX = 0;
-        gpMoveY = 0;
-        const speed = gpSchema.gamepad.leftStick.cursorSteerSpeed ?? 14.0;
-        const clampRadius = gpSchema.gamepad.leftStick.cursorClampRadius ?? 7.5;
-        const dt = 1 / 60;
-        aimX = Math.max(cChar.position.x - clampRadius, Math.min(cChar.position.x + clampRadius, aimX + slot.movementVector.x * speed * dt));
-        aimY = Math.max(cChar.position.y - clampRadius, Math.min(cChar.position.y + clampRadius, aimY + slot.movementVector.y * speed * dt));
-        slot.aimPos.x = aimX;
-        slot.aimPos.y = aimY;
-        slot.hasMovedAimStick = true;
-      }
-
-      gpStates.leftStick = { x: gpMoveX, y: gpMoveY };
+      gpStates.leftStick = slot.movementVector;
       gpExecCtx.mouseAimPos = { x: aimX, y: aimY };
       gpExecCtx.reticleAimPos = { x: aimX, y: aimY };
 
       if (!gpSchema.gamepad.blocks) {
         gpSchema.gamepad.blocks = JSON.parse(JSON.stringify(DefaultGamepadControlBlocks));
       }
-      if (gpSchema.gamepad.blocks && gpSchema.gamepad.blocks.length > 0) {
-        const packet = ModularBlockEvaluator.evaluateBlocks(gpSchema.gamepad.blocks, gpExecCtx, input);
-        packet.playerId = entry.id;
-        packet.playerName = cChar.name;
-        (packet as any).isLockHeld = slot.isLockHeld ?? false;
-        (packet as any).lockedAimPos = slot.lockedAimPos ? { ...slot.lockedAimPos } : null;
-        map.set(entry.id, packet);
-        continue;
-      }
-
-      // 2. Schema Rules Evaluation for Gamepad
-      let isJumpHeld = false;
-      let isSprinting = false;
-      let isGrabHeld = false;
-      let isDrop = false;
-      let isSwap = false;
-      let isThrow = false;
-      let isUsingItem = false;
-      let isLaserAiming = false;
-      let isLaserFiring = false;
-      let isMeleeRequested = false;
-      let isAimingTrajectory = false;
-
-      const executedGpThreads = new Set<string>();
-      const executeGpRules = (ruleList: ControlRule[]) => {
-        const sortedRules = [...ruleList].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-        for (const rule of sortedRules) {
-          if (rule.enabled === false) continue;
-          const threadKey = rule.threadId ?? null;
-          if (threadKey && executedGpThreads.has(threadKey)) {
-            continue;
-          }
-
-          if (!ControlSchemaArbiter.isRuleApplicable(rule, gpExecCtx, gpSchema, "gamepad", undefined, undefined, gpStates)) {
-            continue;
-          }
-
-          if (threadKey) {
-            executedGpThreads.add(threadKey);
-          }
-          ControlsInspector.notifyRuleFired(rule.id);
-
-          const statements = ControlSchemaArbiter.getRuleBody(rule);
-          const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, gpSchema, "gamepad");
-
-          for (const stmt of statements) {
-            if (stmt.type === "action") {
-              const act = stmt.action;
-              const mid = act.moduleId;
-              const intent = act.intent;
-
-              if (mid === "locomotion") {
-                if (intent === "jump") isJumpHeld = true;
-                else if (intent === "holdSprint") isSprinting = true;
-                else if (intent === "toggleSprint") {
-                  const btnCode = ControlSchemaArbiter.parseGamepadButtonCode(effTrigger.code);
-                  if (effTrigger.mode === "press" ? gpStates.justPressed(btnCode) : true) {
-                    cChar.setSprinting(!cChar.isSprinting);
-                  }
-                  isSprinting = Boolean(cChar.isSprinting);
-                }
-              } else if (mid === "throw" || mid === "throwPickup") {
-                if (intent === "aimThrow") isAimingTrajectory = true;
-                else if (intent === "releaseThrow") isThrow = true;
-                else if (intent === "pickupReach") isGrabHeld = true;
-                else if (intent === "dropItem") isDrop = true;
-                else if (intent === "swap" || intent === "swapItem") isSwap = true;
-              } else if (mid === "pickup") {
-                if (intent === "pickupReach") isGrabHeld = true;
-                else if (intent === "dropItem") isDrop = true;
-                else if (intent === "swap" || intent === "swapItem") isSwap = true;
-              } else if (mid === "laser") {
-                if (intent === "aimLaser") isLaserAiming = true;
-                else if (intent === "fireLaser") {
-                  isLaserFiring = true;
-                  isLaserAiming = true;
-                }
-              } else if (mid === "melee") {
-                if (intent === "punch") isMeleeRequested = true;
-              } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
-                if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
-              } else if (mid === "staging") {
-                if (intent === "setStage") {
-                  cChar.setStage(act.args?.group || act.args?.stageSet || "default", act.args?.stage || "none");
-                } else if (intent.includes("Laser")) {
-                  cChar.stagedAction = "laser";
-                } else if (intent.includes("Throw")) {
-                  cChar.stagedAction = "throw";
-                } else if (intent.includes("Pickup") || intent.includes("Grab")) {
-                  cChar.stagedAction = "pickup";
-                } else if (intent.includes("Melee")) {
-                  cChar.stagedAction = "melee";
-                } else if (intent === "clearStage") {
-                  cChar.stagedAction = "none";
-                }
-              }
-            } else if (stmt.type === "nestedThread") {
-              executeGpRules(stmt.rules);
-            }
-          }
-        }
-      };
-
-      executeGpRules(gpSchema.gamepad.rules);
-
-      cChar.isAimingTrajectory = isAimingTrajectory;
-      cChar.isLaserAiming = isLaserAiming;
-      cChar.isLaserFiring = isLaserFiring;
-      cChar.isMeleeRequested = isMeleeRequested;
-
-      // Facing Angle:
-      const moveMag = Math.hypot(gpMoveX, gpMoveY);
-      const isAimFacingActive = isLaserAiming || isLaserFiring || isAimingTrajectory;
-      if (slot.lockedAimPos) {
-        const aimDx = slot.lockedAimPos.x - cChar.position.x;
-        const aimDy = slot.lockedAimPos.y - cChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          cChar.facingAngle = Math.atan2(aimDy, aimDx);
-        }
-      } else if (isAimFacingActive && slot.hasMovedAimStick) {
-        const aimDx = aimX - cChar.position.x;
-        const aimDy = aimY - cChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          cChar.facingAngle = Math.atan2(aimDy, aimDx);
-        }
-      } else if (moveMag > 0.05) {
-        cChar.facingAngle = Math.atan2(gpMoveY, gpMoveX);
-      }
-
-      const activeLaunchVel = isThrow && cChar.activeTrajectory?.launchVel ? cChar.activeTrajectory.launchVel : undefined;
-      const activeLaunchPos = isThrow && cChar.activeTrajectory?.launchPos ? cChar.activeTrajectory.launchPos : undefined;
-
-      const isGamepadAiming = isAimingTrajectory || isLaserAiming || Boolean(slot.aimMovedWhileInRange);
-
-      map.set(entry.id, {
-        playerId: entry.id,
-        playerName: cChar.name,
-        moveX: gpMoveX,
-        moveY: gpMoveY,
-        isSprinting: isSprinting || Boolean(cChar.isSprinting),
-        isJumpHeld,
-        isGrabHeld,
-        grabTargetObjectId: (isGrabHeld || isSwap) ? grabTargetObjectId : null,
-        isDrop,
-        isThrow,
-        isSwap,
-        isUsingItem,
-        isLaserAiming,
-        isLaserFiring,
-        laserAimX: slot.aimPos.x,
-        laserAimY: slot.aimPos.y,
-        laserPowerFraction: typeof slot.laserTriggerValue === "number" ? slot.laserTriggerValue : 1.0,
-        isMeleeRequested,
-        meleeAimDirX: Math.cos(cChar.facingAngle ?? 0),
-        meleeAimDirY: Math.sin(cChar.facingAngle ?? 0),
-        meleeAimX: cChar.position.x + Math.cos(cChar.facingAngle ?? 0),
-        meleeAimY: cChar.position.y + Math.sin(cChar.facingAngle ?? 0),
-        aimX,
-        aimY,
-        isAiming: isGamepadAiming,
-        isLockHeld: slot.isLockHeld ?? false,
-        lockedAimPos: slot.lockedAimPos ? { ...slot.lockedAimPos } : null,
-        facingAngle: cChar.facingAngle,
-        ...(activeLaunchVel ? {
-          launchVx: activeLaunchVel.vx,
-          launchVy: activeLaunchVel.vy,
-          launchVz: activeLaunchVel.vz
-        } : {}),
-        ...(activeLaunchPos ? {
-          launchStartX: activeLaunchPos.x,
-          launchStartY: activeLaunchPos.y,
-          launchStartZ: activeLaunchPos.z
-        } : {})
-      } as any);
+      const packet = ModularBlockEvaluator.evaluateBlocks(gpSchema.gamepad.blocks!, gpExecCtx, input);
+      packet.playerId = entry.id;
+      packet.playerName = cChar.name;
+      (packet as any).isLockHeld = slot.isLockHeld ?? false;
+      (packet as any).lockedAimPos = slot.lockedAimPos ? { ...slot.lockedAimPos } : null;
+      map.set(entry.id, packet);
       slot.isDropRequested = false;
       slot.isThrowRequested = false;
       slot.isJumpRequested = false;
       slot.isMeleeRequested = false;
+      continue;
     }
 
     // Update historical button buffers for edge detection (justPressed / justReleased)
@@ -1900,7 +1697,6 @@ export class PlayerManager {
         ? others.filter((o) => char.pickupModule!.isObjectInReach(char, o, this.arena.wallHeight))
         : [];
       const hasReachable = reachable.length > 0;
-      let isCursorVisibleNow = false;
 
       if (entry.isKeyboard) {
         if (!this.inputManager.isKeyboardActive || this.inputManager.isKeyboardSuspended) {
@@ -1918,7 +1714,6 @@ export class PlayerManager {
         }
 
         // Keyboard cursor is always visible
-        isCursorVisibleNow = true;
         if (this.inputManager.lockedAimPos || this.inputManager.isAwaitingUnlock || (typeof document !== "undefined" && document.pointerLockElement)) {
           if (this.inputManager.recordedMousePos) {
             this.inputManager.mousePos.x = this.inputManager.recordedMousePos.x;
@@ -1967,176 +1762,51 @@ export class PlayerManager {
         const slot = this.inputManager.gamepadSlots.get(entry.slotIndex);
         if (!slot || !slot.connected) continue;
 
-        const isLaserActive = Boolean(slot.isLaserAiming);
-        if (isLaserActive && !slot.wasLaserAiming) {
-          slot.hasMovedAimStick = false;
-        }
-        slot.wasLaserAiming = isLaserActive;
-
-        if (isHolding && !entry.wasHoldingObject) {
-          slot.hasMovedAimStick = false;
-        }
-        entry.wasHoldingObject = isHolding;
-        slot.wasHoldingObject = isHolding;
-
-        const isThrowActive = isHolding && (!char.hasPrimaryItemAbility() || Boolean(slot.isAltHeld));
-        if (isHolding && isThrowActive && !entry.wasThrowActive) {
-          slot.hasMovedAimStick = false;
+        if (!slot.aimPos) {
           const facing = char.facingAngle ?? 0;
-          const dirX = Math.cos(facing);
-          const dirY = Math.sin(facing);
-          const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, 3.0, this.arena.width, this.arena.height);
-          slot.aimPos.x = clamped.x;
-          slot.aimPos.y = clamped.y;
-          slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-          slot.aimOffset.x = clamped.x - char.position.x;
-          slot.aimOffset.y = clamped.y - char.position.y;
+          slot.aimPos = {
+            x: char.position.x + Math.cos(facing) * 3.0,
+            y: char.position.y + Math.sin(facing) * 3.0,
+          };
         }
-        entry.wasThrowActive = isThrowActive;
+
+        // Clamp cursor within arena boundaries
+        slot.aimPos.x = Math.max(0.1, Math.min(this.arena.width - 0.1, slot.aimPos.x));
+        slot.aimPos.y = Math.max(0.1, Math.min(this.arena.height - 0.1, slot.aimPos.y));
 
         if (!slot.aimOffset) {
           slot.aimOffset = { x: 0, y: 0 };
         }
+        slot.aimOffset.x = slot.aimPos.x - char.position.x;
+        slot.aimOffset.y = slot.aimPos.y - char.position.y;
 
-        if (isLaserActive) {
-          if (!slot.hasMovedAimStick) {
-            let dirX = 1;
-            let dirY = 0;
-            const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-            if (moveMag > 0.05) {
-              dirX = slot.movementVector.x / moveMag;
-              dirY = slot.movementVector.y / moveMag;
-              const moveAngle = Math.atan2(dirY, dirX);
-              slot.lastMovementInputAngle = moveAngle;
-              char.lastMovementInputAngle = moveAngle;
-              char.facingAngle = moveAngle;
-              char.lastThrowAimAngle = moveAngle;
-              slot.lastThrowAimAngle = moveAngle;
-            } else {
-              const facing = char.facingAngle ?? char.lastThrowAimAngle ?? slot.lastThrowAimAngle ?? 0;
-              dirX = Math.cos(facing);
-              dirY = Math.sin(facing);
-            }
-            const forwardDist = 5.0;
-            const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, forwardDist, this.arena.width, this.arena.height);
-            slot.aimPos.x = clamped.x;
-            slot.aimPos.y = clamped.y;
-            slot.aimOffset.x = clamped.x - char.position.x;
-            slot.aimOffset.y = clamped.y - char.position.y;
-          } else {
-            // Preserve world aimPos instead of dragging it with player movement
-            if (slot.aimPos) {
-              slot.aimOffset.x = slot.aimPos.x - char.position.x;
-              slot.aimOffset.y = slot.aimPos.y - char.position.y;
-            }
-          }
-          isCursorVisibleNow = true;
-        } else if (isHolding) {
-          const isPrimaryNonDirectional = char.isPrimaryAbilityNonDirectional();
-          const isThrowActive = Boolean(char.isAimingTrajectory || slot.isLockHeld || slot.isAltHeld);
-
-          if (!slot.hasMovedAimStick) {
-            if (isThrowActive) {
-              let dirX = 1;
-              let dirY = 0;
-              const moveMag = Math.hypot(slot.movementVector.x, slot.movementVector.y);
-              if (moveMag > 0.05) {
-                dirX = slot.movementVector.x / moveMag;
-                dirY = slot.movementVector.y / moveMag;
-                const moveAngle = Math.atan2(dirY, dirX);
-                slot.lastMovementInputAngle = moveAngle;
-                char.lastMovementInputAngle = moveAngle;
-                char.facingAngle = moveAngle;
-                char.lastThrowAimAngle = moveAngle;
-                slot.lastThrowAimAngle = moveAngle;
-              } else {
-                const facing = char.facingAngle ?? 0;
-                dirX = Math.cos(facing);
-                dirY = Math.sin(facing);
-              }
-              const forwardDist = 3.0;
-              const clamped = calculateClampedForwardAimPos(char.position, dirX, dirY, forwardDist, this.arena.width, this.arena.height);
-              slot.aimPos.x = clamped.x;
-              slot.aimPos.y = clamped.y;
-              slot.aimOffset.x = clamped.x - char.position.x;
-              slot.aimOffset.y = clamped.y - char.position.y;
-            }
-          } else {
-            // Preserve world aimPos instead of dragging it with player movement
-            if (slot.aimPos) {
-              slot.aimOffset.x = slot.aimPos.x - char.position.x;
-              slot.aimOffset.y = slot.aimPos.y - char.position.y;
-            }
-          }
-
-          // If holding an object whose primary ability is non-directional (like an apple / eating),
-          // ONLY show cursor if LT (Alt) is held!
-          if (isPrimaryNonDirectional && !isThrowActive) {
-            isCursorVisibleNow = false;
-          } else {
-            isCursorVisibleNow = true;
-          }
-        } else {
-          // Empty-handed: around something to grab or roaming
-          // Gamepad aim cursor stays permanently visible for aim steering and throw targeting:
-          isCursorVisibleNow = true;
-          if (!hasReachable) {
-            if (!slot.hasMovedAimStick) {
-              const facing = char.facingAngle ?? 0;
-              const forwardDist = 3.0;
-              const clamped = calculateClampedForwardAimPos(char.position, Math.cos(facing), Math.sin(facing), forwardDist, this.arena.width, this.arena.height);
-              slot.aimPos.x = clamped.x;
-              slot.aimPos.y = clamped.y;
-              slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-              slot.aimOffset.x = clamped.x - char.position.x;
-              slot.aimOffset.y = clamped.y - char.position.y;
-            } else if (slot.aimPos) {
-              slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-              slot.aimOffset.x = slot.aimPos.x - char.position.x;
-              slot.aimOffset.y = slot.aimPos.y - char.position.y;
-            }
-          } else {
-            // Has reachable items:
-            if (!slot.aimMovedWhileInRange) {
-              slot.aimPos.x = char.position.x;
-              slot.aimPos.y = char.position.y;
-              slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-              slot.aimOffset.x = 0;
-              slot.aimOffset.y = 0;
-            } else if (slot.aimPos) {
-              slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-              slot.aimOffset.x = slot.aimPos.x - char.position.x;
-              slot.aimOffset.y = slot.aimPos.y - char.position.y;
-            }
-          }
-        }
-
-        // In both controller and keyboard mode, always select the closest object on the ground to the cursor within range of the character to grab:
         if (hasReachable) {
           const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
           if (reachableGroundObjects.length > 0) {
-            const target = (slot.aimMovedWhileInRange || isHolding)
-              ? char.pickupModule!.findTargetObject(char, slot.aimPos.x, slot.aimPos.y, reachableGroundObjects, this.arena.wallHeight)
-              : char.pickupModule!.findTargetObject(char, char.position.x, char.position.y, reachableGroundObjects, this.arena.wallHeight);
+            const target = char.pickupModule!.findTargetObject(
+              char,
+              slot.aimPos.x,
+              slot.aimPos.y,
+              reachableGroundObjects,
+              this.arena.wallHeight
+            );
             if (target) {
               targetGrabEntities.set(char, target);
             }
           }
         }
 
-        entry.wasCursorVisible = isCursorVisibleNow;
-        slot.isCursorVisible = isCursorVisibleNow;
+        entry.wasCursorVisible = true;
+        slot.isCursorVisible = true;
 
-        if (isCursorVisibleNow) {
-          activeAimCursors.push({
-            x: slot.aimPos.x,
-            y: slot.aimPos.y,
-            color: char.playerColor,
-            playerNumber: char.playerNumber,
-            character: char,
-            isGamepad: true,
-          });
-        }
+        activeAimCursors.push({
+          x: slot.aimPos.x,
+          y: slot.aimPos.y,
+          color: char.playerColor,
+          playerNumber: char.playerNumber,
+          character: char,
+          isGamepad: true,
+        });
       }
     }
 
