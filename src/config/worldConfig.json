@@ -1,6 +1,6 @@
 {
-  "version": 214,
-  "lastSaved": "2026-11-02T07:14:18.343Z",
+  "version": 216,
+  "lastSaved": "2026-11-02T07:22:00.426Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1971,7 +1971,7 @@
             "id": "block-throw",
             "name": "Throwing & Ballistics",
             "enabled": true,
-            "mode": "quickWallClear",
+            "mode": "chargeAndRelease",
             "chargeTrigger": {
               "code": "MouseRight",
               "requireCleanPress": false
@@ -1991,7 +1991,9 @@
               "source": "mouseDeltaY",
               "autoCursorLock": true,
               "sensitivity": 0.005
-            }
+            },
+            "enableProximityCancel": false,
+            "cancelRadius": 1.5
           },
           {
             "type": "melee",
@@ -5307,7 +5309,7 @@
               "id": "block-throw",
               "name": "Throwing & Ballistics",
               "enabled": true,
-              "mode": "quickWallClear",
+              "mode": "chargeAndRelease",
               "chargeTrigger": {
                 "code": "MouseRight",
                 "requireCleanPress": false
@@ -5327,7 +5329,9 @@
                 "source": "mouseDeltaY",
                 "autoCursorLock": true,
                 "sensitivity": 0.005
-              }
+              },
+              "enableProximityCancel": false,
+              "cancelRadius": 1.5
             },
             {
               "type": "melee",

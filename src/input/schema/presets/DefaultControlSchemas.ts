@@ -44,6 +44,8 @@ export const DefaultControlBlocks: ControlBlock[] = [
     fireTrigger: { code: "MouseLeft", requireCleanPress: true },
     quickTrigger: { code: "MouseLeft", requireCleanPress: true },
     arcModulation: { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 },
+    enableProximityCancel: false,
+    cancelRadius: 1.5,
   },
   {
     type: "melee",

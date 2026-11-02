@@ -1395,6 +1395,7 @@ export class PlayerManager {
             char.eatRateWatts = 0;
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
+            char.isHoldingThrowRelease = false;
             char.activeTrajectory = null;
           }
           // Direct pickup fallback: if spawner itself was grabbed directly by external code,
@@ -1472,6 +1473,7 @@ export class PlayerManager {
             char.eatRateWatts = 0;
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
+            char.isHoldingThrowRelease = false;
             char.activeTrajectory = null;
             if (char.heldObject === heldItem) {
               char.heldObject = null;
@@ -1617,6 +1619,7 @@ export class PlayerManager {
             char.eatRateWatts = 0;
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
+            char.isHoldingThrowRelease = false;
             char.activeTrajectory = null;
             const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
             ClientActionDispatcher.dispatchPickup(

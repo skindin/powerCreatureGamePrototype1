@@ -1643,6 +1643,8 @@ export class ControlsInspector {
         b.fireTrigger = b.fireTrigger || { code: "MouseLeft" };
         b.quickTrigger = b.quickTrigger || { code: "MouseLeft" };
         b.arcModulation = b.arcModulation || { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 };
+        b.enableProximityCancel = Boolean(b.enableProximityCancel);
+        b.cancelRadius = b.cancelRadius ?? 1.5;
 
         let modeSpecificHtml = "";
         if (b.mode === "chargeAndRelease") {
@@ -1650,7 +1652,16 @@ export class ControlsInspector {
             <div>
               ${this.renderInputSlot(b.id, "chargeTrigger", b.chargeTrigger, "Charge & Release Throw Button")}
               <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
-                Hold to charge trajectory/power, release to throw. Aim near your feet to cancel without throwing.
+                Hold to charge trajectory/power, release to throw.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "holdAndRelease") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "chargeTrigger", b.chargeTrigger, "Hold to Aim & Release Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Hold to preview lowest energy trajectory that reaches target without charging. Release to throw.
               </div>
             </div>
           `;
@@ -1704,12 +1715,36 @@ export class ControlsInspector {
           `;
         }
 
+        const isHoldAndReleaseMode = b.mode === "chargeAndRelease" || b.mode === "aimWallClear" || b.mode === "holdAndRelease";
+        const proximityCancelHtml = isHoldAndReleaseMode
+          ? `
+            <div style="margin-top: 6px; padding-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.72rem; color: #e2e8f0;">
+                <input type="checkbox" class="block-throw-cancel-toggle" data-block-id="${b.id}" ${b.enableProximityCancel ? "checked" : ""} style="cursor: pointer; accent-color: #38bdf8;" />
+                <span>Cancel throw when target pos is close to character</span>
+              </label>
+              ${
+                b.enableProximityCancel
+                  ? `
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 0.68rem; color: #94a3b8;">Cancel Radius:</span>
+                  <input type="number" step="0.1" min="0.2" max="10" class="block-throw-cancel-radius dev-input" data-block-id="${b.id}" value="${b.cancelRadius ?? 1.5}" style="width: 55px; font-size: 0.72rem; padding: 2px 4px; background: #0f172a; color: #fff; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; text-align: center;" />
+                  <span style="font-size: 0.65rem; color: #64748b;">tiles</span>
+                </div>
+              `
+                  : ""
+              }
+            </div>
+          `
+          : "";
+
         return `
           <div style="display: flex; flex-direction: column; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Trajectory Manipulation Style:</span>
               <select class="block-throw-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
                 <option value="chargeAndRelease" ${b.mode === "chargeAndRelease" ? "selected" : ""}>🏹 Charge and Release (Bow style)</option>
+                <option value="holdAndRelease" ${b.mode === "holdAndRelease" ? "selected" : ""}>🏹 Hold & Release (Static Lowest Energy Arc)</option>
                 <option value="aimAndFire" ${b.mode === "aimAndFire" ? "selected" : ""}>🎯 Aim & Fire (Preview button + Launch button)</option>
                 <option value="quickOptimal" ${b.mode === "quickOptimal" ? "selected" : ""}>⚡ Most Efficient (Quick Optimal Arc)</option>
                 <option value="quickWallClear" ${b.mode === "quickWallClear" ? "selected" : ""}>🧱 Quick Wall-Clear (Lowest Energy No Wall Collision)</option>
@@ -1717,6 +1752,7 @@ export class ControlsInspector {
               </select>
             </div>
             ${modeSpecificHtml}
+            ${proximityCancelHtml}
           </div>
         `;
       }
@@ -3350,6 +3386,32 @@ export class ControlsInspector {
           if (block) {
             block.arcModulation = block.arcModulation || {};
             block.arcModulation.source = (e.target as HTMLSelectElement).value as any;
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Throw proximity cancel toggle
+      root.querySelectorAll(".block-throw-cancel-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock;
+          if (block) {
+            block.enableProximityCancel = (e.target as HTMLInputElement).checked;
+            if (block.cancelRadius === undefined) block.cancelRadius = 1.5;
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Throw proximity cancel radius input
+      root.querySelectorAll(".block-throw-cancel-radius").forEach((inp) => {
+        inp.addEventListener("change", (e) => {
+          const bId = (inp as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock;
+          if (block) {
+            const val = parseFloat((e.target as HTMLInputElement).value);
+            block.cancelRadius = isNaN(val) ? 1.5 : Math.max(0.1, val);
             this.renderActiveView();
           }
         });

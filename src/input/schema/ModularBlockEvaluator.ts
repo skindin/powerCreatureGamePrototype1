@@ -297,6 +297,7 @@ export class ModularBlockEvaluator {
           if (!execCtx.isHoldingItem) {
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
+            char.isHoldingThrowRelease = false;
             char.activeTrajectory = null;
             (char as any)._pickupPressCode = null;
             break;
@@ -309,6 +310,7 @@ export class ModularBlockEvaluator {
             if (tokens.isDown(pickupCode)) {
               char.isChargingThrow = false;
               char.isAimingWallClear = false;
+              char.isHoldingThrowRelease = false;
               char.activeTrajectory = null;
               break;
             } else {
@@ -319,7 +321,7 @@ export class ModularBlockEvaluator {
 
           switch (b.mode) {
             case "chargeAndRelease": {
-              if (isSlotActive(b.chargeTrigger, "hold", true, b.id, "throw.chargeBow")) {
+              if (isSlotActive(b.chargeTrigger, "hold", false, b.id, "throw.chargeBow")) {
                 isAimingTrajectory = true;
                 char.isChargingThrow = true;
                 if (!char.throwChargeStartTime) {
@@ -333,9 +335,9 @@ export class ModularBlockEvaluator {
                 const aimDx = input.actualMousePos.x - char.position.x;
                 const aimDy = input.actualMousePos.y - char.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
-                const cancelDistance = Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
 
-                if (distToAim < cancelDistance) {
+                if (b.enableProximityCancel && distToAim < cancelDistance) {
                   isThrow = false;
                   char.isChargingThrow = false;
                   char.throwChargeStartTime = null;
@@ -343,16 +345,46 @@ export class ModularBlockEvaluator {
                   char.activeTrajectory = null;
                   char.isThrowCancelZone = false;
                   claimSlot(b.chargeTrigger, b.id, "throw.cancel", false);
-                } else if (tokens.canExecuteRelease(b.chargeTrigger?.code || "", "requireCleanPress", b.id, "throw.fire")) {
+                } else {
                   isThrow = true;
                   char.isChargingThrow = false;
                   char.throwChargeStartTime = null;
+                  char.isThrowCancelZone = false;
                   claimSlot(b.chargeTrigger, b.id, "throw.fire", true);
-                } else {
-                  char.isChargingThrow = false;
-                  char.throwChargeStartTime = null;
-                  char.throwChargeProgress = 0;
+                }
+              }
+              break;
+            }
+
+            case "holdAndRelease": {
+              // Hold to preview lowest energy trajectory that reaches target without charging, release to fire
+              if (isSlotActive(b.chargeTrigger, "hold", false, b.id, "throw.holdAndRelease")) {
+                isAimingTrajectory = true;
+                char.isHoldingThrowRelease = true;
+                char.hasUserSetArcRatio = false;
+                if (char.throwModule) {
+                  char.throwModule.hasUserSetArcRatio = false;
+                }
+                claimSlot(b.chargeTrigger, b.id, "throw.holdAndRelease", false);
+              }
+
+              if (isSlotAnyJustReleased(b.chargeTrigger) && char.isHoldingThrowRelease) {
+                const aimDx = input.actualMousePos.x - char.position.x;
+                const aimDy = input.actualMousePos.y - char.position.y;
+                const distToAim = Math.hypot(aimDx, aimDy);
+                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+                if (b.enableProximityCancel && distToAim < cancelDistance) {
+                  isThrow = false;
+                  char.isHoldingThrowRelease = false;
                   char.activeTrajectory = null;
+                  char.isThrowCancelZone = false;
+                  claimSlot(b.chargeTrigger, b.id, "throw.cancel", false);
+                } else {
+                  isThrow = true;
+                  char.isHoldingThrowRelease = false;
+                  char.isThrowCancelZone = false;
+                  claimSlot(b.chargeTrigger, b.id, "throw.fire", true);
                 }
               }
               break;
@@ -439,7 +471,7 @@ export class ModularBlockEvaluator {
             }
 
             case "aimWallClear": {
-              if (isSlotActive(b.aimTrigger, "hold", true, b.id, "throw.aimWallClear")) {
+              if (isSlotActive(b.aimTrigger, "hold", false, b.id, "throw.aimWallClear")) {
                 isAimingTrajectory = true;
                 char.isAimingWallClear = true;
                 claimSlot(b.aimTrigger, b.id, "throw.aimWallClear", false);
@@ -449,21 +481,19 @@ export class ModularBlockEvaluator {
                 const aimDx = input.actualMousePos.x - char.position.x;
                 const aimDy = input.actualMousePos.y - char.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
-                const cancelDistance = Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
 
-                if (distToAim < cancelDistance) {
+                if (b.enableProximityCancel && distToAim < cancelDistance) {
                   isThrow = false;
                   char.isAimingWallClear = false;
                   char.activeTrajectory = null;
                   char.isThrowCancelZone = false;
                   claimSlot(b.aimTrigger, b.id, "throw.cancel", false);
-                } else if (tokens.canExecuteRelease(b.aimTrigger?.code || "", "requireCleanPress", b.id, "throw.fire")) {
+                } else {
                   isThrow = true;
                   char.isAimingWallClear = false;
+                  char.isThrowCancelZone = false;
                   claimSlot(b.aimTrigger, b.id, "throw.fire", true);
-                } else {
-                  char.isAimingWallClear = false;
-                  char.activeTrajectory = null;
                 }
               }
               break;

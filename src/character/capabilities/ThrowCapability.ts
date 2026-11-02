@@ -2,6 +2,7 @@ import type { Character, AnticipatedModifier } from "../Character.js";
 import type { Arena } from "../../engine/Arena.js";
 import type { GameObject, Vector2D } from "../../engine/GameObject.js";
 import type { TrajectoryCalculation } from "../ThrowModule.js";
+import type { ThrowControlBlock } from "../../input/schema/ControlSchemaTypes.js";
 
 /**
  * Isolated 1-to-1 capability slice for Object Holding & Ballistic Throwing.
@@ -95,16 +96,23 @@ export class ThrowCapability {
       isAimingInput &&
       aimTargetPos
     ) {
-      if (char.isChargingThrow) {
-        const aimDx = aimTargetPos.x - char.position.x;
-        const aimDy = aimTargetPos.y - char.position.y;
-        const distToAim = Math.hypot(aimDx, aimDy);
-        const cancelDistance = Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+      const throwBlock = char.controlSchema?.keyboardMouse?.blocks?.find(
+        (b) => b.type === "throw"
+      ) as ThrowControlBlock | undefined;
 
-        if (distToAim < cancelDistance) {
-          char.activeTrajectory = null;
-          char.isThrowCancelZone = true;
-          return;
+      const shouldCheckCancel = Boolean(throwBlock?.enableProximityCancel);
+      const cancelRadius = throwBlock?.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+      if (char.isChargingThrow) {
+        if (shouldCheckCancel) {
+          const aimDx = aimTargetPos.x - char.position.x;
+          const aimDy = aimTargetPos.y - char.position.y;
+          const distToAim = Math.hypot(aimDx, aimDy);
+          if (distToAim < cancelRadius) {
+            char.activeTrajectory = null;
+            char.isThrowCancelZone = true;
+            return;
+          }
         }
         char.isThrowCancelZone = false;
 
@@ -162,16 +170,45 @@ export class ThrowCapability {
         if (char.activeTrajectory) {
           (char.activeTrajectory as any).chargingTowards = char.throwChargingTowards;
         }
-      } else if (char.isAimingWallClear) {
-        const aimDx = aimTargetPos.x - char.position.x;
-        const aimDy = aimTargetPos.y - char.position.y;
-        const distToAim = Math.hypot(aimDx, aimDy);
-        const cancelDistance = Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+      } else if (char.isHoldingThrowRelease) {
+        if (shouldCheckCancel) {
+          const aimDx = aimTargetPos.x - char.position.x;
+          const aimDy = aimTargetPos.y - char.position.y;
+          const distToAim = Math.hypot(aimDx, aimDy);
+          if (distToAim < cancelRadius) {
+            char.activeTrajectory = null;
+            char.isThrowCancelZone = true;
+            return;
+          }
+        }
+        char.isThrowCancelZone = false;
 
-        if (distToAim < cancelDistance) {
-          char.activeTrajectory = null;
-          char.isThrowCancelZone = true;
-          return;
+        // Static lowest energy wall-clearing trajectory: compute and show arc, don't change arc height or charge
+        char.hasUserSetArcRatio = false;
+        if (char.throwModule) {
+          char.throwModule.hasUserSetArcRatio = false;
+        }
+        char.throwChargingTowards = undefined;
+        ThrowCapability.findLowestEnergyWallClearTrajectory(
+          char,
+          arena,
+          aimTargetPos.x,
+          aimTargetPos.y,
+          entities,
+          autoLock,
+          lockedAimPos,
+          aimLockDelta
+        );
+      } else if (char.isAimingWallClear) {
+        if (shouldCheckCancel) {
+          const aimDx = aimTargetPos.x - char.position.x;
+          const aimDy = aimTargetPos.y - char.position.y;
+          const distToAim = Math.hypot(aimDx, aimDy);
+          if (distToAim < cancelRadius) {
+            char.activeTrajectory = null;
+            char.isThrowCancelZone = true;
+            return;
+          }
         }
         char.isThrowCancelZone = false;
 

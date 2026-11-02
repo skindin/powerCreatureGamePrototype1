@@ -341,6 +341,7 @@ export interface LaserControlBlock {
 
 export type ThrowBlockMode =
   | "chargeAndRelease" // Bow style: hold to build power/trajectory, release to throw
+  | "holdAndRelease"   // Hold button to preview lowest energy trajectory without charging, release to fire
   | "aimAndFire"       // Manual preview: aim button previews arc, fire button launches
   | "quickOptimal"     // Flattest optimal trajectory on click
   | "quickWallClear"   // Lowest energy wall-clearing trajectory on click
@@ -352,7 +353,7 @@ export interface ThrowControlBlock {
   name?: string;
   enabled: boolean;
   mode: ThrowBlockMode;
-  chargeTrigger?: BlockInputSlot; // For chargeAndRelease
+  chargeTrigger?: BlockInputSlot; // For chargeAndRelease and holdAndRelease
   aimTrigger?: BlockInputSlot;    // For aimAndFire and aimWallClear
   fireTrigger?: BlockInputSlot;   // For aimAndFire
   quickTrigger?: BlockInputSlot;  // For quickOptimal and quickWallClear
@@ -361,6 +362,8 @@ export interface ThrowControlBlock {
     autoCursorLock?: boolean;
     sensitivity?: number;
   };
+  enableProximityCancel?: boolean;
+  cancelRadius?: number; // Distance in tiles/world units to cancel throw (default: 1.5)
 }
 
 export interface ItemInteractionControlBlock {

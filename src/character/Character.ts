@@ -64,6 +64,7 @@ export class Character extends GameObject {
   public throwChargingTowards?: "flattest" | "steepest";
   public isThrowCancelZone: boolean = false;
   public isAimingWallClear: boolean = false;
+  public isHoldingThrowRelease: boolean = false;
   public hasDiedAwaitingNewPickup: boolean = false;
   private _heldObject: GameObject | null = null;
   public get heldObject(): GameObject | null {
