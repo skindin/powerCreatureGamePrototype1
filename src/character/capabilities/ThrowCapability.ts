@@ -83,6 +83,7 @@ export class ThrowCapability {
     lockedAimPos: Vector2D | null = null,
     aimLockDelta = 0
   ): void {
+    const preservedFacing = char.facingAngle;
     char.isAiming = isAimingInput;
     char.aimTarget = isAimingInput ? aimTargetPos : null;
 
@@ -111,6 +112,7 @@ export class ThrowCapability {
           if (distToAim < cancelRadius) {
             char.activeTrajectory = null;
             char.isThrowCancelZone = true;
+            if (char.isSteeringCursor) char.facingAngle = preservedFacing;
             return;
           }
         }
@@ -178,6 +180,7 @@ export class ThrowCapability {
           if (distToAim < cancelRadius) {
             char.activeTrajectory = null;
             char.isThrowCancelZone = true;
+            if (char.isSteeringCursor) char.facingAngle = preservedFacing;
             return;
           }
         }
@@ -207,6 +210,7 @@ export class ThrowCapability {
           if (distToAim < cancelRadius) {
             char.activeTrajectory = null;
             char.isThrowCancelZone = true;
+            if (char.isSteeringCursor) char.facingAngle = preservedFacing;
             return;
           }
         }
@@ -230,6 +234,7 @@ export class ThrowCapability {
           if (distToAim < cancelRadius) {
             char.activeTrajectory = null;
             char.isThrowCancelZone = true;
+            if (char.isSteeringCursor) char.facingAngle = preservedFacing;
             return;
           }
         }
@@ -314,6 +319,10 @@ export class ThrowCapability {
       char.activeTrajectory = null;
       char.isThrowCancelZone = false;
       char.throwChargingTowards = undefined;
+    }
+
+    if (char.isSteeringCursor) {
+      char.facingAngle = preservedFacing;
     }
   }
 
@@ -460,6 +469,7 @@ export class ThrowCapability {
     if (!char.throwModule || !char.throwModule.enabled) {
       return null;
     }
+    const preservedFacing = char.facingAngle;
 
     // Step 1: Calculate baseline optimal (minimum energy) trajectory
     char.throwModule.hasUserSetArcRatio = false;
@@ -477,6 +487,7 @@ export class ThrowCapability {
 
     if (!baseTraj) {
       char.activeTrajectory = null;
+      if (char.isSteeringCursor) char.facingAngle = preservedFacing;
       return null;
     }
 
@@ -488,6 +499,7 @@ export class ThrowCapability {
       char.hasUserSetArcRatio = true;
       char.savedArcRatio = optRatio;
       char.activeTrajectory = baseTraj;
+      if (char.isSteeringCursor) char.facingAngle = preservedFacing;
       return baseTraj;
     }
 
@@ -564,6 +576,7 @@ export class ThrowCapability {
       char.hasUserSetArcRatio = true;
       char.savedArcRatio = bestRatio;
       char.activeTrajectory = bestTraj;
+      if (char.isSteeringCursor) char.facingAngle = preservedFacing;
       return bestTraj;
     }
 
@@ -571,6 +584,7 @@ export class ThrowCapability {
     char.throwModule.hasUserSetArcRatio = false;
     char.hasUserSetArcRatio = false;
     char.activeTrajectory = baseTraj;
+    if (char.isSteeringCursor) char.facingAngle = preservedFacing;
     return baseTraj;
   }
 }

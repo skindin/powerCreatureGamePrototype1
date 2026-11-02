@@ -1,6 +1,6 @@
 {
-  "version": 220,
-  "lastSaved": "2026-11-02T09:44:59.015Z",
+  "version": 229,
+  "lastSaved": "2026-11-02T10:03:08.558Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -2013,7 +2013,7 @@
             "type": "laser",
             "id": "block-laser",
             "name": "Laser Beam",
-            "enabled": true,
+            "enabled": false,
             "aimTrigger": {
               "code": "KeyD",
               "gateButtons": []
@@ -2285,7 +2285,7 @@
             "id": "block-locomotion-gp",
             "name": "Locomotion",
             "enabled": true,
-            "mode": "wasd",
+            "mode": "stickDirectionDriveButton",
             "moveKeys": {
               "upKey": "GamepadDpadUp",
               "downKey": "GamepadDpadDown",
@@ -2308,7 +2308,7 @@
             "cursorSteerTrigger": {
               "code": "GamepadLB"
             },
-            "cursorSteerMode": "whenHoldingButton",
+            "cursorSteerMode": "toggleButton",
             "reverseKey": "KeyS",
             "strafeLeftKey": "KeyA",
             "strafeRightKey": "KeyD"
@@ -2331,18 +2331,21 @@
               "requireCleanPress": true
             },
             "consume": {
-              "code": "GamepadLB",
+              "code": "GamepadRB",
               "requireCleanPress": false
             },
             "swapRequiresHolding": false,
-            "triggerPickupWhenEmptyHanded": true
+            "triggerPickupWhenEmptyHanded": true,
+            "additionalPickup": {
+              "code": "GamepadRT"
+            }
           },
           {
             "type": "throw",
             "id": "block-throw-gp",
             "name": "Throwing & Ballistics",
             "enabled": true,
-            "mode": "chargeAndRelease",
+            "mode": "triggerPullForce",
             "chargeTrigger": {
               "code": "GamepadRT",
               "requireCleanPress": true
@@ -2365,7 +2368,7 @@
               "autoCursorLock": false,
               "sensitivity": 0.005
             },
-            "enableProximityCancel": false,
+            "enableProximityCancel": true,
             "cancelRadius": 1.5
           },
           {
@@ -2384,7 +2387,7 @@
             "name": "Laser Beam",
             "enabled": true,
             "aimTrigger": {
-              "code": "GamepadLT",
+              "code": null,
               "requireCleanPress": false
             },
             "aimMode": "mouseWorldPos",
@@ -5483,7 +5486,7 @@
               "type": "laser",
               "id": "block-laser",
               "name": "Laser Beam",
-              "enabled": true,
+              "enabled": false,
               "aimTrigger": {
                 "code": "KeyD",
                 "gateButtons": []
@@ -5755,7 +5758,7 @@
               "id": "block-locomotion-gp",
               "name": "Locomotion",
               "enabled": true,
-              "mode": "wasd",
+              "mode": "analogStick",
               "moveKeys": {
                 "upKey": "GamepadDpadUp",
                 "downKey": "GamepadDpadDown",
@@ -5776,7 +5779,7 @@
                 "code": "GamepadRT"
               },
               "cursorSteerTrigger": {
-                "code": "GamepadLB"
+                "code": null
               },
               "cursorSteerMode": "whenHoldingButton",
               "reverseKey": "KeyS",
@@ -5801,18 +5804,21 @@
                 "requireCleanPress": true
               },
               "consume": {
-                "code": "GamepadLB",
+                "code": "GamepadRB",
                 "requireCleanPress": false
               },
               "swapRequiresHolding": false,
-              "triggerPickupWhenEmptyHanded": true
+              "triggerPickupWhenEmptyHanded": true,
+              "additionalPickup": {
+                "code": "GamepadRT"
+              }
             },
             {
               "type": "throw",
               "id": "block-throw-gp",
               "name": "Throwing & Ballistics",
               "enabled": true,
-              "mode": "chargeAndRelease",
+              "mode": "triggerPullForce",
               "chargeTrigger": {
                 "code": "GamepadRT",
                 "requireCleanPress": true
@@ -5835,7 +5841,7 @@
                 "autoCursorLock": false,
                 "sensitivity": 0.005
               },
-              "enableProximityCancel": false,
+              "enableProximityCancel": true,
               "cancelRadius": 1.5
             },
             {
@@ -5854,7 +5860,7 @@
               "name": "Laser Beam",
               "enabled": true,
               "aimTrigger": {
-                "code": "GamepadLT",
+                "code": null,
                 "requireCleanPress": false
               },
               "aimMode": "mouseWorldPos",

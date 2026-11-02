@@ -200,6 +200,10 @@ export class Character extends GameObject {
   public laserCandidateEntities?: GameObject[];
   public laserPowerFraction: number = 1.0;
 
+  // Gamepad cursor mode state
+  public isCursorModeActive: boolean = false;
+  public isSteeringCursor: boolean = false;
+
   // Melee attack inputs processed per tick
   public meleeModule: MeleeModule | null = null;
   public isMeleeRequested: boolean = false;
@@ -532,7 +536,7 @@ export class Character extends GameObject {
     movementInput?: Vector2D,
     hasAuthoredFacingAngle = false
   ): void {
-    if (hasAuthoredFacingAngle) return;
+    if (hasAuthoredFacingAngle || this.isSteeringCursor) return;
     if ((this.isLaserAiming || this.isLaserFiring) && this.laserAimTarget) {
       const dx = this.laserAimTarget.x - this.position.x;
       const dy = this.laserAimTarget.y - this.position.y;

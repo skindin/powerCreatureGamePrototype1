@@ -79,7 +79,7 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
     id: "block-locomotion-gp",
     name: "Locomotion",
     enabled: true,
-    mode: "wasd",
+    mode: "stickDirectionDriveButton",
     moveKeys: {
       upKey: "GamepadDpadUp",
       downKey: "GamepadDpadDown",
@@ -91,7 +91,7 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
     sprint: { code: "GamepadLS", mode: "hold", requireCleanPress: false },
     forwardTrigger: { code: "GamepadRT" },
     cursorSteerTrigger: { code: "GamepadLB" },
-    cursorSteerMode: "whenHoldingButton",
+    cursorSteerMode: "toggleButton",
   },
   {
     type: "itemInteraction",

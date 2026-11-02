@@ -224,11 +224,26 @@ export class ModularBlockEvaluator {
           const b = block as LocomotionControlBlock;
           const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
 
-          isSteerCursorActive = (b.cursorSteerMode === "whenHoldingButton" && isSlotActive(b.cursorSteerTrigger, "hold", false, b.id, "locomotion.cursorSteer")) ||
+          // Cursor steer toggle handling
+          const isToggleMode = b.cursorSteerMode === "toggleButton";
+          if (isToggleMode && b.cursorSteerTrigger) {
+            if (isSlotActive(b.cursorSteerTrigger, "down", true, b.id, "locomotion.cursorSteerToggle")) {
+              char.isCursorModeActive = !char.isCursorModeActive;
+              claimSlot(b.cursorSteerTrigger, b.id, "locomotion.cursorSteerToggle", true);
+            }
+          }
+
+          isSteerCursorActive =
+            (b.cursorSteerMode === "toggleButton" && Boolean(char.isCursorModeActive)) ||
+            (b.cursorSteerMode === "whenHoldingButton" && isSlotActive(b.cursorSteerTrigger, "hold", false, b.id, "locomotion.cursorSteer")) ||
             (b.cursorSteerMode === "whenAiming" && isAimingTrajectory);
 
+          char.isSteeringCursor = isSteerCursorActive;
+
           if (isSteerCursorActive) {
-            claimSlot(b.cursorSteerTrigger, b.id, "locomotion.cursorSteer", false);
+            if (b.cursorSteerMode === "whenHoldingButton") {
+              claimSlot(b.cursorSteerTrigger, b.id, "locomotion.cursorSteer", false);
+            }
             if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
               const cursorSpeed = 17.0;
               targetAimPos.x += gpLeftStick.x * cursorSpeed * execCtx.dt;
@@ -250,6 +265,9 @@ export class ModularBlockEvaluator {
                 }
               }
             }
+            // In cursor mode: STRICTLY no translation forward!
+            moveX = 0;
+            moveY = 0;
           } else if (b.mode === "analogStick") {
             // Direct Analog Left Stick movement
             if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
@@ -699,7 +717,12 @@ export class ModularBlockEvaluator {
           const b = block as FacingControlBlock;
           // Right stick MUST NOT control direction anywhere
           // Left stick should not change character direction when moving cursor
-          if (isSteerCursorActive) {
+          if (isSteerCursorActive || char.isSteeringCursor) {
+            break;
+          }
+          const locoBlock = execCtx.schema?.gamepad?.blocks?.find((blk) => blk.enabled && blk.type === "locomotion") as LocomotionControlBlock | undefined;
+          if (locoBlock?.mode === "stickDirectionDriveButton") {
+            // Facing is already set by left stick heading in locomotion block
             break;
           }
           if (execCtx.gamepadStates) {
@@ -739,7 +762,7 @@ export class ModularBlockEvaluator {
 
     // Face toward aim target if aiming trajectory, laser, or melee
     if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory) {
-      if (!isSteerCursorActive) {
+      if (!isSteerCursorActive && !char.isSteeringCursor) {
         const aimDx = targetAimPos.x - char.position.x;
         const aimDy = targetAimPos.y - char.position.y;
         if (Math.hypot(aimDx, aimDy) > 0.05) {

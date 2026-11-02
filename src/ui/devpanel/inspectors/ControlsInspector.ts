@@ -1541,9 +1541,9 @@ export class ControlsInspector {
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Locomotion Mode:</span>
               <select class="block-loco-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
-                <option value="wasd" ${b.mode === "wasd" || !b.mode ? "selected" : ""}>🎮 Directional Buttons / Keys (WASD / D-Pad)</option>
-                <option value="analogStick" ${b.mode === "analogStick" ? "selected" : ""}>🕹️ Left Stick Direct Analog Movement</option>
-                <option value="stickDirectionDriveButton" ${b.mode === "stickDirectionDriveButton" ? "selected" : ""}>🎯 Stick Direction + Drive Button (Point stick to aim heading, hold button to walk)</option>
+                <option value="stickDirectionDriveButton" ${b.mode === "stickDirectionDriveButton" ? "selected" : ""}>🕹️ Stick Controls Direction (Hold Button to Move Forward)</option>
+                <option value="analogStick" ${b.mode === "analogStick" ? "selected" : ""}>🕹️ Left Stick Direct Analog Movement (Stick directly walks player)</option>
+                <option value="wasd" ${b.mode === "wasd" || !b.mode ? "selected" : ""}>🎮 Directional Buttons / Keys (WASD / D-Pad Buttons)</option>
                 <option value="walkToMouse" ${b.mode === "walkToMouse" ? "selected" : ""}>🖱️ Walk to Mouse (Forward Drive Toward Cursor)</option>
               </select>
             </div>
@@ -1559,14 +1559,15 @@ export class ControlsInspector {
                   </div>
                   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 2px;">
                     <div>
-                      ${this.renderInputSlot(b.id, "cursorSteerTrigger", b.cursorSteerTrigger, "Cursor Steering Modifier (e.g. GamepadLB)")}
+                      ${this.renderInputSlot(b.id, "cursorSteerTrigger", b.cursorSteerTrigger, "Cursor Steering Button (e.g. GamepadLB)")}
                     </div>
                     <div>
                       <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Cursor Steer Mode</span>
                       <select class="block-loco-cursor-mode dev-select" data-block-id="${b.id}" style="margin-top: 4px; font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px; width: 100%;">
-                        <option value="whenHoldingButton" ${b.cursorSteerMode === "whenHoldingButton" ? "selected" : ""}>Holding Modifier Button</option>
-                        <option value="whenAiming" ${b.cursorSteerMode === "whenAiming" ? "selected" : ""}>When Aiming / Throwing</option>
-                        <option value="never" ${b.cursorSteerMode === "never" ? "selected" : ""}>Never</option>
+                        <option value="toggleButton" ${b.cursorSteerMode === "toggleButton" ? "selected" : ""}>🔄 Toggle Cursor Mode (Press button to toggle)</option>
+                        <option value="whenHoldingButton" ${b.cursorSteerMode === "whenHoldingButton" ? "selected" : ""}>✋ Hold Modifier Button (Hold to steer cursor)</option>
+                        <option value="whenAiming" ${b.cursorSteerMode === "whenAiming" ? "selected" : ""}>🎯 When Aiming / Throwing (Auto-steer when aiming)</option>
+                        <option value="never" ${b.cursorSteerMode === "never" ? "selected" : ""}>🚫 Never (Stick always controls direction)</option>
                       </select>
                     </div>
                   </div>
@@ -1576,19 +1577,20 @@ export class ControlsInspector {
                   <div>
                     ${this.renderInputSlot(b.id, "forwardTrigger", b.forwardTrigger, "Forward Drive Button / Trigger (e.g. GamepadRT)")}
                     <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
-                      Point left stick in desired heading; hold this button to accelerate forward. Facing points with joystick.
+                      Point left stick in desired heading; hold this button down to move forward. Left stick alone points direction without moving.
                     </div>
                   </div>
                   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 2px;">
                     <div>
-                      ${this.renderInputSlot(b.id, "cursorSteerTrigger", b.cursorSteerTrigger, "Cursor Steering Modifier Button (e.g. GamepadLB)")}
+                      ${this.renderInputSlot(b.id, "cursorSteerTrigger", b.cursorSteerTrigger, "Cursor Steering Button (e.g. GamepadLB)")}
                     </div>
                     <div>
                       <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Cursor Steer Mode</span>
                       <select class="block-loco-cursor-mode dev-select" data-block-id="${b.id}" style="margin-top: 4px; font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px; width: 100%;">
-                        <option value="whenHoldingButton" ${b.cursorSteerMode === "whenHoldingButton" ? "selected" : ""}>Holding Modifier Button</option>
-                        <option value="whenAiming" ${b.cursorSteerMode === "whenAiming" ? "selected" : ""}>When Aiming / Throwing</option>
-                        <option value="never" ${b.cursorSteerMode === "never" ? "selected" : ""}>Never (Right Stick Only)</option>
+                        <option value="toggleButton" ${b.cursorSteerMode === "toggleButton" ? "selected" : ""}>🔄 Toggle Cursor Mode (Press button to toggle)</option>
+                        <option value="whenHoldingButton" ${b.cursorSteerMode === "whenHoldingButton" ? "selected" : ""}>✋ Hold Modifier Button (Hold to steer cursor)</option>
+                        <option value="whenAiming" ${b.cursorSteerMode === "whenAiming" ? "selected" : ""}>🎯 When Aiming / Throwing (Auto-steer when aiming)</option>
+                        <option value="never" ${b.cursorSteerMode === "never" ? "selected" : ""}>🚫 Never (Stick always controls direction)</option>
                       </select>
                     </div>
                   </div>
