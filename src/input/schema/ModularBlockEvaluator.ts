@@ -128,16 +128,53 @@ export class ModularBlockEvaluator {
       switch (block.type) {
         case "locomotion": {
           const b = block as LocomotionControlBlock;
-          // Move WASD
-          if (b.moveKeys) {
-            let vx = 0;
-            let vy = 0;
-            if (b.moveKeys.upKey && tokens.isDown(b.moveKeys.upKey)) vy -= 1;
-            if (b.moveKeys.downKey && tokens.isDown(b.moveKeys.downKey)) vy += 1;
-            if (b.moveKeys.leftKey && tokens.isDown(b.moveKeys.leftKey)) vx -= 1;
-            if (b.moveKeys.rightKey && tokens.isDown(b.moveKeys.rightKey)) vx += 1;
-            moveX += vx;
-            moveY += vy;
+          if (b.mode === "walkToMouse") {
+            // Update facing angle toward mouse cursor
+            const aimDx = input.actualMousePos.x - char.position.x;
+            const aimDy = input.actualMousePos.y - char.position.y;
+            const mouseDist = Math.hypot(aimDx, aimDy);
+            if (mouseDist > 0.05) {
+              char.facingAngle = Math.atan2(aimDy, aimDx);
+            }
+
+            // Forward Drive Button (e.g. MouseRight or KeyW)
+            const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forward");
+            if (fwdActive) {
+              moveX += Math.cos(char.facingAngle);
+              moveY += Math.sin(char.facingAngle);
+              claimSlot(b.forwardTrigger, b.id, "locomotion.forward");
+            }
+
+            // Optional reverse / back-pedal key
+            if (b.reverseKey && tokens.isDown(b.reverseKey)) {
+              moveX -= Math.cos(char.facingAngle);
+              moveY -= Math.sin(char.facingAngle);
+              tokens.claim(b.reverseKey, b.id, "locomotion.reverse");
+            }
+
+            // Optional strafe keys (relative to character facing)
+            if (b.strafeLeftKey && tokens.isDown(b.strafeLeftKey)) {
+              moveX += Math.sin(char.facingAngle);
+              moveY -= Math.cos(char.facingAngle);
+              tokens.claim(b.strafeLeftKey, b.id, "locomotion.strafeLeft");
+            }
+            if (b.strafeRightKey && tokens.isDown(b.strafeRightKey)) {
+              moveX -= Math.sin(char.facingAngle);
+              moveY += Math.cos(char.facingAngle);
+              tokens.claim(b.strafeRightKey, b.id, "locomotion.strafeRight");
+            }
+          } else {
+            // Move WASD
+            if (b.moveKeys) {
+              let vx = 0;
+              let vy = 0;
+              if (b.moveKeys.upKey && tokens.isDown(b.moveKeys.upKey)) vy -= 1;
+              if (b.moveKeys.downKey && tokens.isDown(b.moveKeys.downKey)) vy += 1;
+              if (b.moveKeys.leftKey && tokens.isDown(b.moveKeys.leftKey)) vx -= 1;
+              if (b.moveKeys.rightKey && tokens.isDown(b.moveKeys.rightKey)) vx += 1;
+              moveX += vx;
+              moveY += vy;
+            }
           }
 
           // Jump

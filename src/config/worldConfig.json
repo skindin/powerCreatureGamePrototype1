@@ -1,6 +1,6 @@
 {
-  "version": 198,
-  "lastSaved": "2026-11-01T09:48:27.991Z",
+  "version": 200,
+  "lastSaved": "2026-11-02T06:40:31.941Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1912,6 +1912,108 @@
               "claimOnFire": true
             },
             "target": "throw.chargeBow"
+          }
+        ],
+        "blocks": [
+          {
+            "type": "locomotion",
+            "id": "block-locomotion",
+            "name": "Locomotion",
+            "enabled": true,
+            "moveKeys": {
+              "upKey": "KeyW",
+              "downKey": "KeyS",
+              "leftKey": "KeyA",
+              "rightKey": "MouseLeft"
+            },
+            "jump": {
+              "code": "Space"
+            },
+            "sprint": {
+              "code": "ShiftLeft",
+              "mode": "hold"
+            }
+          },
+          {
+            "type": "itemInteraction",
+            "id": "block-items",
+            "name": "Item Interaction",
+            "enabled": true,
+            "pickup": {
+              "code": "MouseLeft"
+            },
+            "drop": {
+              "code": "MouseLeft"
+            },
+            "swap": {
+              "code": "KeyF"
+            },
+            "consume": {
+              "code": "KeyE"
+            },
+            "swapRequiresHolding": false,
+            "triggerPickupWhenEmptyHanded": true
+          },
+          {
+            "type": "throw",
+            "id": "block-throw",
+            "name": "Throwing & Ballistics",
+            "enabled": true,
+            "mode": "aimWallClear",
+            "chargeTrigger": {
+              "code": "MouseLeft"
+            },
+            "aimTrigger": {
+              "code": "MouseRight"
+            },
+            "fireTrigger": {
+              "code": "MouseLeft"
+            },
+            "quickTrigger": {
+              "code": "MouseLeft"
+            },
+            "arcModulation": {
+              "source": "mouseDeltaY",
+              "autoCursorLock": true,
+              "sensitivity": 0.005
+            }
+          },
+          {
+            "type": "melee",
+            "id": "block-melee",
+            "name": "Melee Combat",
+            "enabled": true,
+            "punch": {
+              "code": "KeyF"
+            }
+          },
+          {
+            "type": "laser",
+            "id": "block-laser",
+            "name": "Laser Beam",
+            "enabled": true,
+            "aimTrigger": {
+              "code": "MouseRight",
+              "gateButtons": [
+                "MouseLeft"
+              ]
+            },
+            "aimMode": "mouseScreenPos",
+            "fireTrigger": {
+              "code": "MouseLeft",
+              "autoFireWhenAiming": false
+            },
+            "powerLevel": {
+              "source": "mouseWheel",
+              "sensitivity": 1
+            }
+          },
+          {
+            "type": "facing",
+            "id": "block-facing",
+            "name": "Aim / Heading Facing",
+            "enabled": true,
+            "mode": "mouseWorldPos"
           }
         ]
       },
@@ -5133,6 +5235,108 @@
                 "claimOnFire": true
               },
               "target": "throw.chargeBow"
+            }
+          ],
+          "blocks": [
+            {
+              "type": "locomotion",
+              "id": "block-locomotion",
+              "name": "Locomotion",
+              "enabled": true,
+              "moveKeys": {
+                "upKey": "KeyW",
+                "downKey": "KeyS",
+                "leftKey": "KeyA",
+                "rightKey": "MouseLeft"
+              },
+              "jump": {
+                "code": "Space"
+              },
+              "sprint": {
+                "code": "ShiftLeft",
+                "mode": "hold"
+              }
+            },
+            {
+              "type": "itemInteraction",
+              "id": "block-items",
+              "name": "Item Interaction",
+              "enabled": true,
+              "pickup": {
+                "code": "MouseLeft"
+              },
+              "drop": {
+                "code": "MouseLeft"
+              },
+              "swap": {
+                "code": "KeyF"
+              },
+              "consume": {
+                "code": "KeyE"
+              },
+              "swapRequiresHolding": false,
+              "triggerPickupWhenEmptyHanded": true
+            },
+            {
+              "type": "throw",
+              "id": "block-throw",
+              "name": "Throwing & Ballistics",
+              "enabled": true,
+              "mode": "aimWallClear",
+              "chargeTrigger": {
+                "code": "MouseLeft"
+              },
+              "aimTrigger": {
+                "code": "MouseRight"
+              },
+              "fireTrigger": {
+                "code": "MouseLeft"
+              },
+              "quickTrigger": {
+                "code": "MouseLeft"
+              },
+              "arcModulation": {
+                "source": "mouseDeltaY",
+                "autoCursorLock": true,
+                "sensitivity": 0.005
+              }
+            },
+            {
+              "type": "melee",
+              "id": "block-melee",
+              "name": "Melee Combat",
+              "enabled": true,
+              "punch": {
+                "code": "KeyF"
+              }
+            },
+            {
+              "type": "laser",
+              "id": "block-laser",
+              "name": "Laser Beam",
+              "enabled": true,
+              "aimTrigger": {
+                "code": "MouseRight",
+                "gateButtons": [
+                  "MouseLeft"
+                ]
+              },
+              "aimMode": "mouseScreenPos",
+              "fireTrigger": {
+                "code": "MouseLeft",
+                "autoFireWhenAiming": false
+              },
+              "powerLevel": {
+                "source": "mouseWheel",
+                "sensitivity": 1
+              }
+            },
+            {
+              "type": "facing",
+              "id": "block-facing",
+              "name": "Aim / Heading Facing",
+              "enabled": true,
+              "mode": "mouseWorldPos"
             }
           ]
         },

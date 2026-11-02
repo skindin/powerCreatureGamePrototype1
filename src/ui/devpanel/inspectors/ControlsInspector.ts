@@ -53,7 +53,7 @@ export class ControlsInspector {
     blockId: string;
     slotName: string;
     gateIdx?: number;
-    isMoveKey?: "upKey" | "downKey" | "leftKey" | "rightKey";
+    isMoveKey?: "upKey" | "downKey" | "leftKey" | "rightKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey";
   } | null = null;
   private static showJsonEditor: boolean = false;
   private static jsonErrorMessage: string | null = null;
@@ -1366,13 +1366,20 @@ export class ControlsInspector {
     switch (block.type) {
       case "locomotion": {
         const b = block as LocomotionControlBlock;
+        b.mode = b.mode || "wasd";
         b.moveKeys = b.moveKeys || { upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" };
+        b.forwardTrigger = b.forwardTrigger || { code: "MouseRight" };
+        b.reverseKey = b.reverseKey !== undefined ? b.reverseKey : "KeyS";
+        b.strafeLeftKey = b.strafeLeftKey !== undefined ? b.strafeLeftKey : "KeyA";
+        b.strafeRightKey = b.strafeRightKey !== undefined ? b.strafeRightKey : "KeyD";
         b.jump = b.jump || { code: "Space" };
         b.sprint = b.sprint || { code: "ShiftLeft", mode: "hold" };
 
-        const renderMoveKey = (dir: string, keyName: "upKey" | "downKey" | "leftKey" | "rightKey") => {
+        const renderMoveKey = (dir: string, keyName: "upKey" | "downKey" | "leftKey" | "rightKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey") => {
           const isListening = this.listeningBlockTarget?.blockId === b.id && this.listeningBlockTarget?.isMoveKey === keyName;
-          const code = b.moveKeys![keyName];
+          const code = (keyName === "reverseKey" || keyName === "strafeLeftKey" || keyName === "strafeRightKey")
+            ? (b as any)[keyName]
+            : b.moveKeys![keyName];
           const lbl = code ? this.formatChannelKeyLabel(code) : "None";
           return `
             <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; padding: 1px 4px;">
@@ -1386,27 +1393,54 @@ export class ControlsInspector {
         };
 
         return `
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
-            <div>
-              <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Directional Movement (WASD)</span>
-              <div style="display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap;">
-                ${renderMoveKey("↑", "upKey")}
-                ${renderMoveKey("↓", "downKey")}
-                ${renderMoveKey("←", "leftKey")}
-                ${renderMoveKey("→", "rightKey")}
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Locomotion Mode:</span>
+              <select class="block-loco-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
+                <option value="wasd" ${b.mode === "wasd" ? "selected" : ""}>🏃 Direct 8-Way Movement (WASD)</option>
+                <option value="walkToMouse" ${b.mode === "walkToMouse" ? "selected" : ""}>🖱️ Walk to Mouse (Forward Drive Toward Cursor)</option>
+              </select>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
+              ${b.mode === "walkToMouse" ? `
+                <div>
+                  ${this.renderInputSlot(b.id, "forwardTrigger", b.forwardTrigger, "Forward Drive Button (Toward Cursor)")}
+                  <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                    Hold to run directly toward cursor. Facing automatically follows the mouse.
+                  </div>
+                  <div style="margin-top: 6px;">
+                    <span style="font-size: 0.62rem; color: #94a3b8; font-weight: 600;">Optional Relative Keys:</span>
+                    <div style="display: flex; gap: 4px; margin-top: 2px; flex-wrap: wrap;">
+                      ${renderMoveKey("Back", "reverseKey")}
+                      ${renderMoveKey("Left", "strafeLeftKey")}
+                      ${renderMoveKey("Right", "strafeRightKey")}
+                    </div>
+                  </div>
+                </div>
+              ` : `
+                <div>
+                  <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Directional Movement (WASD)</span>
+                  <div style="display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap;">
+                    ${renderMoveKey("↑", "upKey")}
+                    ${renderMoveKey("↓", "downKey")}
+                    ${renderMoveKey("←", "leftKey")}
+                    ${renderMoveKey("→", "rightKey")}
+                  </div>
+                </div>
+              `}
+              <div>
+                ${this.renderInputSlot(b.id, "jump", b.jump, "Jump / Vertical Hop")}
               </div>
-            </div>
-            <div>
-              ${this.renderInputSlot(b.id, "jump", b.jump, "Jump / Vertical Hop")}
-            </div>
-            <div>
-              ${this.renderInputSlot(b.id, "sprint", b.sprint, "Sprint")}
-              <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 0.62rem; color: #94a3b8;">Sprint Mode:</span>
-                <select class="block-sprint-mode dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
-                  <option value="hold" ${b.sprint.mode !== "toggle" ? "selected" : ""}>Hold to Sprint</option>
-                  <option value="toggle" ${b.sprint.mode === "toggle" ? "selected" : ""}>Toggle Sprint</option>
-                </select>
+              <div>
+                ${this.renderInputSlot(b.id, "sprint", b.sprint, "Sprint")}
+                <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 0.62rem; color: #94a3b8;">Sprint Mode:</span>
+                  <select class="block-sprint-mode dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                    <option value="hold" ${b.sprint.mode !== "toggle" ? "selected" : ""}>Hold to Sprint</option>
+                    <option value="toggle" ${b.sprint.mode === "toggle" ? "selected" : ""}>Toggle Sprint</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -1720,7 +1754,7 @@ export class ControlsInspector {
     blockId: string,
     slotName: string,
     gateIdx?: number,
-    isMoveKey?: "upKey" | "downKey" | "leftKey" | "rightKey"
+    isMoveKey?: "upKey" | "downKey" | "leftKey" | "rightKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey"
   ): void {
     if (this.recorderCleanup) {
       this.recorderCleanup();
@@ -1738,8 +1772,12 @@ export class ControlsInspector {
 
       if (isMoveKey && block.type === "locomotion") {
         const loco = block as LocomotionControlBlock;
-        loco.moveKeys = loco.moveKeys || {};
-        loco.moveKeys[isMoveKey] = code;
+        if (isMoveKey === "reverseKey" || isMoveKey === "strafeLeftKey" || isMoveKey === "strafeRightKey") {
+          (loco as any)[isMoveKey] = code;
+        } else {
+          loco.moveKeys = loco.moveKeys || {};
+          loco.moveKeys[isMoveKey] = code;
+        }
       } else {
         const slot = (block as any)[slotName] as BlockInputSlot | undefined;
         if (gateIdx !== undefined) {
@@ -1785,16 +1823,23 @@ export class ControlsInspector {
       commitTrigger(buttonMap[e.button] || `MouseButton${e.button}`);
     };
 
-    const root = this.getRootContainer() || window;
-    root.addEventListener("keydown", onKeyDown as any, { capture: true });
-    root.addEventListener("mousedown", onMouseDown as any, { capture: true });
-
     const cleanup = () => {
-      root.removeEventListener("keydown", onKeyDown as any, { capture: true });
-      root.removeEventListener("mousedown", onMouseDown as any, { capture: true });
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("mousedown", onMouseDown, true);
+      if (this.popoutWindow && !this.popoutWindow.closed) {
+        this.popoutWindow.removeEventListener("keydown", onKeyDown, true);
+        this.popoutWindow.removeEventListener("mousedown", onMouseDown, true);
+      }
       this.recorderCleanup = null;
     };
+
     this.recorderCleanup = cleanup;
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("mousedown", onMouseDown, true);
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      this.popoutWindow.addEventListener("keydown", onKeyDown, true);
+      this.popoutWindow.addEventListener("mousedown", onMouseDown, true);
+    }
   }
 
   private static renderPipelineHtml(schema: ControlSchema): string {
@@ -3024,11 +3069,11 @@ export class ControlsInspector {
         });
       });
 
-      // Move Keys (WASD)
+      // Move Keys (WASD / Relative Strafe)
       root.querySelectorAll(".btn-block-move-key").forEach((btn) => {
         btn.addEventListener("click", () => {
           const bId = (btn as HTMLElement).dataset.blockId;
-          const moveKey = (btn as HTMLElement).dataset.moveKey as "upKey" | "downKey" | "leftKey" | "rightKey" | undefined;
+          const moveKey = (btn as HTMLElement).dataset.moveKey as any;
           if (bId && moveKey) {
             this.startBlockKeyListening(bId, "moveKeys", undefined, moveKey);
           }
@@ -3039,13 +3084,27 @@ export class ControlsInspector {
       root.querySelectorAll(".btn-block-move-key-clear").forEach((btn) => {
         btn.addEventListener("click", () => {
           const bId = (btn as HTMLElement).dataset.blockId;
-          const moveKey = (btn as HTMLElement).dataset.moveKey as "upKey" | "downKey" | "leftKey" | "rightKey" | undefined;
+          const moveKey = (btn as HTMLElement).dataset.moveKey as any;
           const block = blocks.find((b) => b.id === bId);
           if (block && block.type === "locomotion" && moveKey) {
             const loco = block as LocomotionControlBlock;
-            if (loco.moveKeys) {
-              loco.moveKeys[moveKey] = null;
+            if (moveKey === "reverseKey" || moveKey === "strafeLeftKey" || moveKey === "strafeRightKey") {
+              (loco as any)[moveKey] = null;
+            } else if (loco.moveKeys) {
+              loco.moveKeys[moveKey as "upKey" | "downKey" | "leftKey" | "rightKey"] = null;
             }
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Locomotion Mode selector (WASD vs Walk to Mouse)
+      root.querySelectorAll(".block-loco-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
+          if (block) {
+            block.mode = (e.target as HTMLSelectElement).value as any;
             this.renderActiveView();
           }
         });

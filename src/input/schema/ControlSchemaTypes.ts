@@ -296,12 +296,17 @@ export interface LocomotionControlBlock {
   id: string;
   name?: string;
   enabled: boolean;
+  mode?: "wasd" | "walkToMouse"; // "wasd" (8-way WASD) or "walkToMouse" (drive toward mouse cursor)
   moveKeys?: {
     upKey?: string | null;
     downKey?: string | null;
     leftKey?: string | null;
     rightKey?: string | null;
   };
+  forwardTrigger?: BlockInputSlot; // for walkToMouse mode (e.g. MouseRight or KeyW)
+  reverseKey?: string | null;      // optional reverse/back-pedal key in walkToMouse mode
+  strafeLeftKey?: string | null;   // optional strafe left key in walkToMouse mode
+  strafeRightKey?: string | null;  // optional strafe right key in walkToMouse mode
   jump?: BlockInputSlot;
   sprint?: BlockInputSlot & {
     mode?: "hold" | "toggle";
