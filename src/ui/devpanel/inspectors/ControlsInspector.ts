@@ -1541,14 +1541,37 @@ export class ControlsInspector {
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Locomotion Mode:</span>
               <select class="block-loco-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
-                <option value="wasd" ${b.mode === "wasd" ? "selected" : ""}>🏃 Direct 8-Way Movement (WASD / Left Stick)</option>
+                <option value="wasd" ${b.mode === "wasd" || !b.mode ? "selected" : ""}>🎮 Directional Buttons / Keys (WASD / D-Pad)</option>
+                <option value="analogStick" ${b.mode === "analogStick" ? "selected" : ""}>🕹️ Left Stick Direct Analog Movement</option>
+                <option value="stickDirectionDriveButton" ${b.mode === "stickDirectionDriveButton" ? "selected" : ""}>🎯 Stick Direction + Drive Button (Point stick to aim heading, hold button to walk)</option>
                 <option value="walkToMouse" ${b.mode === "walkToMouse" ? "selected" : ""}>🖱️ Walk to Mouse (Forward Drive Toward Cursor)</option>
-                <option value="stickDirectionDriveButton" ${b.mode === "stickDirectionDriveButton" ? "selected" : ""}>🕹️ Stick Direction + Drive Button (Point stick to aim heading, hold button to walk)</option>
               </select>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
-              ${b.mode === "stickDirectionDriveButton" ? `
+              ${b.mode === "analogStick" ? `
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <div style="font-size: 0.64rem; color: #94a3b8; font-weight: 600;">
+                    🕹️ Left Stick Direct Movement
+                  </div>
+                  <div style="font-size: 0.60rem; color: #64748b; line-height: 1.3;">
+                    Left stick directly accelerates the creature in full 360° analog directions.
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 2px;">
+                    <div>
+                      ${this.renderInputSlot(b.id, "cursorSteerTrigger", b.cursorSteerTrigger, "Cursor Steering Modifier (e.g. GamepadLB)")}
+                    </div>
+                    <div>
+                      <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Cursor Steer Mode</span>
+                      <select class="block-loco-cursor-mode dev-select" data-block-id="${b.id}" style="margin-top: 4px; font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px; width: 100%;">
+                        <option value="whenHoldingButton" ${b.cursorSteerMode === "whenHoldingButton" ? "selected" : ""}>Holding Modifier Button</option>
+                        <option value="whenAiming" ${b.cursorSteerMode === "whenAiming" ? "selected" : ""}>When Aiming / Throwing</option>
+                        <option value="never" ${b.cursorSteerMode === "never" ? "selected" : ""}>Never</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ` : b.mode === "stickDirectionDriveButton" ? `
                 <div style="display: flex; flex-direction: column; gap: 10px;">
                   <div>
                     ${this.renderInputSlot(b.id, "forwardTrigger", b.forwardTrigger, "Forward Drive Button / Trigger (e.g. GamepadRT)")}
@@ -1588,7 +1611,7 @@ export class ControlsInspector {
               ` : `
                 <div>
                   <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Directional Movement (WASD)</span>
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Directional Movement (WASD / D-Pad Buttons)</span>
                     <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer; user-select: none;" title="Require clean tap for movement (step-by-step)">
                       <input type="checkbox" class="block-move-keys-clean-toggle" data-block-id="${b.id}" ${b.moveKeys?.requireCleanPress ? "checked" : ""} style="cursor: pointer; width: 11px; height: 11px; accent-color: #38bdf8;" />
                       <span style="font-size: 0.58rem; font-weight: 600; ${b.moveKeys?.requireCleanPress ? "color: #38bdf8;" : "color: #64748b;"}">Clean Tap</span>
@@ -1599,6 +1622,9 @@ export class ControlsInspector {
                     ${renderMoveKey("↓", "downKey")}
                     ${renderMoveKey("←", "leftKey")}
                     ${renderMoveKey("→", "rightKey")}
+                  </div>
+                  <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                    Only the bound buttons above move the creature. The left joystick will not move the creature in this mode.
                   </div>
                 </div>
               `}

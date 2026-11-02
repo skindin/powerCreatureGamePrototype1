@@ -250,6 +250,12 @@ export class ModularBlockEvaluator {
                 }
               }
             }
+          } else if (b.mode === "analogStick") {
+            // Direct Analog Left Stick movement
+            if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
+              moveX += gpLeftStick.x;
+              moveY += gpLeftStick.y;
+            }
           } else if (b.mode === "stickDirectionDriveButton") {
             const stickMag = gpLeftStick ? Math.hypot(gpLeftStick.x, gpLeftStick.y) : 0;
             if (stickMag > 0.08) {
@@ -321,14 +327,6 @@ export class ModularBlockEvaluator {
               }
               moveX += vx;
               moveY += vy;
-            }
-          }
-
-          if (b.mode !== "stickDirectionDriveButton" && !isSteerCursorActive) {
-            // Gamepad Left Stick movement:
-            if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
-              moveX += gpLeftStick.x;
-              moveY += gpLeftStick.y;
             }
           }
 

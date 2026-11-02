@@ -297,7 +297,7 @@ export interface LocomotionControlBlock {
   id: string;
   name?: string;
   enabled: boolean;
-  mode?: "wasd" | "walkToMouse" | "stickDirectionDriveButton"; // "wasd" (8-way WASD), "walkToMouse" (drive toward cursor), or "stickDirectionDriveButton" (point joystick, hold button to drive)
+  mode?: "wasd" | "analogStick" | "walkToMouse" | "stickDirectionDriveButton"; // "wasd" (8-way WASD/D-Pad buttons), "analogStick" (direct left stick move), "walkToMouse" (drive toward cursor), or "stickDirectionDriveButton" (point joystick, hold button to drive)
   moveKeys?: {
     upKey?: string | null;
     downKey?: string | null;
