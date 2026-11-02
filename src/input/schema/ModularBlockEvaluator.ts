@@ -212,6 +212,25 @@ export class ModularBlockEvaluator {
     // Reticle/Aim target position (works seamlessly for mouse and gamepad reticle)
     const targetAimPos = execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos;
 
+    // Helper to get effective aim position for abilities:
+    // In Raw Direction Mode on Gamepad: abilities aim along the character's raw facing direction.
+    // In Cursor Mode (or Mouse/Keyboard): abilities aim at targetAimPos (the cursor).
+    const getEffectiveAimPos = (): { x: number; y: number } => {
+      const isRawMode = !isSteerCursorActive && !char.isSteeringCursor && Boolean(execCtx.gamepadStates);
+      if (isRawMode) {
+        const rawAngle = char.facingAngle ?? 0;
+        const rawDirX = Math.cos(rawAngle);
+        const rawDirY = Math.sin(rawAngle);
+        const cursorDist = Math.hypot(targetAimPos.x - char.position.x, targetAimPos.y - char.position.y);
+        const forwardDist = Math.max(3.5, cursorDist);
+        return {
+          x: char.position.x + rawDirX * forwardDist,
+          y: char.position.y + rawDirY * forwardDist,
+        };
+      }
+      return targetAimPos;
+    };
+
     // Scan for nearby grabbable objects for pickup and swap
     const grabTargetObjectId = execCtx.targetInReach ? execCtx.targetInReach.id : null;
 
@@ -265,9 +284,23 @@ export class ModularBlockEvaluator {
                 }
               }
             }
-            // In cursor mode: STRICTLY no translation forward!
-            moveX = 0;
-            moveY = 0;
+            // In cursor mode: character always faces toward the cursor!
+            const aimDx = targetAimPos.x - char.position.x;
+            const aimDy = targetAimPos.y - char.position.y;
+            if (Math.hypot(aimDx, aimDy) > 0.05) {
+              char.facingAngle = Math.atan2(aimDy, aimDx);
+            }
+
+            // In cursor mode: walk forward button drives toward cursor
+            const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
+            if (fwdActive) {
+              moveX += Math.cos(char.facingAngle);
+              moveY += Math.sin(char.facingAngle);
+              claimSlot(b.forwardTrigger, b.id, "locomotion.forwardDrive", false);
+            } else {
+              moveX = 0;
+              moveY = 0;
+            }
           } else if (b.mode === "analogStick") {
             // Direct Analog Left Stick movement
             if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
@@ -419,11 +452,45 @@ export class ModularBlockEvaluator {
             break;
           }
 
-          // If the button pressed to pick up or swap this item is STILL held down,
+          // If the button pressed to pick up or swap this item is STILL held down or releasing,
           // throw charging/aiming is strictly locked out until that button is fully released!
           const pickupCode = (char as any)._pickupPressCode;
           if (pickupCode) {
-            if (tokens.isDown(pickupCode)) {
+            const isDown = tokens.isDown(pickupCode);
+            let analogVal = 0;
+            if (pickupCode.startsWith("Gamepad")) {
+              const btn = ControlSchemaArbiter.parseGamepadButtonCode(pickupCode);
+              if (btn >= 0) {
+                if (execCtx.gamepadStates?.getValue) {
+                  analogVal = execCtx.gamepadStates.getValue(btn);
+                } else if (execCtx.getGamepadButtonValue) {
+                  analogVal = execCtx.getGamepadButtonValue(execCtx.gamepadStates?.slotIndex ?? 0, btn);
+                }
+              }
+            }
+
+            if (isDown || analogVal > 0.05) {
+              char.isChargingThrow = false;
+              char.isAimingWallClear = false;
+              char.isHoldingThrowRelease = false;
+              char.isTriggerPullThrowing = false;
+              char.activeTrajectory = null;
+              (char as any)._throwRequiresFreshPress = true;
+              break;
+            } else {
+              // Physical release detected: clear the pickup lockout and require fresh press
+              (char as any)._pickupPressCode = null;
+              (char as any)._throwRequiresFreshPress = true;
+              break;
+            }
+          }
+
+          if ((char as any)._throwRequiresFreshPress) {
+            const primarySlot = b.chargeTrigger || b.fireTrigger || b.quickTrigger;
+            const triggerVal = getSlotAnalogValue(primarySlot);
+            const isDown = isSlotActive(primarySlot, "down", false, b.id, "check");
+            const isHold = isSlotActive(primarySlot, "hold", false, b.id, "check");
+            if (triggerVal > 0.05 || isDown || isHold) {
               char.isChargingThrow = false;
               char.isAimingWallClear = false;
               char.isHoldingThrowRelease = false;
@@ -431,10 +498,11 @@ export class ModularBlockEvaluator {
               char.activeTrajectory = null;
               break;
             } else {
-              // Physical release detected: clear the pickup lockout
-              (char as any)._pickupPressCode = null;
+              (char as any)._throwRequiresFreshPress = false;
             }
           }
+
+          const effAim = getEffectiveAimPos();
 
           switch (b.mode) {
             case "chargeAndRelease": {
@@ -449,8 +517,8 @@ export class ModularBlockEvaluator {
 
               // Auto-release fire on button / gate release
               if (isSlotAnyJustReleased(b.chargeTrigger) && char.isChargingThrow) {
-                const aimDx = targetAimPos.x - char.position.x;
-                const aimDy = targetAimPos.y - char.position.y;
+                const aimDx = effAim.x - char.position.x;
+                const aimDy = effAim.y - char.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
                 const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
 
@@ -486,8 +554,8 @@ export class ModularBlockEvaluator {
               }
 
               if (isSlotAnyJustReleased(b.chargeTrigger) && char.isHoldingThrowRelease) {
-                const aimDx = targetAimPos.x - char.position.x;
-                const aimDy = targetAimPos.y - char.position.y;
+                const aimDx = effAim.x - char.position.x;
+                const aimDy = effAim.y - char.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
                 const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
 
@@ -574,8 +642,8 @@ export class ModularBlockEvaluator {
                 ThrowCapability.findLowestEnergyWallClearTrajectory(
                   char,
                   execCtx.arena,
-                  targetAimPos.x,
-                  targetAimPos.y,
+                  effAim.x,
+                  effAim.y,
                   execCtx.arena.entities,
                   false,
                   input.lockedAimPos,
@@ -595,8 +663,8 @@ export class ModularBlockEvaluator {
               }
 
               if (isSlotAnyJustReleased(b.aimTrigger) && char.isAimingWallClear) {
-                const aimDx = targetAimPos.x - char.position.x;
-                const aimDy = targetAimPos.y - char.position.y;
+                const aimDx = effAim.x - char.position.x;
+                const aimDy = effAim.y - char.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
                 const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
 
@@ -633,8 +701,8 @@ export class ModularBlockEvaluator {
 
               const isReleased = isSlotAnyJustReleased(b.chargeTrigger) || (!isTouchingTrigger && Boolean(char.isTriggerPullThrowing));
               if (isReleased && char.isTriggerPullThrowing) {
-                const aimDx = targetAimPos.x - char.position.x;
-                const aimDy = targetAimPos.y - char.position.y;
+                const aimDx = effAim.x - char.position.x;
+                const aimDy = effAim.y - char.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
                 const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
 
@@ -665,7 +733,7 @@ export class ModularBlockEvaluator {
           if (isSlotActive(b.pickup, "down", true, b.id, "pickup.grab")) {
             if (!execCtx.isHoldingItem && grabTargetObjectId) {
               isGrabHeld = true;
-              if (b.pickup?.code) (char as any)._pickupPressCode = b.pickup.code;
+              if (b.pickup?.code) { (char as any)._pickupPressCode = b.pickup.code; (char as any)._throwRequiresFreshPress = true; }
               claimSlot(b.pickup, b.id, "pickup.grab", true);
             }
           }
@@ -674,7 +742,7 @@ export class ModularBlockEvaluator {
           if (b.additionalPickup && isSlotActive(b.additionalPickup, "down", true, b.id, "pickup.grab")) {
             if (!execCtx.isHoldingItem && grabTargetObjectId) {
               isGrabHeld = true;
-              if (b.additionalPickup?.code) (char as any)._pickupPressCode = b.additionalPickup.code;
+              if (b.additionalPickup?.code) { (char as any)._pickupPressCode = b.additionalPickup.code; (char as any)._throwRequiresFreshPress = true; }
               claimSlot(b.additionalPickup, b.id, "pickup.grab", true);
             }
           }
@@ -694,13 +762,13 @@ export class ModularBlockEvaluator {
               // Swap key must NOT drop or trigger unless another object is near enough to swap it with!
               if (grabTargetObjectId) {
                 isSwap = true;
-                if (b.swap?.code) (char as any)._pickupPressCode = b.swap.code;
+                if (b.swap?.code) { (char as any)._pickupPressCode = b.swap.code; (char as any)._throwRequiresFreshPress = true; }
                 claimSlot(b.swap, b.id, "pickup.swap", true);
               }
             } else if (b.triggerPickupWhenEmptyHanded && grabTargetObjectId) {
               isSwap = true;
               isGrabHeld = true;
-              if (b.swap?.code) (char as any)._pickupPressCode = b.swap.code;
+              if (b.swap?.code) { (char as any)._pickupPressCode = b.swap.code; (char as any)._throwRequiresFreshPress = true; }
               claimSlot(b.swap, b.id, "pickup.swap", true);
             }
           }
@@ -760,9 +828,20 @@ export class ModularBlockEvaluator {
     char.isLaserFiring = isLaserFiring;
     char.isMeleeRequested = isMeleeRequested;
 
-    // Face toward aim target if aiming trajectory, laser, or melee
+    // Face toward aim target if aiming trajectory, laser, or melee:
+    // In Cursor Mode (or Mouse/Keyboard): character faces towards cursor.
+    // In Raw Direction Mode on Gamepad: character strictly maintains stick-directed facing angle.
     if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory) {
-      if (!isSteerCursorActive && !char.isSteeringCursor) {
+      if (isSteerCursorActive || char.isSteeringCursor) {
+        const aimDx = targetAimPos.x - char.position.x;
+        const aimDy = targetAimPos.y - char.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          char.facingAngle = Math.atan2(aimDy, aimDx);
+          if (isAimingTrajectory) {
+            char.lastThrowAimAngle = char.facingAngle;
+          }
+        }
+      } else if (!execCtx.gamepadStates) {
         const aimDx = targetAimPos.x - char.position.x;
         const aimDy = targetAimPos.y - char.position.y;
         if (Math.hypot(aimDx, aimDy) > 0.05) {
@@ -785,9 +864,22 @@ export class ModularBlockEvaluator {
     const kLaunchVel = isThrow && char.activeTrajectory?.launchVel ? char.activeTrajectory.launchVel : undefined;
     const kLaunchPos = isThrow && char.activeTrajectory?.launchPos ? char.activeTrajectory.launchPos : undefined;
 
-    const meleeDx = targetAimPos.x - char.position.x;
-    const meleeDy = targetAimPos.y - char.position.y;
-    const meleeDist = Math.hypot(meleeDx, meleeDy) || 1;
+    const finalAimPos = getEffectiveAimPos();
+    const isRawDirectionMode = !isSteerCursorActive && !char.isSteeringCursor && Boolean(execCtx.gamepadStates);
+    let meleeAimDirX: number;
+    let meleeAimDirY: number;
+
+    if (isRawDirectionMode) {
+      const rawAngle = char.facingAngle ?? 0;
+      meleeAimDirX = Math.cos(rawAngle);
+      meleeAimDirY = Math.sin(rawAngle);
+    } else {
+      const meleeDx = finalAimPos.x - char.position.x;
+      const meleeDy = finalAimPos.y - char.position.y;
+      const meleeDist = Math.hypot(meleeDx, meleeDy) || 1;
+      meleeAimDirX = meleeDx / meleeDist;
+      meleeAimDirY = meleeDy / meleeDist;
+    }
 
     return {
       playerId: execCtx.gamepadStates ? `gamepad-${execCtx.gamepadStates.slotIndex}` : "keyboard",
@@ -804,16 +896,16 @@ export class ModularBlockEvaluator {
       isUsingItem,
       isLaserAiming,
       isLaserFiring,
-      laserAimX: targetAimPos.x,
-      laserAimY: targetAimPos.y,
+      laserAimX: finalAimPos.x,
+      laserAimY: finalAimPos.y,
       laserPowerFraction: char.laserPowerFraction ?? 1.0,
       isMeleeRequested,
-      meleeAimDirX: meleeDx / meleeDist,
-      meleeAimDirY: meleeDy / meleeDist,
-      meleeAimX: targetAimPos.x,
-      meleeAimY: targetAimPos.y,
-      aimX: targetAimPos.x,
-      aimY: targetAimPos.y,
+      meleeAimDirX,
+      meleeAimDirY,
+      meleeAimX: finalAimPos.x,
+      meleeAimY: finalAimPos.y,
+      aimX: finalAimPos.x,
+      aimY: finalAimPos.y,
       isAiming,
       isLockHeld: false,
       lockedAimPos: null,
