@@ -280,6 +280,7 @@ export interface InputPipelineBinding {
   name?: string;
   enabled: boolean;
   condition?: BindingCondition;
+  gateButtons?: string[]; // Array of button/key codes that must be held for this binding to be active
   source: RawInputSource;
   processor: ProcessorConfig;
   target: ModuleTargetSocket;

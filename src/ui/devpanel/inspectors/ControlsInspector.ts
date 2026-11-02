@@ -1352,17 +1352,80 @@ export class ControlsInspector {
           ` : pipeline.map((b) => {
             const { source, processor: proc } = b;
 
+            // Ensure gateButtons array exists and migrate any legacy additionalCodes / gateButton
+            if (!b.gateButtons) {
+              b.gateButtons = [];
+              if (source.type === "button" && source.additionalCodes && source.additionalCodes.length > 0) {
+                b.gateButtons.push(...source.additionalCodes);
+                delete source.additionalCodes;
+              }
+            }
+            if (proc.type === "1d_scalar" && proc.gateButton?.code) {
+              if (!b.gateButtons.includes(proc.gateButton.code)) {
+                b.gateButtons.push(proc.gateButton.code);
+              }
+            }
+            const gateButtons = b.gateButtons;
+
+            const gateHtml = `
+              <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 5px; padding-top: 4px; border-top: 1px dashed rgba(148,163,184,0.2);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.60rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">While Holding:</span>
+                  <button class="btn-pipe-add-gate-key btn-secondary-action" data-binding-id="${b.id}" type="button" style="
+                    font-size: 0.58rem;
+                    font-weight: 600;
+                    padding: 1px 5px;
+                    background: rgba(56, 189, 248, 0.08);
+                    border: 1px dashed rgba(56, 189, 248, 0.4);
+                    color: #38bdf8;
+                    border-radius: 3px;
+                    cursor: pointer;
+                  " title="Add button that must be held down">+ Button</button>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 3px; align-items: center;">
+                  ${gateButtons.length === 0 ? `
+                    <span style="font-size: 0.60rem; color: #64748b; font-style: italic;">No hold requirement</span>
+                  ` : gateButtons.map((gCode, gIdx) => {
+                    const isListeningGate = isListening(b.id, `gateKey_${gIdx}`);
+                    const gLabel = this.formatChannelKeyLabel(gCode);
+                    return `
+                      <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 1px 4px;">
+                        <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="gateKey_${gIdx}" type="button" style="
+                          font-size: 0.66rem;
+                          padding: 1px 4px;
+                          font-weight: 600;
+                          border: none;
+                          background: transparent;
+                          color: #fff;
+                          ${isListeningGate ? "color: #ef4444; font-weight: 700; animation: pulse 1s infinite;" : ""}
+                        " title="Click to rebind held gate button">
+                          ${isListeningGate ? "🔴 Press..." : `⌨️ ${gLabel}`}
+                        </button>
+                        <button class="btn-pipe-remove-gate-key" data-binding-id="${b.id}" data-gate-index="${gIdx}" type="button" style="
+                          font-size: 0.62rem;
+                          color: #ef4444;
+                          background: transparent;
+                          border: none;
+                          cursor: pointer;
+                          padding: 0 2px;
+                          line-height: 1;
+                        " title="Remove this held button requirement">✕</button>
+                      </div>
+                    `;
+                  }).join("")}
+                </div>
+              </div>
+            `;
+
             // Render Source Column (Left)
             let sourceHtml = "";
             if (source.type === "button") {
               const listening = isListening(b.id, "button");
               const label = this.formatChannelKeyLabel(source.code);
-              const extraCodes = source.additionalCodes || [];
-              const hasMultipleKeys = extraCodes.length > 0;
               sourceHtml = `
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">RAW BUTTON / COMBO</span>
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">RAW BUTTON</span>
                     <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
                       <option value="button" selected>Button</option>
                       <option value="composite_4key">4-Key WASD</option>
@@ -1370,70 +1433,19 @@ export class ControlsInspector {
                       <option value="2d_vector">2D Vector</option>
                     </select>
                   </div>
-                  <div style="display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
-                    <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; padding: 1px 4px;">
-                      <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="button" type="button" style="
-                        font-size: 0.72rem;
-                        padding: 2px 6px;
-                        font-weight: 600;
-                        border: none;
-                        background: transparent;
-                        ${listening ? "color: #ef4444; font-weight: 700; animation: pulse 1s infinite;" : "color: #fff;"}
-                      " title="Click to bind primary key or mouse button">
-                        ${listening ? "🔴 Press key..." : `⌨️ ${label}`}
-                      </button>
-                      ${hasMultipleKeys ? `
-                        <button class="btn-pipe-remove-primary-key" data-binding-id="${b.id}" type="button" style="
-                          font-size: 0.64rem;
-                          color: #ef4444;
-                          background: transparent;
-                          border: none;
-                          cursor: pointer;
-                          padding: 0 2px;
-                          line-height: 1;
-                        " title="Remove this key from combo">✕</button>
-                      ` : ""}
-                    </div>
-                    ${extraCodes.map((exCode, idx) => {
-                      const isListeningExtra = isListening(b.id, `extraKey_${idx}`);
-                      const exLabel = this.formatChannelKeyLabel(exCode);
-                      return `
-                        <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 1px 4px;">
-                          <span style="font-size: 0.62rem; color: #38bdf8; font-weight: 700;">+</span>
-                          <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="extraKey_${idx}" type="button" style="
-                            font-size: 0.68rem;
-                            padding: 2px 4px;
-                            font-weight: 600;
-                            border: none;
-                            background: transparent;
-                            color: #fff;
-                            ${isListeningExtra ? "color: #ef4444; font-weight: 700;" : ""}
-                          " title="Click to bind extra required key">
-                            ${isListeningExtra ? "🔴 Press..." : exLabel}
-                          </button>
-                          <button class="btn-pipe-remove-key" data-binding-id="${b.id}" data-key-index="${idx}" type="button" style="
-                            font-size: 0.64rem;
-                            color: #ef4444;
-                            background: transparent;
-                            border: none;
-                            cursor: pointer;
-                            padding: 0 2px;
-                            line-height: 1;
-                          " title="Remove this key requirement">✕</button>
-                        </div>
-                      `;
-                    }).join("")}
-                    <button class="btn-pipe-add-key btn-secondary-action" data-binding-id="${b.id}" type="button" style="
-                      font-size: 0.62rem;
-                      font-weight: 600;
+                  <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; padding: 1px 4px; width: fit-content;">
+                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="button" type="button" style="
+                      font-size: 0.72rem;
                       padding: 2px 6px;
-                      background: rgba(56, 189, 248, 0.08);
-                      border: 1px dashed rgba(56, 189, 248, 0.4);
-                      color: #38bdf8;
-                      border-radius: 3px;
-                      cursor: pointer;
-                    " title="Add another required button to this combination">+ Add Key</button>
+                      font-weight: 600;
+                      border: none;
+                      background: transparent;
+                      ${listening ? "color: #ef4444; font-weight: 700; animation: pulse 1s infinite;" : "color: #fff;"}
+                    " title="Click to bind primary key or mouse button">
+                      ${listening ? "🔴 Press key..." : `⌨️ ${label}`}
+                    </button>
                   </div>
+                  ${gateHtml}
                 </div>
               `;
             } else if (source.type === "composite_4key") {
@@ -1462,6 +1474,7 @@ export class ControlsInspector {
                       → ${this.formatChannelKeyLabel(source.rightKey)}
                     </button>
                   </div>
+                  ${gateHtml}
                 </div>
               `;
             } else if (source.type === "1d_scalar") {
@@ -1481,6 +1494,7 @@ export class ControlsInspector {
                     <option value="mouseDeltaX" ${source.source === "mouseDeltaX" ? "selected" : ""}>🖱️ Mouse Delta X (Horizontal)</option>
                     <option value="mouseWheel" ${source.source === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
                   </select>
+                  ${gateHtml}
                 </div>
               `;
             } else if (source.type === "2d_vector") {
@@ -1499,6 +1513,7 @@ export class ControlsInspector {
                     <option value="mouseWorldPos" ${source.source === "mouseWorldPos" ? "selected" : ""}>🌐 Mouse World Position</option>
                     <option value="mouseScreenPos" ${source.source === "mouseScreenPos" ? "selected" : ""}>🖥️ Mouse Screen Position</option>
                   </select>
+                  ${gateHtml}
                 </div>
               `;
             }
@@ -1530,8 +1545,6 @@ export class ControlsInspector {
                 </div>
               `;
             } else if (proc.type === "1d_scalar") {
-              const isListeningGate = isListening(b.id, "gate");
-              const gateLabel = proc.gateButton?.code ? this.formatChannelKeyLabel(proc.gateButton.code) : "None (Always)";
               centerHtml = `
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
@@ -1540,12 +1553,6 @@ export class ControlsInspector {
                       <option value="accumulator" ${proc.mode === "accumulator" ? "selected" : ""}>Accumulator (0.0 to 1.0)</option>
                       <option value="delta" ${proc.mode === "delta" ? "selected" : ""}>Instant Delta</option>
                     </select>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                      <span style="font-size: 0.64rem; color: #94a3b8;">Gate:</span>
-                      <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="gate" type="button" style="font-size: 0.68rem; padding: 2px 6px; ${isListeningGate ? "background: #ef4444; color: #fff;" : ""}">
-                        ${isListeningGate ? "🔴 Press..." : gateLabel}
-                      </button>
-                    </div>
                   </div>
                   <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; color: #94a3b8;">
                     <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Freezes game reticle in place and locks & hides real OS cursor while actively reading mouse input">
@@ -1713,6 +1720,10 @@ export class ControlsInspector {
           binding.source.additionalCodes = binding.source.additionalCodes || [];
           binding.source.additionalCodes[extraIdx] = code;
         }
+      } else if (subKey && subKey.startsWith("gateKey_")) {
+        const gateIdx = parseInt(subKey.split("_")[1], 10);
+        binding.gateButtons = binding.gateButtons || [];
+        binding.gateButtons[gateIdx] = code;
       } else {
         // Main button - strictly 1 key per slot, no chords in a single block
         if (binding.source.type === "button") {
@@ -2580,6 +2591,33 @@ export class ControlsInspector {
             const nextCode = b.source.additionalCodes.shift()!;
             b.source.code = nextCode;
             b.source.device = nextCode.startsWith("Mouse") ? "mouse" : "keyboard";
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Add Gate Key (While Holding Button)
+      root.querySelectorAll(".btn-pipe-add-gate-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b) {
+            b.gateButtons = b.gateButtons || [];
+            const newIdx = b.gateButtons.length;
+            b.gateButtons.push("KeyD");
+            this.startPipelineKeyListening(b.id, `gateKey_${newIdx}`);
+          }
+        });
+      });
+
+      // Remove Gate Key
+      root.querySelectorAll(".btn-pipe-remove-gate-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.bindingId;
+          const gateIdx = parseInt((btn as HTMLElement).dataset.gateIndex || "-1", 10);
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.gateButtons && gateIdx >= 0) {
+            b.gateButtons.splice(gateIdx, 1);
             this.renderActiveView();
           }
         });

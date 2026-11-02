@@ -104,26 +104,40 @@ export class ModularPipelineEvaluator {
 
       const { source, processor, target } = binding;
 
+      const isCodeJustReleased = (c: string): boolean => {
+        if (c.startsWith("Mouse")) {
+          const idx = c === "MouseLeft" ? 0 : c === "MouseMiddle" ? 1 : c === "MouseRight" ? 2 : -1;
+          return idx >= 0 ? execCtx.mouseStates?.justReleased(idx) ?? false : false;
+        }
+        return execCtx.keyStates?.justReleased(c) ?? false;
+      };
+
+      const gateCodes = Array.from(new Set([
+        ...(binding.gateButtons || []),
+        ...((source.type === "button" ? source.additionalCodes : []) || []),
+        ...((source.type === "button" ? source.chordModifiers : []) || []),
+      ]));
+      if (processor.type === "1d_scalar" && processor.gateButton?.code) {
+        if (!gateCodes.includes(processor.gateButton.code)) {
+          gateCodes.push(processor.gateButton.code);
+        }
+      }
+
+      const areGateCodesHeld = gateCodes.length === 0 || gateCodes.every((c) => tokens.isDown(c));
+      const anyGateJustReleased = gateCodes.some(isCodeJustReleased);
+
       // --- Process Button Processor ---
       if (processor.type === "button" && source.type === "button") {
         const primaryCode = source.code;
-        const allCodes = [
+        const allCodes = Array.from(new Set([
           primaryCode,
-          ...(source.additionalCodes || []),
-          ...(source.chordModifiers || []),
-        ];
+          ...gateCodes,
+        ]));
 
         // All required keys in this multi-button / chord combination must be held
         const areAllDown = allCodes.every((c) => tokens.isDown(c));
         const anyConsumed = allCodes.some((c) => tokens.isConsumed(c));
 
-        const isCodeJustReleased = (c: string): boolean => {
-          if (c.startsWith("Mouse")) {
-            const idx = c === "MouseLeft" ? 0 : c === "MouseMiddle" ? 1 : c === "MouseRight" ? 2 : -1;
-            return idx >= 0 ? execCtx.mouseStates?.justReleased(idx) ?? false : false;
-          }
-          return execCtx.keyStates?.justReleased(c) ?? false;
-        };
         const anyJustReleased = allCodes.some(isCodeJustReleased);
         const claimAll = (tgt: string) => {
           for (const c of allCodes) {
@@ -381,8 +395,115 @@ export class ModularPipelineEvaluator {
         }
       }
 
+      // --- Process 2D Vector Input (Mouse World / Screen Pos / Gamepad Stick) ---
+      else if (source.type === "2d_vector") {
+        if (areGateCodesHeld) {
+          switch (target) {
+            case "throw.aim":
+              if (execCtx.isHoldingItem) {
+                isAimingTrajectory = true;
+                for (const c of gateCodes) tokens.claim(c, binding.id, "throw.aim");
+              }
+              break;
+            case "throw.chargeArc":
+              if (execCtx.isHoldingItem) {
+                isAimingTrajectory = true;
+                char.isChargingThrow = true;
+                if (!char.throwChargeStartTime) {
+                  char.throwChargeStartTime = now;
+                }
+                for (const c of gateCodes) tokens.claim(c, binding.id, "throw.chargeArc");
+              }
+              break;
+            case "throw.chargeBow":
+              if (execCtx.isHoldingItem) {
+                isAimingTrajectory = true;
+                char.isChargingThrow = true;
+                if (!char.throwChargeStartTime) {
+                  char.throwChargeStartTime = now;
+                }
+                for (const c of gateCodes) tokens.claim(c, binding.id, "throw.chargeBow");
+              }
+              break;
+            case "throw.aimWallClear":
+              if (execCtx.isHoldingItem) {
+                isAimingTrajectory = true;
+                char.isAimingWallClear = true;
+                for (const c of gateCodes) tokens.claim(c, binding.id, "throw.aimWallClear");
+              }
+              break;
+            case "laser.aim":
+              isLaserAiming = true;
+              for (const c of gateCodes) tokens.claim(c, binding.id, "laser.aim");
+              break;
+            case "character.facing":
+              if (source.source === "mouseWorldPos" || source.source === "mouseScreenPos") {
+                const aimDx = input.actualMousePos.x - char.position.x;
+                const aimDy = input.actualMousePos.y - char.position.y;
+                if (Math.hypot(aimDx, aimDy) > 0.05) {
+                  char.facingAngle = Math.atan2(aimDy, aimDx);
+                }
+              }
+              break;
+            case "locomotion.moveVector":
+              if (source.source === "gamepadLeftStick") {
+                const primaryGamepad = input.gamepadSlots.get(0);
+                if (primaryGamepad && primaryGamepad.connected) {
+                  moveX += primaryGamepad.movementVector.x;
+                  moveY += primaryGamepad.movementVector.y;
+                }
+              }
+              break;
+          }
+        }
+
+        // Auto-release fire for chargeBow on gate button release
+        if (target === "throw.chargeBow" && anyGateJustReleased && char.isChargingThrow && execCtx.isHoldingItem) {
+          const aimDx = input.actualMousePos.x - char.position.x;
+          const aimDy = input.actualMousePos.y - char.position.y;
+          const distToAim = Math.hypot(aimDx, aimDy);
+          const cancelDistance = Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+          if (distToAim < cancelDistance) {
+            isThrow = false;
+            char.isChargingThrow = false;
+            char.throwChargeStartTime = null;
+            char.throwChargeProgress = 0;
+            char.activeTrajectory = null;
+            char.isThrowCancelZone = false;
+            for (const c of gateCodes) tokens.claim(c, binding.id, "throw.cancel");
+          } else {
+            isThrow = true;
+            char.isChargingThrow = false;
+            char.throwChargeStartTime = null;
+            for (const c of gateCodes) tokens.claim(c, binding.id, "throw.fire");
+          }
+        }
+
+        // Auto-release fire for aimWallClear on gate button release
+        if (target === "throw.aimWallClear" && anyGateJustReleased && char.isAimingWallClear && execCtx.isHoldingItem) {
+          const aimDx = input.actualMousePos.x - char.position.x;
+          const aimDy = input.actualMousePos.y - char.position.y;
+          const distToAim = Math.hypot(aimDx, aimDy);
+          const cancelDistance = Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+          if (distToAim < cancelDistance) {
+            isThrow = false;
+            char.isAimingWallClear = false;
+            char.activeTrajectory = null;
+            char.isThrowCancelZone = false;
+            for (const c of gateCodes) tokens.claim(c, binding.id, "throw.cancel");
+          } else {
+            isThrow = true;
+            char.isAimingWallClear = false;
+            for (const c of gateCodes) tokens.claim(c, binding.id, "throw.fire");
+          }
+        }
+      }
+
       // --- Process 2D Vector / Composite Processor ---
       else if (processor.type === "2d_vector" && source.type === "composite_4key") {
+        if (!areGateCodesHeld) continue;
         let vx = 0;
         let vy = 0;
         if (tokens.isDown(source.upKey)) vy -= 1;
@@ -406,7 +527,8 @@ export class ModularPipelineEvaluator {
 
       // --- Process Facing Processor ---
       else if (processor.type === "facing") {
-        if (processor.mode === "fromMousePos" && source.type === "2d_vector") {
+        if (!areGateCodesHeld) continue;
+        if (processor.mode === "fromMousePos") {
           const aimDx = input.actualMousePos.x - char.position.x;
           const aimDy = input.actualMousePos.y - char.position.y;
           if (Math.hypot(aimDx, aimDy) > 0.05) {
@@ -422,8 +544,7 @@ export class ModularPipelineEvaluator {
       // --- Process 1D Scalar / Raw Mouse Drag Processor ---
       else if (processor.type === "1d_scalar" && source.type === "1d_scalar") {
         const isMouseDelta = source.source === "mouseDeltaY" || source.source === "mouseDeltaX";
-        const gateCode = processor.gateButton?.code;
-        const isGateActive = gateCode ? tokens.isDown(gateCode) : true;
+        const isGateActive = areGateCodesHeld;
 
         if (isMouseDelta && processor.autoCursorLock && isGateActive) {
           activeRawDragThisFrame = true;
