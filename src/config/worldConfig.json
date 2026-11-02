@@ -1,6 +1,6 @@
 {
-  "version": 207,
-  "lastSaved": "2026-11-02T07:04:29.568Z",
+  "version": 214,
+  "lastSaved": "2026-11-02T07:14:18.343Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1971,18 +1971,21 @@
             "id": "block-throw",
             "name": "Throwing & Ballistics",
             "enabled": true,
-            "mode": "chargeAndRelease",
+            "mode": "quickWallClear",
             "chargeTrigger": {
-              "code": "MouseRight"
+              "code": "MouseRight",
+              "requireCleanPress": false
             },
             "aimTrigger": {
-              "code": "MouseRight"
+              "code": "MouseRight",
+              "requireCleanPress": false
             },
             "fireTrigger": {
-              "code": "MouseLeft"
+              "code": "MouseLeft",
+              "requireCleanPress": true
             },
             "quickTrigger": {
-              "code": "MouseLeft"
+              "code": "MouseRight"
             },
             "arcModulation": {
               "source": "mouseDeltaY",
@@ -5304,18 +5307,21 @@
               "id": "block-throw",
               "name": "Throwing & Ballistics",
               "enabled": true,
-              "mode": "chargeAndRelease",
+              "mode": "quickWallClear",
               "chargeTrigger": {
-                "code": "MouseRight"
+                "code": "MouseRight",
+                "requireCleanPress": false
               },
               "aimTrigger": {
-                "code": "MouseRight"
+                "code": "MouseRight",
+                "requireCleanPress": false
               },
               "fireTrigger": {
-                "code": "MouseLeft"
+                "code": "MouseLeft",
+                "requireCleanPress": true
               },
               "quickTrigger": {
-                "code": "MouseLeft"
+                "code": "MouseRight"
               },
               "arcModulation": {
                 "source": "mouseDeltaY",

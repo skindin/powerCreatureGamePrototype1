@@ -4255,7 +4255,7 @@ class EnergyPool {
     const meta = ABILITY_METADATA[options.abilityId];
     const abilityName = (meta == null ? void 0 : meta.name) ?? options.abilityId.charAt(0).toUpperCase() + options.abilityId.slice(1);
     const unit = options.unit ?? (isBurst ? "J" : "W");
-    const alert = {
+    const alert2 = {
       abilityId: options.abilityId,
       abilityName,
       cost: Math.round(demandedAmount),
@@ -4266,8 +4266,8 @@ class EnergyPool {
       timestamp: now,
       expiresAt: now + 1600
     };
-    this.lastInsufficientAlert = alert;
-    return alert;
+    this.lastInsufficientAlert = alert2;
+    return alert2;
   }
   // --- Affordability Gatekeeping ---
   /**
@@ -9332,6 +9332,76 @@ function serializePrefab(prefab) {
     ...schema ? { controlSchema: schema } : {}
   };
 }
+const DefaultControlBlocks = [
+  {
+    type: "locomotion",
+    id: "block-locomotion",
+    name: "Locomotion",
+    enabled: true,
+    mode: "wasd",
+    moveKeys: {
+      upKey: "KeyW",
+      downKey: "KeyS",
+      leftKey: "KeyA",
+      rightKey: "KeyD",
+      requireCleanPress: false
+    },
+    forwardTrigger: { code: "MouseRight", requireCleanPress: false },
+    reverseKey: "KeyS",
+    strafeLeftKey: "KeyA",
+    strafeRightKey: "KeyD",
+    jump: { code: "Space", requireCleanPress: true },
+    sprint: { code: "ShiftLeft", mode: "hold", requireCleanPress: false }
+  },
+  {
+    type: "itemInteraction",
+    id: "block-items",
+    name: "Item Interaction",
+    enabled: true,
+    pickup: { code: "MouseLeft", requireCleanPress: true },
+    drop: { code: "KeyQ", requireCleanPress: true },
+    swap: { code: "KeyF", requireCleanPress: true },
+    consume: { code: "KeyE", requireCleanPress: false },
+    swapRequiresHolding: false,
+    triggerPickupWhenEmptyHanded: true
+  },
+  {
+    type: "throw",
+    id: "block-throw",
+    name: "Throwing & Ballistics",
+    enabled: true,
+    mode: "chargeAndRelease",
+    chargeTrigger: { code: "MouseLeft", requireCleanPress: true },
+    aimTrigger: { code: "MouseRight", requireCleanPress: false },
+    fireTrigger: { code: "MouseLeft", requireCleanPress: true },
+    quickTrigger: { code: "MouseLeft", requireCleanPress: true },
+    arcModulation: { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 5e-3 }
+  },
+  {
+    type: "melee",
+    id: "block-melee",
+    name: "Melee Combat",
+    enabled: true,
+    punch: { code: "KeyF", requireCleanPress: true }
+  },
+  {
+    type: "laser",
+    id: "block-laser",
+    name: "Laser Beam",
+    enabled: true,
+    aimTrigger: { code: "MouseRight", gateButtons: ["AltLeft"], requireCleanPress: false },
+    aimMode: "mouseWorldPos",
+    fireTrigger: { code: "MouseLeft", autoFireWhenAiming: false, requireCleanPress: false },
+    powerLevel: { source: "mouseWheel", sensitivity: 1 }
+  },
+  {
+    type: "facing",
+    id: "block-facing",
+    name: "Aim / Heading Facing",
+    enabled: true,
+    mode: "mouseWorldPos"
+  }
+];
 const DefaultPipelineBindings = [
   {
     id: "pipe-facing",
@@ -9940,6 +10010,11 @@ const GamepadHybridSchema = {
   },
   touch: DefaultControlSchema.touch
 };
+const BuiltinControlSchemas = [
+  DefaultControlSchema,
+  HunterControlSchema,
+  GamepadHybridSchema
+];
 class PrefabManager {
   constructor() {
     __publicField(this, "prefabs", /* @__PURE__ */ new Map());
@@ -10283,7 +10358,7 @@ class SceneSpawnerManager {
     }
   }
 }
-new SceneSpawnerManager();
+const sceneSpawnerManager = new SceneSpawnerManager();
 class PlayerJitterQueue {
   constructor(playerId, config) {
     __publicField(this, "playerId");
@@ -12320,6 +12395,6492 @@ class ServerGameSimulation {
     );
   }
 }
+class ControlActionCatalog {
+  static findAction(moduleId, intent) {
+    if (moduleId === "throwPickup") {
+      if (intent === "pickupReach" || intent === "dropItem") {
+        moduleId = "pickup";
+      } else {
+        moduleId = "throw";
+      }
+    }
+    if ((moduleId === "consume" || moduleId === "heldItem") && (intent === "eatHeldItem" || intent === "primaryItemAbility")) {
+      const heldCat = this.categories.find((c) => c.id === "heldItem");
+      const action = heldCat == null ? void 0 : heldCat.actions.find((a) => a.id === "primaryItemAbility");
+      if (action) return action;
+    }
+    const cat = this.categories.find((c) => c.id === moduleId);
+    return cat == null ? void 0 : cat.actions.find((a) => a.id === intent);
+  }
+  static getCategorizedForCharacter(char) {
+    const attached = [];
+    const unattached = [];
+    for (const cat of this.categories) {
+      if (cat.isAttached(char)) {
+        attached.push(cat);
+      } else {
+        unattached.push(cat);
+      }
+    }
+    return { attached, unattached };
+  }
+}
+__publicField(ControlActionCatalog, "categories", [
+  // 1. Locomotion
+  {
+    id: "locomotion",
+    label: "Locomotion & Mobility",
+    icon: "🏃",
+    requiredModule: "walkingModule",
+    isAttached: (char) => Boolean(char.walkingModule && char.walkingModule.enabled),
+    actions: [
+      {
+        id: "jump",
+        label: "Jump (Impulse)",
+        description: "Performs a vertical physical takeoff jump",
+        recommendedMode: "press",
+        execute: (ctx) => {
+          if (ctx.character.jumpModule) {
+            ctx.character.jump();
+          }
+        }
+      },
+      {
+        id: "toggleSprint",
+        label: "Toggle Sprint",
+        description: "Toggles sprinting locomotion state",
+        recommendedMode: "press",
+        execute: (ctx) => {
+          ctx.character.setSprinting(!ctx.character.isSprinting);
+        }
+      },
+      {
+        id: "holdSprint",
+        label: "Hold Sprint",
+        description: "Sprints while trigger is held down",
+        recommendedMode: "hold",
+        execute: (ctx) => {
+          ctx.character.setSprinting(true);
+        },
+        stop: (ctx) => {
+          ctx.character.setSprinting(false);
+        }
+      }
+    ]
+  },
+  // 2. Climbing
+  {
+    id: "climbing",
+    label: "Wall Climbing",
+    icon: "🧗",
+    requiredModule: "climbingModule",
+    isAttached: (char) => Boolean(char.climbingModule && char.climbingModule.enabled),
+    actions: [
+      {
+        id: "mountOrClimb",
+        label: "Mount / Hold Wall",
+        description: "Mounts and climbs wall when touching a climbable edge",
+        recommendedMode: "hold",
+        execute: (ctx) => {
+          if (ctx.character.climbingModule && !ctx.character.isClimbing) {
+            ctx.character.isClimbing = true;
+          }
+        },
+        stop: (ctx) => {
+          if (ctx.character.climbingModule) {
+            ctx.character.isClimbing = false;
+          }
+        }
+      }
+    ]
+  },
+  // 3. Throwing
+  {
+    id: "throw",
+    label: "Throwing & Trajectory",
+    icon: "🎯",
+    requiredModule: "throwModule",
+    isAttached: (char) => Boolean(char.throwModule && char.throwModule.enabled),
+    actions: [
+      {
+        id: "aimThrow",
+        label: "Aim Throw Trajectory",
+        description: "Shows anticipatory parabolic trajectory while held",
+        recommendedMode: "hold",
+        execute: (ctx) => {
+          if (ctx.character.heldObject) {
+            ctx.character.isAimingTrajectory = true;
+          }
+        },
+        stop: (ctx) => {
+          ctx.character.isAimingTrajectory = false;
+        }
+      },
+      {
+        id: "releaseThrow",
+        label: "Release Throw",
+        description: "Throws held item along trajectory to aim position",
+        recommendedMode: "release",
+        execute: (ctx) => {
+          if (ctx.character.heldObject && ctx.character.throwModule && ctx.arena) {
+            const aim = ctx.mouseAimPos || ctx.reticleAimPos;
+            ctx.character.throwModule.throwHeldObject(ctx.character, aim.x, aim.y, ctx.arena);
+          }
+        }
+      }
+    ]
+  },
+  // 4. Grabbing & Pickup
+  {
+    id: "pickup",
+    label: "Grabbing & Pickup",
+    icon: "✋",
+    requiredModule: "pickupModule",
+    isAttached: (char) => Boolean(char.pickupModule && char.pickupModule.enabled),
+    actions: [
+      {
+        id: "pickupReach",
+        label: "Pick Up / Grab Object",
+        description: "Picks up the target object currently within reach",
+        recommendedMode: "press",
+        execute: (ctx) => {
+          if (!ctx.character.heldObject && ctx.targetInReach && ctx.character.pickupModule) {
+            ctx.character.pickupModule.pickup(ctx.character, ctx.targetInReach);
+          }
+        }
+      },
+      {
+        id: "dropItem",
+        label: "Drop Held Object",
+        description: "Gently drops the held object onto the ground",
+        recommendedMode: "press",
+        execute: (ctx) => {
+          if (ctx.character.heldObject) {
+            ctx.character.unhold();
+          }
+        }
+      },
+      {
+        id: "swap",
+        label: "Swap Item",
+        description: "Drops currently held item and picks up the selected item (excluding the dropped item)",
+        recommendedMode: "press",
+        execute: (ctx) => {
+          const pickupMod = ctx.character.pickupModule;
+          if (!pickupMod) return;
+          const char = ctx.character;
+          const dropped = char.heldObject;
+          if (dropped) {
+            pickupMod.drop(char);
+          }
+          const target = ctx.targetInReach && ctx.targetInReach !== dropped ? ctx.targetInReach : null;
+          if (target) {
+            pickupMod.pickup(char, target);
+          } else if (ctx.candidateEntities && ctx.arena) {
+            const aim = ctx.mouseAimPos || ctx.reticleAimPos;
+            const candidates = ctx.candidateEntities.filter((e) => e !== dropped && e.colliderModule);
+            pickupMod.pickupAndSwap(char, candidates, ctx.arena.wallHeight, aim == null ? void 0 : aim.x, aim == null ? void 0 : aim.y);
+          }
+        }
+      }
+    ]
+  },
+  // 4. Laser Module
+  {
+    id: "laser",
+    label: "Laser Beam",
+    icon: "⚡",
+    requiredModule: "laserModule",
+    isAttached: (char) => Boolean(char.laserModule && char.laserModule.enabled),
+    actions: [
+      {
+        id: "fireLaser",
+        label: "Fire Laser (Held)",
+        description: "Fires continuous directed laser beam towards aim cursor",
+        recommendedMode: "hold",
+        execute: (ctx) => {
+          if (ctx.character.laserModule) {
+            ctx.character.isLaserAiming = true;
+            ctx.character.isLaserFiring = true;
+            ctx.character.laserModule.isAiming = true;
+            ctx.character.laserModule.isFiring = true;
+          }
+        },
+        stop: (ctx) => {
+          if (ctx.character.laserModule) {
+            ctx.character.isLaserFiring = false;
+            ctx.character.isLaserAiming = false;
+            ctx.character.laserModule.isFiring = false;
+            ctx.character.laserModule.isAiming = false;
+          }
+        }
+      },
+      {
+        id: "aimLaser",
+        label: "Aim Laser Reticle",
+        description: "Shows laser aiming guide without firing energy",
+        recommendedMode: "hold",
+        execute: (ctx) => {
+          if (ctx.character.laserModule) {
+            ctx.character.isLaserAiming = true;
+            ctx.character.laserModule.isAiming = true;
+          }
+        },
+        stop: (ctx) => {
+          if (ctx.character.laserModule) {
+            ctx.character.isLaserAiming = false;
+            ctx.character.laserModule.isAiming = false;
+          }
+        }
+      }
+    ]
+  },
+  // 5. Melee Module
+  {
+    id: "melee",
+    label: "Melee Punch",
+    icon: "🥊",
+    requiredModule: "meleeModule",
+    isAttached: (char) => Boolean(char.meleeModule && char.meleeModule.enabled),
+    actions: [
+      {
+        id: "punch",
+        label: "Directional Punch",
+        description: "Executes a fast physical punch in the facing or aim direction",
+        recommendedMode: "press",
+        execute: (ctx) => {
+          if (ctx.character.meleeModule) {
+            const aim = ctx.mouseAimPos || ctx.reticleAimPos;
+            const dir = aim ? { x: aim.x - ctx.character.position.x, y: aim.y - ctx.character.position.y } : { x: Math.cos(ctx.facingAngle), y: Math.sin(ctx.facingAngle) };
+            const len = Math.hypot(dir.x, dir.y);
+            const normDir = len > 1e-3 ? { x: dir.x / len, y: dir.y / len } : { x: 1, y: 0 };
+            ctx.character.isMeleeRequested = true;
+            ctx.character.meleeAimDir = normDir;
+          }
+        }
+      }
+    ]
+  },
+  // 6. Held Item Abilities
+  {
+    id: "heldItem",
+    label: "Held Item Abilities",
+    icon: "✨",
+    isAttached: (char) => Boolean(char.pickupModule && char.pickupModule.enabled),
+    actions: [
+      {
+        id: "primaryItemAbility",
+        label: "Primary Item Ability",
+        description: "Uses the primary ability of the held item (e.g. consuming food or activating tools)",
+        recommendedMode: "hold",
+        execute: (ctx) => {
+          if (ctx.character.heldObject) {
+            ctx.character.isUsingItem = true;
+          }
+        },
+        stop: (ctx) => {
+          ctx.character.isUsingItem = false;
+        }
+      }
+    ]
+  },
+  // 7. Control Staging
+  {
+    id: "staging",
+    label: "Stage",
+    icon: "🎭",
+    isAttached: () => true,
+    // Always available
+    actions: [
+      {
+        id: "setStage",
+        label: "Set Stage",
+        description: "Sets the active stage state to a chosen stage value",
+        recommendedMode: "press",
+        execute: (ctx, args) => {
+          var _a;
+          const group = (args == null ? void 0 : args.group) || (args == null ? void 0 : args.stageSet) || "default";
+          const targetStage = (args == null ? void 0 : args.stage) || "none";
+          if ((_a = ctx.character) == null ? void 0 : _a.setStage) {
+            ctx.character.setStage(group, targetStage);
+          } else {
+            if (!ctx.character.stagedActions) ctx.character.stagedActions = {};
+            ctx.character.stagedActions[group] = targetStage;
+            if (group === "default" || group === "main") {
+              ctx.character.stagedAction = targetStage;
+            }
+          }
+        }
+      }
+    ]
+  }
+]);
+const _InputPressTokenManager = class _InputPressTokenManager {
+  constructor() {
+    __publicField(this, "tokens", /* @__PURE__ */ new Map());
+  }
+  static getInstance() {
+    if (!this.instance) {
+      this.instance = new _InputPressTokenManager();
+    }
+    return this.instance;
+  }
+  update(currentDownKeys, now) {
+    for (const token of this.tokens.values()) {
+      token.wasReleasedThisFrame = false;
+      token.releasedClaimedBy = null;
+      token.releasedClaimedByBindingId = null;
+      token.releasedClaimedByTarget = null;
+      token.wasFreshOnRelease = false;
+    }
+    for (const code of currentDownKeys) {
+      const existing = this.tokens.get(code);
+      if (!existing || !existing.isDown) {
+        this.tokens.set(code, {
+          code,
+          isDown: true,
+          downTime: now,
+          isFresh: true,
+          claimedBy: null,
+          claimedByBindingId: null,
+          claimedByTarget: null,
+          isConsumed: false,
+          consumedBy: null,
+          consumedByTarget: null,
+          wasReleasedThisFrame: false,
+          releasedClaimedBy: null,
+          releasedClaimedByBindingId: null,
+          releasedClaimedByTarget: null,
+          wasFreshOnRelease: false
+        });
+      }
+    }
+    for (const [code, token] of this.tokens.entries()) {
+      if (!currentDownKeys.has(code) && token.isDown) {
+        token.isDown = false;
+        token.wasReleasedThisFrame = true;
+        token.releasedClaimedBy = token.claimedBy;
+        token.releasedClaimedByBindingId = token.claimedByBindingId;
+        token.releasedClaimedByTarget = token.claimedByTarget;
+        token.wasFreshOnRelease = token.isFresh;
+        token.isFresh = false;
+        token.claimedBy = null;
+        token.claimedByBindingId = null;
+        token.claimedByTarget = null;
+        token.isConsumed = false;
+        token.consumedBy = null;
+        token.consumedByTarget = null;
+      }
+    }
+  }
+  isDown(code) {
+    var _a;
+    return ((_a = this.tokens.get(code)) == null ? void 0 : _a.isDown) ?? false;
+  }
+  isFresh(code) {
+    const t = this.tokens.get(code);
+    return Boolean(t && t.isDown && t.isFresh);
+  }
+  wasReleased(code) {
+    var _a;
+    return ((_a = this.tokens.get(code)) == null ? void 0 : _a.wasReleasedThisFrame) ?? false;
+  }
+  getHoldDuration(code, now) {
+    const t = this.tokens.get(code);
+    if (!t || !t.isDown) return 0;
+    return Math.max(0, now - t.downTime);
+  }
+  claim(code, actionId, target) {
+    const t = this.tokens.get(code);
+    if (!t || !t.isDown) return false;
+    t.isFresh = false;
+    t.claimedBy = actionId;
+    t.claimedByBindingId = actionId;
+    if (target) {
+      t.claimedByTarget = target;
+    }
+    return true;
+  }
+  consume(code, actionId, target) {
+    const t = this.tokens.get(code);
+    if (!t || !t.isDown) return false;
+    t.isFresh = false;
+    t.isConsumed = true;
+    t.consumedBy = actionId;
+    t.consumedByTarget = target ?? null;
+    t.claimedBy = actionId;
+    t.claimedByBindingId = actionId;
+    if (target) {
+      t.claimedByTarget = target;
+    }
+    return true;
+  }
+  isConsumed(code) {
+    var _a;
+    return Boolean((_a = this.tokens.get(code)) == null ? void 0 : _a.isConsumed);
+  }
+  isClaimedBy(code, actionId) {
+    const t = this.tokens.get(code);
+    return Boolean(
+      t && t.isDown && (t.claimedBy === actionId || t.claimedByBindingId === actionId || t.claimedByTarget === actionId)
+    );
+  }
+  /**
+   * Evaluates if a button press can execute while currently held or pressed down.
+   */
+  canExecute(code, policy, actionId, target) {
+    var _a;
+    const t = this.tokens.get(code);
+    if (!t || !t.isDown) return false;
+    if (t.isConsumed) return false;
+    if (policy === "requireCleanPress") {
+      if (t.isFresh) return true;
+      if (t.claimedBy === actionId || t.claimedByBindingId === actionId) return true;
+      if (target && t.claimedByTarget === target) return true;
+      const domain = target == null ? void 0 : target.split(".")[0];
+      if (domain && ((_a = t.claimedByTarget) == null ? void 0 : _a.startsWith(domain))) return true;
+      return false;
+    }
+    if (policy === "exclusiveClaim") {
+      return t.isFresh && t.claimedBy === null;
+    }
+    return true;
+  }
+  /**
+   * Evaluates if a button release trigger (triggerMode: "up") can execute on the release frame.
+   * Ensures that releasing a key only fires if the press that was released was clean or belonged to this domain.
+   */
+  canExecuteRelease(code, policy, actionId, target) {
+    var _a;
+    const t = this.tokens.get(code);
+    if (!t || !t.wasReleasedThisFrame) return false;
+    if (policy === "requireCleanPress") {
+      if (t.wasFreshOnRelease || !t.releasedClaimedBy && !t.releasedClaimedByTarget) {
+        return true;
+      }
+      if (t.releasedClaimedBy === actionId || t.releasedClaimedByBindingId === actionId) {
+        return true;
+      }
+      if (target && t.releasedClaimedByTarget === target) {
+        return true;
+      }
+      const domain = target == null ? void 0 : target.split(".")[0];
+      if (domain && ((_a = t.releasedClaimedByTarget) == null ? void 0 : _a.startsWith(domain))) {
+        return true;
+      }
+      return false;
+    }
+    if (policy === "exclusiveClaim") {
+      return t.wasFreshOnRelease && t.releasedClaimedBy === null;
+    }
+    return true;
+  }
+  reset() {
+    this.tokens.clear();
+  }
+};
+__publicField(_InputPressTokenManager, "instance", null);
+let InputPressTokenManager = _InputPressTokenManager;
+const _ControlSchemaArbiter = class _ControlSchemaArbiter {
+  static getCursorOffset(characterId) {
+    let offset = this.cursorReticleOffsets.get(characterId);
+    if (!offset) {
+      offset = { x: 3, y: 0 };
+      this.cursorReticleOffsets.set(characterId, offset);
+    }
+    return offset;
+  }
+  static getRuleConditions(rule) {
+    if (rule.conditions && rule.conditions.length > 0) return rule.conditions;
+    if (rule.condition) return [rule.condition];
+    return [{ type: "always" }];
+  }
+  static getRuleActions(rule) {
+    if (rule.body && rule.body.length > 0) {
+      return rule.body.filter((s) => s.type === "action").map((s) => s.action);
+    }
+    if (rule.actions && rule.actions.length > 0) return rule.actions;
+    if (rule.action) return [rule.action];
+    return [];
+  }
+  static getRuleBody(rule) {
+    if (rule.body && rule.body.length > 0) {
+      return rule.body;
+    }
+    const statements = [];
+    const actions = this.getRuleActions(rule);
+    for (const act of actions) {
+      statements.push({ type: "action", action: act });
+    }
+    if (rule.children && rule.children.length > 0) {
+      const threadMap = /* @__PURE__ */ new Map();
+      for (const child of rule.children) {
+        const tId = child.threadId || `thread-${child.id}`;
+        if (!threadMap.has(tId)) threadMap.set(tId, []);
+        threadMap.get(tId).push(child);
+      }
+      for (const [threadId, rules] of threadMap.entries()) {
+        statements.push({ type: "nestedThread", threadId, rules });
+      }
+    }
+    return statements;
+  }
+  static syncRuleFromStatements(rule) {
+    if (!rule.body) return;
+    const actions = [];
+    const children = [];
+    for (const stmt of rule.body) {
+      if (stmt.type === "action") {
+        actions.push(stmt.action);
+      } else if (stmt.type === "nestedThread") {
+        children.push(...stmt.rules);
+      }
+    }
+    rule.actions = actions;
+    rule.action = actions[0];
+    rule.children = children;
+  }
+  static resolveEffectiveTrigger(rule, schema, device) {
+    var _a, _b;
+    if (rule.tagId && schema && device) {
+      const cfg = device === "keyboardMouse" ? schema.keyboardMouse : device === "gamepad" ? schema.gamepad : schema.touch;
+      const tags = cfg.tags ?? [];
+      const tag = tags.find((t) => t.id === rule.tagId);
+      if (tag) {
+        return {
+          ...tag.trigger,
+          mode: ((_a = rule.trigger) == null ? void 0 : _a.mode) ?? tag.trigger.mode ?? "press"
+        };
+      }
+    }
+    if (!rule.tagId && (!((_b = rule.trigger) == null ? void 0 : _b.code) || rule.trigger.code === "None" || rule.trigger.code === "Always" || rule.trigger.code === "")) {
+      return { device: "keyboard", code: "Always", mode: "press" };
+    }
+    return rule.trigger;
+  }
+  static evaluateAllConditions(rule, ctx) {
+    const conds = this.getRuleConditions(rule);
+    if (conds.length === 0) return true;
+    const op = rule.conditionOp ?? "and";
+    if (op === "or") {
+      return conds.some((cond) => this.evaluateCondition(cond, ctx, rule));
+    }
+    return conds.every((cond) => this.evaluateCondition(cond, ctx, rule));
+  }
+  static evaluateCondition(cond, ctx, _rule) {
+    var _a, _b, _c, _d, _e;
+    let result = false;
+    switch (cond.type) {
+      case "group": {
+        const subConds = cond.conditions ?? [];
+        if (subConds.length === 0) {
+          result = true;
+        } else {
+          const groupOp = cond.op ?? "or";
+          if (groupOp === "or") {
+            result = subConds.some((c) => this.evaluateCondition(c, ctx, _rule));
+          } else {
+            result = subConds.every((c) => this.evaluateCondition(c, ctx, _rule));
+          }
+        }
+        break;
+      }
+      case "always":
+        result = true;
+        break;
+      case "holdingObject":
+        result = ctx.isHoldingItem;
+        break;
+      case "holdingPlainObject":
+      case "holdingObjectWithoutAbility":
+        result = ctx.isHoldingItem && !ctx.heldItemHasPrimaryAbility && !ctx.heldItemIsEdible;
+        break;
+      case "holdingItemWithPrimaryAbility":
+      case "holdingEdible":
+        result = ctx.isHoldingItem && Boolean(ctx.heldItemHasPrimaryAbility ?? ctx.heldItemIsEdible);
+        break;
+      case "emptyHanded":
+        result = !ctx.isHoldingItem;
+        break;
+      case "targetInReach":
+        result = ctx.targetInReach !== null;
+        break;
+      case "stagedActionIs": {
+        const group = cond.stageGroup || "default";
+        const current = ((_a = ctx.character) == null ? void 0 : _a.getStage) ? ctx.character.getStage(group) : ((_b = ctx.stagedActions) == null ? void 0 : _b[group]) ?? (group === "default" ? ctx.stagedAction : "none") ?? "none";
+        const expected = cond.param || "none";
+        result = current === expected;
+        break;
+      }
+      case "grounded":
+        result = ctx.isGrounded;
+        break;
+      case "climbing":
+        result = ctx.isClimbing;
+        break;
+      case "tagHeld":
+      case "tagPressed":
+      case "tagReleased":
+        if (cond.param && ctx.schema) {
+          const mode = cond.type === "tagHeld" ? "hold" : cond.type === "tagPressed" ? "press" : "release";
+          const tags = [
+            ...((_c = ctx.schema.keyboardMouse) == null ? void 0 : _c.tags) ?? [],
+            ...((_d = ctx.schema.gamepad) == null ? void 0 : _d.tags) ?? [],
+            ...((_e = ctx.schema.touch) == null ? void 0 : _e.tags) ?? []
+          ];
+          const tag = tags.find((t) => t.id === cond.param || t.name === cond.param);
+          if (tag) {
+            const eff = { ...tag.trigger, mode };
+            const dummyKeys = { isDown: ctx.isKeyDown, justPressed: () => false, justReleased: () => false };
+            const dummyMouse = { isDown: ctx.isMouseButtonDown, justPressed: () => false, justReleased: () => false };
+            result = this.isTriggerActive(
+              eff,
+              ctx,
+              ctx.keyStates ?? dummyKeys,
+              ctx.mouseStates ?? dummyMouse,
+              ctx.gamepadStates
+            );
+          }
+        }
+        break;
+      case "buttonHeld":
+        if (cond.param) {
+          const p = cond.param.trim();
+          if (p === "MouseLeft") result = ctx.isMouseButtonDown(0);
+          else if (p === "MouseMiddle") result = ctx.isMouseButtonDown(1);
+          else if (p === "MouseRight") result = ctx.isMouseButtonDown(2);
+          else if (p.startsWith("Gamepad")) {
+            const btn = _ControlSchemaArbiter.parseGamepadButtonCode(p);
+            result = ctx.isGamepadButtonDown(0, btn);
+          } else {
+            result = ctx.isKeyDown(p);
+          }
+        }
+        break;
+      case "isAiming":
+        result = Boolean(ctx.character.isAimingTrajectory || ctx.character.isLaserAiming);
+        break;
+      case "isAimingTrajectory":
+        result = Boolean(ctx.character.isAimingTrajectory);
+        break;
+      case "isLaserAiming":
+        result = Boolean(ctx.character.isLaserAiming);
+        break;
+      default:
+        result = true;
+    }
+    return cond.negate ? !result : result;
+  }
+  static isTriggerActive(trigger, _ctx, keyStates, mouseStates, gamepadStates) {
+    if (!trigger || !trigger.code || trigger.code === "Always" || trigger.code === "None") {
+      return true;
+    }
+    if (trigger.chordModifiers && trigger.chordModifiers.length > 0) {
+      for (const mod of trigger.chordModifiers) {
+        let isModDown = false;
+        if (mod.startsWith("Alt")) {
+          isModDown = keyStates.isDown("AltLeft") || keyStates.isDown("AltRight") || keyStates.isDown("Alt");
+        } else if (mod.startsWith("Shift")) {
+          isModDown = keyStates.isDown("ShiftLeft") || keyStates.isDown("ShiftRight") || keyStates.isDown("Shift");
+        } else if (mod.startsWith("Control") || mod.startsWith("Ctrl")) {
+          isModDown = keyStates.isDown("ControlLeft") || keyStates.isDown("ControlRight") || keyStates.isDown("Control");
+        } else {
+          isModDown = keyStates.isDown(mod);
+        }
+        if (!isModDown) {
+          return false;
+        }
+      }
+    }
+    if (trigger.device === "keyboard") {
+      if (trigger.mode === "press") return keyStates.justPressed(trigger.code);
+      if (trigger.mode === "release") return keyStates.justReleased(trigger.code);
+      return keyStates.isDown(trigger.code);
+    }
+    if (trigger.device === "mouse") {
+      const btn = trigger.code === "MouseLeft" ? 0 : trigger.code === "MouseMiddle" ? 1 : 2;
+      if (trigger.mode === "press") return mouseStates.justPressed(btn);
+      if (trigger.mode === "release") return mouseStates.justReleased(btn);
+      return mouseStates.isDown(btn);
+    }
+    if (trigger.device === "gamepad" && gamepadStates) {
+      const btn = this.parseGamepadButtonCode(trigger.code);
+      if (btn !== -1) {
+        if (trigger.mode === "press") return gamepadStates.justPressed(btn);
+        if (trigger.mode === "release") return gamepadStates.justReleased(btn);
+        return gamepadStates.isDown(btn);
+      }
+    }
+    return false;
+  }
+  static containsInputCondition(cond) {
+    if (cond.type === "tagHeld" || cond.type === "tagPressed" || cond.type === "tagReleased" || cond.type === "buttonHeld") {
+      return true;
+    }
+    if (cond.type === "group" && cond.conditions) {
+      return cond.conditions.some((c) => this.containsInputCondition(c));
+    }
+    return false;
+  }
+  static isRuleApplicable(rule, ctx, schema, device, keyStates, mouseStates, gamepadStates) {
+    if (rule.enabled === false) return false;
+    if (!this.evaluateAllConditions(rule, ctx)) {
+      return false;
+    }
+    const conds = this.getRuleConditions(rule);
+    const hasInputCondition = conds.some((c) => this.containsInputCondition(c));
+    const effTrigger = this.resolveEffectiveTrigger(rule, schema, device);
+    const isPassiveTrigger = !effTrigger || !effTrigger.code || effTrigger.code === "Always" || effTrigger.code === "None";
+    if (hasInputCondition || isPassiveTrigger) {
+      return true;
+    }
+    const kStates = keyStates ?? ctx.keyStates ?? { isDown: ctx.isKeyDown, justPressed: () => false, justReleased: () => false };
+    const mStates = mouseStates ?? ctx.mouseStates ?? { isDown: ctx.isMouseButtonDown, justPressed: () => false, justReleased: () => false };
+    return this.isTriggerActive(effTrigger, ctx, kStates, mStates, gamepadStates ?? ctx.gamepadStates);
+  }
+  static parseGamepadButtonCode(code) {
+    switch (code) {
+      case "GamepadA":
+        return 0;
+      case "GamepadB":
+        return 1;
+      case "GamepadX":
+        return 2;
+      case "GamepadY":
+        return 3;
+      case "GamepadLB":
+        return 4;
+      case "GamepadRB":
+        return 5;
+      case "GamepadLT":
+        return 6;
+      case "GamepadRT":
+        return 7;
+      case "GamepadBack":
+        return 8;
+      case "GamepadStart":
+        return 9;
+      case "GamepadLS":
+        return 10;
+      case "GamepadRS":
+        return 11;
+      case "GamepadDpadUp":
+        return 12;
+      case "GamepadDpadDown":
+        return 13;
+      case "GamepadDpadLeft":
+        return 14;
+      case "GamepadDpadRight":
+        return 15;
+      default:
+        return -1;
+    }
+  }
+  static formatGamepadButtonIndex(btn) {
+    switch (btn) {
+      case 0:
+        return "GamepadA";
+      case 1:
+        return "GamepadB";
+      case 2:
+        return "GamepadX";
+      case 3:
+        return "GamepadY";
+      case 4:
+        return "GamepadLB";
+      case 5:
+        return "GamepadRB";
+      case 6:
+        return "GamepadLT";
+      case 7:
+        return "GamepadRT";
+      case 8:
+        return "GamepadBack";
+      case 9:
+        return "GamepadStart";
+      case 10:
+        return "GamepadLS";
+      case 11:
+        return "GamepadRS";
+      case 12:
+        return "GamepadDpadUp";
+      case 13:
+        return "GamepadDpadDown";
+      case 14:
+        return "GamepadDpadLeft";
+      case 15:
+        return "GamepadDpadRight";
+      default:
+        return `GamepadBtn${btn}`;
+    }
+  }
+  static evaluateFrame(schema, ctx, device, keyStates, mouseStates, gamepadStates) {
+    const activeRules = [];
+    const ruleStates = /* @__PURE__ */ new Map();
+    let moveX = 0;
+    let moveY = 0;
+    let aimTarget = null;
+    let facingAngle = ctx.facingAngle;
+    if (device === "keyboardMouse") {
+      const cfg = schema.keyboardMouse;
+      if (cfg.aiming.mode === "faceMouseCursor") {
+        aimTarget = { x: mouseStates.worldPos.x, y: mouseStates.worldPos.y };
+        facingAngle = Math.atan2(
+          aimTarget.y - ctx.character.position.y,
+          aimTarget.x - ctx.character.position.x
+        );
+      }
+      if (cfg.locomotion.mode === "forwardFacingDrive") {
+        const isFwd = cfg.locomotion.forwardTrigger ? this.isTriggerActive(cfg.locomotion.forwardTrigger, ctx, keyStates, mouseStates) : false;
+        const fwdX = Math.cos(facingAngle);
+        const fwdY = Math.sin(facingAngle);
+        const leftX = -fwdY;
+        const leftY = fwdX;
+        if (isFwd) {
+          moveX += fwdX;
+          moveY += fwdY;
+        }
+        if (cfg.locomotion.reverseKey && keyStates.isDown(cfg.locomotion.reverseKey)) {
+          moveX -= fwdX * 0.75;
+          moveY -= fwdY * 0.75;
+        }
+        if (cfg.locomotion.strafeLeftKey && keyStates.isDown(cfg.locomotion.strafeLeftKey)) {
+          moveX += leftX * 0.85;
+          moveY += leftY * 0.85;
+        }
+        if (cfg.locomotion.strafeRightKey && keyStates.isDown(cfg.locomotion.strafeRightKey)) {
+          moveX -= leftX * 0.85;
+          moveY -= leftY * 0.85;
+        }
+        const mag = Math.hypot(moveX, moveY);
+        if (mag > 1) {
+          moveX /= mag;
+          moveY /= mag;
+        }
+      } else {
+        if (cfg.locomotion.moveForwardKey && keyStates.isDown(cfg.locomotion.moveForwardKey)) moveY -= 1;
+        if (cfg.locomotion.reverseKey && keyStates.isDown(cfg.locomotion.reverseKey)) moveY += 1;
+        if (cfg.locomotion.strafeLeftKey && keyStates.isDown(cfg.locomotion.strafeLeftKey)) moveX -= 1;
+        if (cfg.locomotion.strafeRightKey && keyStates.isDown(cfg.locomotion.strafeRightKey)) moveX += 1;
+        const mag = Math.hypot(moveX, moveY);
+        if (mag > 1) {
+          moveX /= mag;
+          moveY /= mag;
+        }
+      }
+      const sortedRules = [...cfg.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+      const executedThreads = /* @__PURE__ */ new Set();
+      for (const rule of sortedRules) {
+        if (rule.enabled === false) continue;
+        const threadKey = rule.threadId ?? (rule.tagId ? `${rule.tagId}:${rule.trigger.mode}` : null);
+        if (threadKey && executedThreads.has(threadKey)) {
+          ruleStates.set(rule.id, { matchesCondition: false, isTriggerActive: false });
+          continue;
+        }
+        const matchesCondition = this.evaluateAllConditions(rule, ctx);
+        const effTrigger = this.resolveEffectiveTrigger(rule, schema, "keyboardMouse");
+        const triggerActive = this.isTriggerActive(effTrigger, ctx, keyStates, mouseStates);
+        ruleStates.set(rule.id, { matchesCondition, isTriggerActive: triggerActive });
+        if (matchesCondition && triggerActive) {
+          if (threadKey) {
+            executedThreads.add(threadKey);
+          }
+          activeRules.push(rule);
+          const actions = this.getRuleActions(rule);
+          for (const act of actions) {
+            const actDef = ControlActionCatalog.findAction(act.moduleId, act.intent);
+            if (actDef) {
+              actDef.execute(ctx, act.args);
+            }
+          }
+        }
+      }
+    } else if (device === "gamepad" && gamepadStates) {
+      const cfg = schema.gamepad;
+      const leftStick = gamepadStates.leftStick;
+      const rightStick = gamepadStates.rightStick;
+      let isOverridden = false;
+      if (cfg.leftStick.dynamicOverride) {
+        const cond = cfg.leftStick.dynamicOverride.triggerCondition;
+        if (cond === "whenLtHeld" && gamepadStates.isDown(6)) {
+          isOverridden = true;
+        } else if (cond === "whenHoldingItem" && ctx.isHoldingItem) {
+          isOverridden = true;
+        } else if (cond === "whenAiming" && (ctx.stagedAction === "laser" || ctx.isHoldingItem)) {
+          isOverridden = true;
+        }
+      }
+      const activeLeftMode = isOverridden ? cfg.leftStick.dynamicOverride.overrideMode : cfg.leftStick.primaryMode;
+      if (activeLeftMode === "cursorSteer") {
+        const reticleSpeed = cfg.leftStick.cursorSteerSpeed ?? 14;
+        const clampRadius = cfg.leftStick.cursorClampRadius ?? 7.5;
+        const offset = this.getCursorOffset(ctx.character.id);
+        offset.x += leftStick.x * reticleSpeed * ctx.dt;
+        offset.y += leftStick.y * reticleSpeed * ctx.dt;
+        const dist = Math.hypot(offset.x, offset.y);
+        if (dist > clampRadius) {
+          offset.x = offset.x / dist * clampRadius;
+          offset.y = offset.y / dist * clampRadius;
+        }
+        aimTarget = {
+          x: ctx.character.position.x + offset.x,
+          y: ctx.character.position.y + offset.y
+        };
+      } else {
+        moveX = leftStick.x;
+        moveY = leftStick.y;
+      }
+      if (cfg.rightStick.mode === "twinStickAim") {
+        const rMag = Math.hypot(rightStick.x, rightStick.y);
+        if (rMag > 0.15) {
+          aimTarget = {
+            x: ctx.character.position.x + rightStick.x * 5,
+            y: ctx.character.position.y + rightStick.y * 5
+          };
+        }
+      }
+      const sortedRules = [...cfg.rules].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+      const executedThreads = /* @__PURE__ */ new Set();
+      for (const rule of sortedRules) {
+        if (rule.enabled === false) continue;
+        const threadKey = rule.threadId ?? (rule.tagId ? `${rule.tagId}:${rule.trigger.mode}` : null);
+        if (threadKey && executedThreads.has(threadKey)) {
+          ruleStates.set(rule.id, { matchesCondition: false, isTriggerActive: false });
+          continue;
+        }
+        const matchesCondition = this.evaluateAllConditions(rule, ctx);
+        const effTrigger = this.resolveEffectiveTrigger(rule, schema, "gamepad");
+        const triggerActive = this.isTriggerActive(effTrigger, ctx, keyStates, mouseStates, gamepadStates);
+        ruleStates.set(rule.id, { matchesCondition, isTriggerActive: triggerActive });
+        if (matchesCondition && triggerActive) {
+          if (threadKey) {
+            executedThreads.add(threadKey);
+          }
+          activeRules.push(rule);
+          const actions = this.getRuleActions(rule);
+          for (const act of actions) {
+            const actDef = ControlActionCatalog.findAction(act.moduleId, act.intent);
+            if (actDef) {
+              actDef.execute(ctx, act.args);
+            }
+          }
+        }
+      }
+    }
+    return {
+      movementVector: { x: moveX, y: moveY },
+      aimTarget,
+      facingAngle,
+      activeRules,
+      ruleStates
+    };
+  }
+  static evaluateChannels(channels, execCtx, input) {
+    var _a, _b, _c, _d;
+    const char = execCtx.character;
+    const now = performance.now();
+    const tokens = InputPressTokenManager.getInstance();
+    const activeKeys = /* @__PURE__ */ new Set();
+    if (input.isMouseDown) activeKeys.add("MouseLeft");
+    if (input.isMiddleMouseDown) activeKeys.add("MouseMiddle");
+    if (input.isRightMouseDown) activeKeys.add("MouseRight");
+    for (const key of input.getActiveKeys()) {
+      activeKeys.add(key);
+    }
+    tokens.update(activeKeys, now);
+    let moveX = 0;
+    let moveY = 0;
+    const loco = channels.locomotion;
+    if (loco.mode === "directVector") {
+      for (const k of loco.upKeys) if (tokens.isDown(k)) {
+        moveY -= 1;
+        break;
+      }
+      for (const k of loco.downKeys) if (tokens.isDown(k)) {
+        moveY += 1;
+        break;
+      }
+      for (const k of loco.leftKeys) if (tokens.isDown(k)) {
+        moveX -= 1;
+        break;
+      }
+      for (const k of loco.rightKeys) if (tokens.isDown(k)) {
+        moveX += 1;
+        break;
+      }
+    } else if (loco.mode === "forwardFacingDrive") {
+      const fwdAngle = char.facingAngle ?? 0;
+      const fwdX = Math.cos(fwdAngle);
+      const fwdY = Math.sin(fwdAngle);
+      const leftX = -fwdY;
+      const leftY = fwdX;
+      const fwdKey = loco.forwardKey || loco.upKeys[0];
+      if (fwdKey && tokens.isDown(fwdKey)) {
+        moveX += fwdX;
+        moveY += fwdY;
+      }
+      for (const k of loco.downKeys) if (tokens.isDown(k)) {
+        moveX -= fwdX * 0.75;
+        moveY -= fwdY * 0.75;
+        break;
+      }
+      for (const k of loco.leftKeys) if (tokens.isDown(k)) {
+        moveX += leftX * 0.85;
+        moveY += leftY * 0.85;
+        break;
+      }
+      for (const k of loco.rightKeys) if (tokens.isDown(k)) {
+        moveX -= leftX * 0.85;
+        moveY -= leftY * 0.85;
+        break;
+      }
+    } else if (loco.mode === "facingRelativeStrafe") {
+      const fwdAngle = char.facingAngle ?? 0;
+      const fwdX = Math.cos(fwdAngle);
+      const fwdY = Math.sin(fwdAngle);
+      const leftX = -fwdY;
+      const leftY = fwdX;
+      for (const k of loco.upKeys) if (tokens.isDown(k)) {
+        moveX += fwdX;
+        moveY += fwdY;
+        break;
+      }
+      for (const k of loco.downKeys) if (tokens.isDown(k)) {
+        moveX -= fwdX;
+        moveY -= fwdY;
+        break;
+      }
+      for (const k of loco.leftKeys) if (tokens.isDown(k)) {
+        moveX += leftX;
+        moveY += leftY;
+        break;
+      }
+      for (const k of loco.rightKeys) if (tokens.isDown(k)) {
+        moveX -= leftX;
+        moveY -= leftY;
+        break;
+      }
+    }
+    const moveMag = Math.hypot(moveX, moveY);
+    if (moveMag > 1) {
+      moveX /= moveMag;
+      moveY /= moveMag;
+    }
+    let isSprinting = false;
+    if (loco.sprintKey) {
+      if (loco.sprintMode === "toggle") {
+        if (tokens.isFresh(loco.sprintKey)) {
+          char.setSprinting(!char.isSprinting);
+          tokens.claim(loco.sprintKey, "toggleSprint");
+        }
+        isSprinting = Boolean(char.isSprinting);
+      } else {
+        isSprinting = tokens.isDown(loco.sprintKey);
+      }
+    }
+    const isJumpHeld = loco.jumpKey ? tokens.isDown(loco.jumpKey) : false;
+    if (channels.aiming.mode === "faceMouseCursor") {
+      const aimDx = input.actualMousePos.x - char.position.x;
+      const aimDy = input.actualMousePos.y - char.position.y;
+      if (Math.hypot(aimDx, aimDy) > 0.05) {
+        char.facingAngle = Math.atan2(aimDy, aimDx);
+      }
+    } else if (channels.aiming.mode === "faceMovement") {
+      if (moveMag > 0.05) {
+        char.facingAngle = Math.atan2(moveY, moveX);
+      }
+    }
+    let isMeleeRequested = false;
+    if (channels.melee.enabled) {
+      const code = channels.melee.trigger.code;
+      if (tokens.canExecute(code, channels.melee.claimPolicy, "melee")) {
+        tokens.claim(code, "melee");
+        isMeleeRequested = true;
+      }
+    }
+    let isLaserAiming = false;
+    let isLaserFiring = false;
+    if (channels.laser.enabled) {
+      const aimTrig = channels.laser.aimTrigger;
+      const isAltChord = (aimTrig.chordModifiers || []).every((m) => tokens.isDown(m));
+      if (isAltChord && tokens.isDown(aimTrig.code)) {
+        isLaserAiming = true;
+        if (tokens.isDown(channels.laser.fireTrigger.code)) {
+          isLaserFiring = true;
+        }
+      }
+    }
+    let isUsingItem = false;
+    const canUseItem = execCtx.isHoldingItem && (execCtx.heldItemIsEdible || execCtx.heldItemHasPrimaryAbility);
+    if (canUseItem && channels.consume.enabled) {
+      const code = channels.consume.trigger.code;
+      if (tokens.canExecute(code, channels.consume.claimPolicy, "consume")) {
+        tokens.claim(code, "consume");
+        isUsingItem = true;
+      }
+    }
+    let isAimingTrajectory = false;
+    let isThrow = false;
+    if (execCtx.isHoldingItem && channels.throw.enabled) {
+      const aimCode = channels.throw.aimTrigger.code;
+      const isAimHeld = tokens.isDown(aimCode);
+      if (isAimHeld) {
+        isAimingTrajectory = true;
+        const fireCode = channels.throw.fireTrigger.code;
+        const fireHeldMs = tokens.getHoldDuration(fireCode, now);
+        if (channels.throw.arcModulationSource === "mouseDragY") {
+          if (tokens.isDown(fireCode)) {
+            if (fireHeldMs >= (channels.throw.arcDragHoldThresholdMs || 200)) {
+              if (!input.isRawDragging) {
+                input.beginRawDrag((_dx, dy) => {
+                  if (char.throwModule) {
+                    const cur = char.throwModule.savedArcRatio ?? 0.5;
+                    const next = Math.max(0, Math.min(1, cur + -dy * 5e-3));
+                    char.throwModule.savedArcRatio = next;
+                    char.savedArcRatio = next;
+                    char.throwModule.hasUserSetArcRatio = true;
+                    char.hasUserSetArcRatio = true;
+                  }
+                });
+              }
+            }
+          }
+        }
+        const wasFireDown = ((_a = execCtx.mouseStates) == null ? void 0 : _a.justReleased(fireCode === "MouseLeft" ? 0 : 2)) || (((_b = execCtx.keyStates) == null ? void 0 : _b.justReleased(fireCode)) ?? false);
+        if (wasFireDown) {
+          if (input.isRawDragging) {
+            input.endRawDrag();
+            if (channels.throw.fireOnReleaseAim !== true) {
+              isThrow = true;
+              tokens.claim(fireCode, "throw");
+            }
+          } else if (fireHeldMs < (channels.throw.arcDragHoldThresholdMs || 200)) {
+            isThrow = true;
+            tokens.claim(fireCode, "throw");
+          }
+        }
+      } else {
+        if (input.isRawDragging) {
+          input.endRawDrag();
+        }
+      }
+    }
+    let isGrabHeld = false;
+    let isSwap = false;
+    if (channels.interaction.enabled) {
+      const code = channels.interaction.trigger.code;
+      if (!execCtx.isHoldingItem) {
+        if (tokens.canExecute(code, channels.interaction.claimPolicy, "interact") && execCtx.targetInReach) {
+          tokens.claim(code, "interact");
+          isGrabHeld = true;
+        }
+      } else if (channels.interaction.allowSwapWhenHolding && execCtx.targetInReach && !isAimingTrajectory && !isUsingItem) {
+        if (tokens.canExecute(code, channels.interaction.claimPolicy, "swap")) {
+          tokens.claim(code, "swap");
+          isSwap = true;
+        }
+      }
+    }
+    char.isAimingTrajectory = isAimingTrajectory;
+    char.isLaserAiming = isLaserAiming;
+    char.isLaserFiring = isLaserFiring;
+    char.isMeleeRequested = isMeleeRequested;
+    if (isAimingTrajectory && char.facingAngle !== void 0) {
+      char.lastThrowAimAngle = char.facingAngle;
+    }
+    const isAiming = isLaserAiming || isAimingTrajectory;
+    const kLaunchVel = isThrow && ((_c = char.activeTrajectory) == null ? void 0 : _c.launchVel) ? char.activeTrajectory.launchVel : void 0;
+    const kLaunchPos = isThrow && ((_d = char.activeTrajectory) == null ? void 0 : _d.launchPos) ? char.activeTrajectory.launchPos : void 0;
+    return {
+      playerId: "keyboard",
+      moveX,
+      moveY,
+      isSprinting: isSprinting || Boolean(char.isSprinting),
+      isJumpHeld,
+      isGrabHeld,
+      grabTargetObjectId: (isGrabHeld || isSwap) && execCtx.targetInReach ? execCtx.targetInReach.id : null,
+      isDrop: false,
+      isThrow,
+      isSwap,
+      isUsingItem,
+      isLaserAiming,
+      isLaserFiring,
+      laserAimX: input.actualMousePos.x,
+      laserAimY: input.actualMousePos.y,
+      isMeleeRequested,
+      meleeAimDirX: (input.actualMousePos.x - char.position.x) / (Math.hypot(input.actualMousePos.x - char.position.x, input.actualMousePos.y - char.position.y) || 1),
+      meleeAimDirY: (input.actualMousePos.y - char.position.y) / (Math.hypot(input.actualMousePos.x - char.position.x, input.actualMousePos.y - char.position.y) || 1),
+      meleeAimX: input.actualMousePos.x,
+      meleeAimY: input.actualMousePos.y,
+      aimX: input.actualMousePos.x,
+      aimY: input.actualMousePos.y,
+      isAiming,
+      isLockHeld: Boolean(input.lockedAimPos),
+      lockedAimPos: input.lockedAimPos,
+      aimLockDelta: 0,
+      facingAngle: char.facingAngle,
+      ...kLaunchVel ? {
+        launchVx: kLaunchVel.vx,
+        launchVy: kLaunchVel.vy,
+        launchVz: kLaunchVel.vz
+      } : {},
+      ...kLaunchPos ? {
+        launchStartX: kLaunchPos.x,
+        launchStartY: kLaunchPos.y,
+        launchStartZ: kLaunchPos.z
+      } : {}
+    };
+  }
+};
+// Reticle steering offset state per character ID
+__publicField(_ControlSchemaArbiter, "cursorReticleOffsets", /* @__PURE__ */ new Map());
+let ControlSchemaArbiter = _ControlSchemaArbiter;
+class PlayerDeltaBuilder {
+  static setNestedProperty(target, path2, value) {
+    const parts = path2.split(".");
+    let curr = target;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!curr[parts[i]] || typeof curr[parts[i]] !== "object") {
+        curr[parts[i]] = {};
+      }
+      curr = curr[parts[i]];
+    }
+    curr[parts[parts.length - 1]] = value;
+  }
+  static resolvePropertyPath(owner, prop, label) {
+    const isChar = owner instanceof Character || owner.isCharacter;
+    if (isChar) {
+      const char = owner;
+      if (char.walkingModule) {
+        if (prop === char.walkingModule.maxWalkForceProp) return "walkingModule.maxWalkForce";
+        if (prop === char.walkingModule.maxWalkSpeedProp) return "walkingModule.maxWalkSpeed";
+        if (prop === char.walkingModule.maxSprintSpeedProp) return "walkingModule.sprintSpeed";
+        if (prop === char.walkingModule.maxWalkPowerProp || prop === char.walkingModule.walkPowerCapacityProp) return "walkingModule.maxWalkPower";
+        if (prop === char.walkingModule.maxSprintPowerProp || prop === char.walkingModule.sprintPowerCapacityProp) return "walkingModule.maxSprintPower";
+        if (prop === char.walkingModule.airFrictionProp) return "walkingModule.airFriction";
+      }
+      if (char.jumpModule) {
+        if (prop === char.jumpModule.jumpStrengthProp) return "jumpModule.jumpImpulse";
+        if (prop === char.jumpModule.maxInitialSpeedProp) return "jumpModule.maxInitialSpeed";
+      }
+      if (char.jumpPowerCapacityProp && prop === char.jumpPowerCapacityProp) {
+        return "jumpModule.jumpPowerCapacity";
+      }
+      if (char.throwModule) {
+        if (prop === char.throwModule.maxPowerProp) return "throwModule.throwPowerCapacity";
+        if (prop === char.throwModule.maxThrowSpeedProp) return "throwModule.maxThrowSpeed";
+        if (prop === char.throwModule.maxThrowHeightProp) return "throwModule.maxThrowHeight";
+      }
+      if (char.pickupModule) {
+        if (prop === char.pickupModule.pickupReachProp) return "pickupModule.pickupReach";
+        if (prop === char.pickupModule.maxPowerProp) return "pickupModule.maxPower";
+      }
+      if (char.climbingModule) {
+        if (prop === char.climbingModule.maxClimbSpeedProp) return "climbingModule.climbSpeed";
+        if (prop === char.climbingModule.maxPowerProp) return "climbingModule.maxPower";
+        if (prop === char.climbingModule.maxAdhesionProp) return "climbingModule.maxAdhesion";
+      }
+      if (char.laserModule) {
+        if (prop === char.laserModule.damageRateProp) return "laserModule.damageRate";
+        if (prop === char.laserModule.thicknessProp) return "laserModule.thickness";
+        if (prop === char.laserModule.maxPowerProp) return "laserModule.maxPower";
+      }
+      if (char.meleeModule) {
+        if (prop === char.meleeModule.maxForceProp) return "meleeModule.impactForce";
+        if (prop === char.meleeModule.maxPowerProp) return "meleeModule.maxPower";
+        if (prop === char.meleeModule.punchFrequencyProp) return "meleeModule.punchFrequency";
+        if (prop === char.meleeModule.reachProp) return "meleeModule.reach";
+        if (prop === char.meleeModule.widthProp) return "meleeModule.width";
+      }
+      if (char.healthModule) {
+        if (prop === char.healthModule.maxHpProp) return "healthModule.maxHp";
+        if (prop === char.healthModule.currentHpProp) return "healthModule.currentHp";
+        if (prop === char.healthModule.maxHealRateProp) return "healthModule.naturalHealRate";
+        if (prop === char.healthModule.maxPowerProp) return "healthModule.maxPower";
+        if (prop === char.healthModule.joulesPerHpProp) return "healthModule.joulesPerHp";
+      }
+      if (char.energyPool) {
+        if (prop === char.energyPool.currentEnergyProp) return "energyPool.currentEnergy";
+        if (prop === char.energyPool.maxEnergyProp) return "energyPool.energyPoolCapacity";
+        if (prop === char.energyPool.currentStaminaProp) return "energyPool.currentStamina";
+        if (prop === char.energyPool.maxStaminaProp) return "energyPool.staminaCapacity";
+        if (prop === char.energyPool.staminaRegenRateProp) return "energyPool.staminaRegenRate";
+        if (prop === char.energyPool.muscleEfficiencyProp) return "energyPool.muscleEfficiency";
+      }
+      if (char.wallEdgeAssistModule) {
+        if (prop === char.wallEdgeAssistModule.hangDistanceProp) return "wallEdgeAssistModule.hangDistance";
+      }
+      if (char.strengthProp && prop === char.strengthProp) return "strength";
+      if (char.colliderModule && prop === char.colliderModule.radiusProp) return "colliderRadius";
+      if (char.rigidbodyModule && prop === char.rigidbodyModule.massProp) return "mass";
+    }
+    if (owner.rigidbodyModule && prop === owner.rigidbodyModule.massProp) return "mass";
+    if (owner.colliderModule && prop === owner.colliderModule.radiusProp) return "colliderRadius";
+    if (owner.frictionModule) {
+      if (prop === owner.frictionModule.staticFrictionProp) return "friction";
+      if (prop === owner.frictionModule.dynamicFrictionProp) return "dynamicFriction";
+    }
+    if (owner.bounceModule && prop === owner.bounceModule.bounceModProp) return "restitution";
+    if (owner.rollModule) {
+      if (prop === owner.rollModule.rollResistanceProp) return "rollResistance";
+      if (prop === owner.rollModule.bumpinessProp) return "bumpiness";
+    }
+    if (owner.consumableModule) {
+      if (prop === owner.consumableModule.totalEnergyJoulesProp) return "consumableModule.totalEnergyJoules";
+      if (prop === owner.consumableModule.remainingEnergyJoulesProp) return "consumableModule.remainingEnergyJoules";
+      if (prop === owner.consumableModule.consumeRateWattsProp) return "consumableModule.consumeRateWatts";
+      if (prop === owner.consumableModule.healRateProp) return "consumableModule.healRate";
+    }
+    if (owner.damageAuraModule) {
+      if (prop === owner.damageAuraModule.damageRadiusProp) return "damageAuraModule.damageRadius";
+      if (prop === owner.damageAuraModule.damageRateProp) return "damageAuraModule.damageRate";
+    }
+    if (owner.damageSolverModule) {
+      if (prop === owner.damageSolverModule.impactSusceptibilityProp) return "damageSolverModule.impactSusceptibility";
+      if (prop === owner.damageSolverModule.damageThresholdHpProp) return "damageSolverModule.minShockThreshold";
+      if (prop === owner.damageSolverModule.selfImpactWeightProp) return "damageSolverModule.selfImpactWeight";
+    }
+    if (prop.referenceKey && prop.referenceKey.trim().length > 0) {
+      return prop.referenceKey.trim();
+    }
+    if (label) {
+      const l = label.trim().toLowerCase();
+      if (l.includes("walk force")) return "walkingModule.maxWalkForce";
+      if (l.includes("walk speed")) return "walkingModule.maxWalkSpeed";
+      if (l.includes("sprint speed")) return "walkingModule.sprintSpeed";
+      if (l.includes("walk power")) return "walkingModule.maxWalkPower";
+      if (l.includes("sprint power")) return "walkingModule.maxSprintPower";
+      if (l.includes("air control") || l.includes("walk in air")) return "walkingModule.walkInAir";
+      if (l.includes("air fric")) return "walkingModule.airFriction";
+      if (l.includes("can sprint")) return "walkingModule.canSprint";
+      if (l.includes("jump impulse") || l.includes("jump strength")) return "jumpModule.jumpImpulse";
+      if (l.includes("takeoff speed")) return "jumpModule.maxInitialSpeed";
+      if (l.includes("jump power")) return "jumpModule.jumpPowerCapacity";
+      if (l.includes("throw speed") || l.includes("throw force")) return "throwModule.maxThrowSpeed";
+      if (l.includes("throw height")) return "throwModule.maxThrowHeight";
+      if (l.includes("throw power") || l.includes("throw wattage")) return "throwModule.throwPowerCapacity";
+      if (l.includes("pickup reach")) return "pickupModule.pickupReach";
+      if (l.includes("pickup power")) return "pickupModule.maxPower";
+      if (l.includes("climb speed")) return "climbingModule.climbSpeed";
+      if (l.includes("climb power")) return "climbingModule.maxPower";
+      if (l.includes("sideways climb") || l.includes("horizontal climb")) return "climbingModule.horizontalClimbMultiplier";
+      if (l.includes("adhesion")) return "climbingModule.wallAdhesionRange";
+      if (l.includes("laser max power") || l.includes("power rating")) return "laserModule.maxPower";
+      if (l.includes("beam range") || l.includes("laser range")) return "laserModule.maxRange";
+      if (l.includes("beam damage") || l.includes("laser damage")) return "laserModule.damageRate";
+      if (l.includes("beam width") || l.includes("beam thickness") || l.includes("laser thickness")) return "laserModule.thickness";
+      if (l.includes("punch force") || l.includes("attack force")) return "meleeModule.impactForce";
+      if (l.includes("attack power") || l.includes("punch power") || l.includes("melee max power")) return "meleeModule.maxPower";
+      if (l.includes("punch freq") || l.includes("attack freq")) return "meleeModule.punchFrequency";
+      if (l.includes("punch reach") || l.includes("attack reach")) return "meleeModule.reach";
+      if (l.includes("attack width") || l.includes("punch width")) return "meleeModule.width";
+      if (l.includes("current hp") || l.includes("current health")) return "healthModule.currentHp";
+      if (l.includes("max hp") || l.includes("max health")) return "healthModule.maxHp";
+      if (l.includes("heal rate") || l.includes("natural heal")) return "healthModule.naturalHealRate";
+      if (l.includes("health power") || l.includes("heal power")) return "healthModule.maxPower";
+      if (l.includes("energy cost per hp") || l.includes("joules/hp") || l.includes("joule per hp") || l.includes("hp per joule")) return "healthModule.joulesPerHp";
+      if (l.includes("current stamina")) return "energyPool.currentStamina";
+      if (l.includes("stamina cap")) return "energyPool.staminaCapacity";
+      if (l.includes("stamina regen")) return "energyPool.staminaRegenRate";
+      if (l.includes("current energy")) return "energyPool.currentEnergy";
+      if (l.includes("energy capacity") || l.includes("calorie")) return "energyPool.energyPoolCapacity";
+      if (l.includes("max power out")) return "energyPool.maxPowerOutput";
+      if (l.includes("muscle") || l.includes("metabolic eff")) return "energyPool.muscleEfficiency";
+      if (l.includes("edge assist") || l.includes("hang radius")) return "wallEdgeAssistModule.hangDistance";
+      if (l.includes("mass")) return "mass";
+      if (l.includes("strength")) return "strength";
+      if (l.includes("collider radius")) return "colliderRadius";
+      if (l.includes("friction")) return "friction";
+      if (l.includes("bounciness") || l.includes("restitution")) return "restitution";
+      if (l.includes("roll resist")) return "rollResistance";
+    }
+    return label || "prop";
+  }
+  static buildSinglePropertyPlayerDelta(propKey, value) {
+    const norm = (propKey || "").trim();
+    let canonical = norm;
+    const aliasMap = {
+      walkInAir: "walkingModule.walkInAir",
+      "Air Control (Walk in Air)": "walkingModule.walkInAir",
+      canSprint: "walkingModule.canSprint",
+      "Can Sprint": "walkingModule.canSprint",
+      "Can Sprint (Shift / Gamepad)": "walkingModule.canSprint",
+      walkConsumesEnergy: "walkingModule.walkConsumesEnergy",
+      "Walk Consumes Energy": "walkingModule.walkConsumesEnergy",
+      walkAllowPartialPower: "walkingModule.walkAllowPartialPower",
+      sprintConsumesEnergy: "walkingModule.sprintConsumesEnergy",
+      "Sprint Consumes Energy": "walkingModule.sprintConsumesEnergy",
+      sprintAllowPartialPower: "walkingModule.sprintAllowPartialPower",
+      maxWalkForce: "walkingModule.maxWalkForce",
+      walkForce: "walkingModule.maxWalkForce",
+      "Max Walk Force (N)": "walkingModule.maxWalkForce",
+      maxWalkSpeed: "walkingModule.maxWalkSpeed",
+      walkSpeed: "walkingModule.maxWalkSpeed",
+      "Max Walk Speed (u/s)": "walkingModule.maxWalkSpeed",
+      sprintSpeed: "walkingModule.sprintSpeed",
+      maxSprintSpeed: "walkingModule.sprintSpeed",
+      "Max Sprint Speed (u/s)": "walkingModule.sprintSpeed",
+      walkPowerCapacity: "walkingModule.maxWalkPower",
+      maxWalkPower: "walkingModule.maxWalkPower",
+      "Max Walk Power (Watts)": "walkingModule.maxWalkPower",
+      sprintPowerCapacity: "walkingModule.maxSprintPower",
+      maxSprintPower: "walkingModule.maxSprintPower",
+      "Max Sprint Power (Watts)": "walkingModule.maxSprintPower",
+      airFriction: "walkingModule.airFriction",
+      jumpImpulse: "jumpModule.jumpImpulse",
+      jumpStrength: "jumpModule.jumpImpulse",
+      "Jump Impulse (N·s)": "jumpModule.jumpImpulse",
+      "Jump Strength (N·s)": "jumpModule.jumpImpulse",
+      maxInitialSpeed: "jumpModule.maxInitialSpeed",
+      "Max Takeoff Speed (u/s)": "jumpModule.maxInitialSpeed",
+      jumpPowerCapacity: "jumpModule.jumpPowerCapacity",
+      maxJumpPower: "jumpModule.jumpPowerCapacity",
+      "Max Jump Power (Watts)": "jumpModule.jumpPowerCapacity",
+      jumpConsumesEnergy: "jumpModule.jumpConsumesEnergy",
+      jumpAllowPartialPower: "jumpModule.jumpAllowPartialPower",
+      throwForce: "throwModule.maxThrowSpeed",
+      maxThrowSpeed: "throwModule.maxThrowSpeed",
+      "Max Throw Speed (u/s)": "throwModule.maxThrowSpeed",
+      maxThrowHeight: "throwModule.maxThrowHeight",
+      "Max Throw Height (u)": "throwModule.maxThrowHeight",
+      throwPowerCapacity: "throwModule.throwPowerCapacity",
+      maxPower: "throwModule.throwPowerCapacity",
+      maxThrowPower: "throwModule.throwPowerCapacity",
+      throwWattage: "throwModule.throwPowerCapacity",
+      "Max Throw Power (Watts)": "throwModule.throwPowerCapacity",
+      throwConsumesEnergy: "throwModule.consumesEnergy",
+      pickupReach: "pickupModule.pickupReach",
+      "Pickup Reach (3D) (u)": "pickupModule.pickupReach",
+      maxPickupPower: "pickupModule.maxPower",
+      pickupPowerCapacity: "pickupModule.maxPower",
+      "Max Pickup Power (Watts)": "pickupModule.maxPower",
+      pickupConsumesEnergy: "pickupModule.consumesEnergy",
+      pickupAllowPartialPower: "pickupModule.allowPartialPower",
+      climbSpeed: "climbingModule.climbSpeed",
+      "Max Climb Speed (u/s)": "climbingModule.climbSpeed",
+      climbPowerCapacity: "climbingModule.maxPower",
+      maxClimbPower: "climbingModule.maxPower",
+      "Max Climb Power (Watts)": "climbingModule.maxPower",
+      climbConsumesEnergy: "climbingModule.consumesEnergy",
+      climbAllowPartialPower: "climbingModule.allowPartialPower",
+      horizontalClimbMultiplier: "climbingModule.horizontalClimbMultiplier",
+      wallAdhesionRange: "climbingModule.wallAdhesionRange",
+      maxHp: "healthModule.maxHp",
+      "Max Health (HP)": "healthModule.maxHp",
+      naturalHealRate: "healthModule.naturalHealRate",
+      "Natural Heal Rate (HP/s)": "healthModule.naturalHealRate",
+      healthMaxPower: "healthModule.maxPower",
+      healthConsumesEnergy: "healthModule.consumesEnergy",
+      healthAllowPartialPower: "healthModule.allowPartialPower",
+      joulesPerHp: "healthModule.joulesPerHp",
+      "Energy Cost per HP (Joules/HP)": "healthModule.joulesPerHp",
+      hpPerJoule: "healthModule.joulesPerHp",
+      "Healing Efficiency (HP/Joule)": "healthModule.joulesPerHp",
+      laserMaxPower: "laserModule.maxPower",
+      laserPowerCapacity: "laserModule.maxPower",
+      laserMaxRange: "laserModule.maxRange",
+      laserDamageRate: "laserModule.damageRate",
+      laserThickness: "laserModule.thickness",
+      laserAllowPartialPower: "laserModule.allowPartialPower",
+      meleeImpactForce: "meleeModule.impactForce",
+      meleeMaxPower: "meleeModule.maxPower",
+      meleePunchFrequency: "meleeModule.punchFrequency",
+      meleeReach: "meleeModule.reach",
+      meleeWidth: "meleeModule.width",
+      meleeAllowPartialPower: "meleeModule.allowPartialPower",
+      currentHp: "healthModule.currentHp",
+      "Current Health (HP)": "healthModule.currentHp",
+      currentStamina: "energyPool.currentStamina",
+      "Current Stamina (Joules)": "energyPool.currentStamina",
+      "Current Stamina (J)": "energyPool.currentStamina",
+      staminaCapacity: "energyPool.staminaCapacity",
+      "Stamina Capacity (J)": "energyPool.staminaCapacity",
+      staminaRegenRate: "energyPool.staminaRegenRate",
+      "Stamina Regen Rate (W)": "energyPool.staminaRegenRate",
+      currentEnergy: "energyPool.currentEnergy",
+      "Current Energy (J)": "energyPool.currentEnergy",
+      energyPoolCapacity: "energyPool.energyPoolCapacity",
+      "Energy Pool (Calorie) Capacity (J)": "energyPool.energyPoolCapacity",
+      maxPowerOutput: "energyPool.maxPowerOutput",
+      muscleEfficiency: "energyPool.muscleEfficiency",
+      "Muscle Metabolic Efficiency (Ratio)": "energyPool.muscleEfficiency",
+      assistRadius: "wallEdgeAssistModule.hangDistance",
+      hangDistance: "wallEdgeAssistModule.hangDistance",
+      "Edge Assist Radius (u)": "wallEdgeAssistModule.hangDistance"
+    };
+    if (aliasMap[norm]) {
+      canonical = aliasMap[norm];
+    }
+    const res = {};
+    if (canonical.includes(".")) {
+      PlayerDeltaBuilder.setNestedProperty(res, canonical, value);
+    } else {
+      res[canonical] = value;
+    }
+    return res;
+  }
+}
+class DevConfigPersistence {
+  static async saveIndividualProperty(panel, owner, prop, value, label) {
+    if (panel.isOnlineLocked) {
+      panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+    const objects2 = panel.objects;
+    const dirtyState = panel.dirtyState;
+    const getAllCharacters = panel.getAllCharacters;
+    const canonicalPath = PlayerDeltaBuilder.resolvePropertyPath(owner, prop, label);
+    const isChar = owner instanceof Character || owner.isCharacter;
+    if (isChar) {
+      const char = owner;
+      const playerPrefab = prefabManager.get("prefab_player");
+      if (playerPrefab) {
+        playerPrefab.setProperty(canonicalPath, value, getAllCharacters ? getAllCharacters() : [char]);
+      }
+      const playerDelta = PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(canonicalPath, value);
+      const delta = {
+        clientVersion: panel.currentConfigVersion,
+        sections: ["player"],
+        player: playerDelta
+      };
+      const resp = await fetch("/api/dev/save-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(delta)
+      });
+      if (!resp.ok) {
+        throw new Error(`Server returned ${resp.status}`);
+      }
+      const res = await resp.json();
+      panel.currentConfigVersion = res.version ?? panel.currentConfigVersion + 1;
+      dirtyState.player = false;
+      panel.updateDirtyBadge();
+      panel.showSaveToast(`💾 Saved ${label || canonicalPath}: ${Number(value.toFixed(2))} to Player Prefab & Config`);
+    } else {
+      let affectedObjects = [owner];
+      let prefabsUpsert = void 0;
+      const sections = ["objects"];
+      if (owner.prefabId) {
+        const prefab = prefabManager.get(owner.prefabId);
+        if (prefab) {
+          prefab.setProperty(canonicalPath, value, objects2);
+          prefabsUpsert = [serializePrefab(prefab)];
+          sections.push("prefabs");
+          affectedObjects = objects2.filter((o) => o.prefabId === owner.prefabId && !o.overriddenProperties.has(canonicalPath));
+          if (!affectedObjects.includes(owner)) affectedObjects.push(owner);
+        }
+      }
+      const delta = {
+        clientVersion: panel.currentConfigVersion,
+        sections,
+        objectsDelta: {
+          upsert: affectedObjects.map(serializeGameObject)
+        },
+        prefabsDelta: prefabsUpsert ? { upsert: prefabsUpsert } : void 0
+      };
+      const resp = await fetch("/api/dev/save-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(delta)
+      });
+      if (!resp.ok) {
+        throw new Error(`Server returned ${resp.status}`);
+      }
+      const res = await resp.json();
+      panel.currentConfigVersion = res.version ?? panel.currentConfigVersion + 1;
+      for (const obj of affectedObjects) {
+        dirtyState.modifiedObjects.delete(obj.id);
+      }
+      panel.updateDirtyBadge();
+      const instanceText = affectedObjects.length > 1 ? ` (${affectedObjects.length} instances)` : "";
+      panel.showSaveToast(`💾 Saved ${label || canonicalPath}: ${Number(value.toFixed(2))} to ${owner.name}${owner.prefabId ? " Prefab & Scene" : ""}${instanceText}`);
+    }
+  }
+  static async saveIndividualToggle(panel, owner, keyPath, value, label, saveBtn) {
+    if (panel.isOnlineLocked) {
+      panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+    const objects2 = panel.objects;
+    const dirtyState = panel.dirtyState;
+    const getAllCharacters = panel.getAllCharacters;
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.style.opacity = "0.5";
+    }
+    try {
+      const isChar = owner instanceof Character || owner.isCharacter;
+      if (isChar) {
+        const char = owner;
+        const playerPrefab = prefabManager.get("prefab_player");
+        if (playerPrefab) {
+          playerPrefab.setProperty(keyPath, value, getAllCharacters ? getAllCharacters() : [char]);
+        }
+        const playerDelta = PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(keyPath, value);
+        const delta = {
+          clientVersion: panel.currentConfigVersion,
+          sections: ["player"],
+          player: playerDelta
+        };
+        const resp = await fetch("/api/dev/save-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(delta)
+        });
+        if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+        const res = await resp.json();
+        panel.currentConfigVersion = res.version ?? panel.currentConfigVersion + 1;
+        dirtyState.player = false;
+        panel.updateDirtyBadge();
+        panel.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} to Player Prefab & Config`);
+      } else {
+        let affectedObjects = [owner];
+        let prefabsUpsert = void 0;
+        const sections = ["objects"];
+        if (owner.prefabId) {
+          const prefab = prefabManager.get(owner.prefabId);
+          if (prefab) {
+            prefab.setProperty(keyPath, value, objects2);
+            prefabsUpsert = [serializePrefab(prefab)];
+            sections.push("prefabs");
+            affectedObjects = objects2.filter((o) => o.prefabId === owner.prefabId && !o.overriddenProperties.has(keyPath));
+            if (!affectedObjects.includes(owner)) affectedObjects.push(owner);
+          }
+        }
+        const delta = {
+          clientVersion: panel.currentConfigVersion,
+          sections,
+          objectsDelta: {
+            upsert: affectedObjects.map(serializeGameObject)
+          },
+          prefabsDelta: prefabsUpsert ? { upsert: prefabsUpsert } : void 0
+        };
+        const resp = await fetch("/api/dev/save-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(delta)
+        });
+        if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+        const res = await resp.json();
+        panel.currentConfigVersion = res.version ?? panel.currentConfigVersion + 1;
+        for (const obj of affectedObjects) {
+          dirtyState.modifiedObjects.delete(obj.id);
+        }
+        panel.updateDirtyBadge();
+        const instanceText = affectedObjects.length > 1 ? ` (${affectedObjects.length} instances)` : "";
+        panel.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} to ${owner.name}${owner.prefabId ? " Prefab & Scene" : ""}${instanceText}`);
+      }
+    } catch (err) {
+      console.error(`Failed to save toggle ${label}:`, err);
+      panel.showSaveToast(`❌ Failed to save ${label}: ${err.message || err}`, true);
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = "1";
+      }
+    }
+  }
+  static async savePrefabProperty(panel, prefab, propKey, value, label) {
+    if (panel.isOnlineLocked) {
+      panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+    const objects2 = panel.objects;
+    const dirtyState = panel.dirtyState;
+    prefab.setProperty(propKey, value, objects2);
+    const affectedObjects = objects2.filter((o) => o.prefabId === prefab.id && !o.overriddenProperties.has(propKey));
+    const delta = {
+      clientVersion: panel.currentConfigVersion,
+      sections: ["prefabs", "objects"],
+      prefabsDelta: {
+        upsert: [serializePrefab(prefab)]
+      },
+      objectsDelta: {
+        upsert: affectedObjects.map(serializeGameObject)
+      }
+    };
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta)
+    });
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const res = await resp.json();
+    panel.currentConfigVersion = res.version ?? panel.currentConfigVersion + 1;
+    for (const obj of affectedObjects) {
+      dirtyState.modifiedObjects.delete(obj.id);
+    }
+    panel.updateDirtyBadge();
+    const valDisplay = typeof value === "number" ? Number(value.toFixed(2)) : value;
+    panel.showSaveToast(`💾 Saved ${label || propKey}: ${valDisplay} to ${prefab.name} Prefab & ${affectedObjects.length} live instance${affectedObjects.length === 1 ? "" : "s"}`);
+  }
+  static async savePrefab(panel, prefab) {
+    if (panel.isOnlineLocked) {
+      panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+    const objects2 = panel.objects;
+    const dirtyState = panel.dirtyState;
+    const affectedObjects = objects2.filter((o) => o.prefabId === prefab.id);
+    const delta = {
+      clientVersion: panel.currentConfigVersion,
+      sections: ["prefabs", "objects"],
+      prefabsDelta: {
+        upsert: [serializePrefab(prefab)]
+      },
+      objectsDelta: {
+        upsert: affectedObjects.map(serializeGameObject)
+      }
+    };
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta)
+    });
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const res = await resp.json();
+    panel.currentConfigVersion = res.version ?? panel.currentConfigVersion + 1;
+    for (const obj of affectedObjects) {
+      dirtyState.modifiedObjects.delete(obj.id);
+    }
+    panel.updateDirtyBadge();
+    panel.showSaveToast(`💾 Saved ${prefab.name} Prefab to Project & ${affectedObjects.length} live instances`);
+  }
+  static async saveControlSchema(panel, char, schema) {
+    var _a;
+    if (panel == null ? void 0 : panel.isOnlineLocked) {
+      panel == null ? void 0 : panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+    char.controlSchema = JSON.parse(JSON.stringify(schema));
+    const sections = [];
+    const clientVersion = (panel == null ? void 0 : panel.currentConfigVersion) ?? 1;
+    const delta = {
+      clientVersion,
+      sections
+    };
+    const prefab = char.prefabId ? prefabManager.get(char.prefabId) : void 0;
+    if (prefab) {
+      prefab.controlSchema = JSON.parse(JSON.stringify(schema));
+      if (prefab.archetype instanceof Character) {
+        prefab.archetype.controlSchema = JSON.parse(JSON.stringify(schema));
+      }
+      sections.push("prefabs");
+      delta.prefabsDelta = {
+        upsert: [serializePrefab(prefab)]
+      };
+    }
+    sections.push("player");
+    delta.player = {
+      controlSchema: JSON.parse(JSON.stringify(schema))
+    };
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta)
+    });
+    if (!resp.ok) {
+      throw new Error(`Server returned status ${resp.status}`);
+    }
+    const res = await resp.json();
+    if (panel) {
+      panel.currentConfigVersion = res.version ?? clientVersion + 1;
+      (_a = panel.updateDirtyBadge) == null ? void 0 : _a.call(panel);
+      panel.showSaveToast(`💾 Saved & persisted controls for ${char.name || "Character"}${prefab ? ` to ${prefab.name} Prefab` : ""}!`);
+    }
+  }
+  static async saveProjectConfig(panel) {
+    if (panel.isOnlineLocked) {
+      panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+    const container = panel.container;
+    const arena2 = panel.arena;
+    const dirtyState = panel.dirtyState;
+    const sections = [];
+    if (dirtyState.globalPhysics) sections.push("globalPhysics");
+    if (dirtyState.arena) sections.push("arena");
+    if (dirtyState.spawners) sections.push("spawners");
+    if (sections.length === 0) {
+      sections.push("arena", "globalPhysics", "spawners");
+    }
+    const delta = {
+      clientVersion: panel.currentConfigVersion,
+      sections,
+      spawners: sceneSpawnerManager.getAll().map((s) => ({
+        id: s.id,
+        name: s.name,
+        enabled: s.enabled,
+        prefabId: s.prefabId,
+        intervalMinutes: s.intervalMinutes,
+        maxCount: s.maxCount,
+        designatedSpawnPoints: s.designatedSpawnPoints ? [...s.designatedSpawnPoints] : []
+      }))
+    };
+    if (sections.includes("globalPhysics")) {
+      delta.globalPhysics = {
+        gravity: arena2.gravity,
+        collisionDamageScale: GameObject.globalWorldCollisionDamageScale ?? 1
+      };
+    }
+    if (sections.includes("arena")) {
+      const tileGrid = [];
+      for (let r = 0; r < arena2.rows; r++) {
+        tileGrid.push([...arena2.tileGrid[r]]);
+      }
+      delta.arena = {
+        width: arena2.width,
+        height: arena2.height,
+        wallHeight: arena2.wallHeight,
+        presetId: arena2.currentPresetId,
+        tileGrid
+      };
+    }
+    const btn = container.querySelector("#btn-save-project-config");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "💾 Saving...";
+    }
+    try {
+      const resp = await fetch("/api/dev/save-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(delta)
+      });
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(errText || `Server responded with status ${resp.status}`);
+      }
+      const res = await resp.json();
+      panel.currentConfigVersion = res.version ?? panel.currentConfigVersion + 1;
+      dirtyState.globalPhysics = false;
+      dirtyState.arena = false;
+      dirtyState.spawners = false;
+      panel.updateDirtyBadge();
+      if (btn) {
+        btn.textContent = "✓ Saved Physics, Arena & Spawners!";
+        setTimeout(() => {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "💾 Save Physics, Arena & Spawners";
+          }
+        }, 1500);
+      }
+      panel.showSaveToast(`💾 Saved Physics, Arena & Spawners to project! (v${panel.currentConfigVersion})`);
+    } catch (err) {
+      console.error("Failed to save project config:", err);
+      panel.showSaveToast(`❌ Failed to save: ${err.message || String(err)}`, true);
+      alert("Failed to save project configuration:\n" + (err.message || String(err)));
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "💾 Save Physics, Arena & Spawners";
+      }
+    }
+  }
+  static async pushDataToGit(panel) {
+    if (panel.isOnlineLocked) {
+      panel.showSaveToast("🔒 Git operations disabled in online mode", true);
+      return;
+    }
+    try {
+      panel.showSaveToast("⏳ Pushing data changes to GitHub...");
+      const resp = await fetch("/api/dev/git-push-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(errText || `Server responded with status ${resp.status}`);
+      }
+      const res = await resp.json();
+      panel.showSaveToast(`✅ Data pushed to GitHub! (${res.commitSha || "synced"})`);
+    } catch (err) {
+      console.error("Failed to push data to git:", err);
+      panel.showSaveToast(`❌ Failed to push: ${err.message || String(err)}`, true);
+      alert("Failed to push data to GitHub:\n" + (err.message || String(err)));
+    }
+  }
+  static async reloadFromDisk(panel) {
+    const container = panel.container;
+    const arena2 = panel.arena;
+    const objects2 = panel.objects;
+    const dirtyState = panel.dirtyState;
+    const getAllCharacters = panel.getAllCharacters;
+    const character = panel.character;
+    const getGameLoop = panel.getGameLoop;
+    try {
+      const resp = await fetch("/api/dev/world-config");
+      if (!resp.ok) {
+        throw new Error(`Failed to fetch world-config: ${resp.status}`);
+      }
+      const config = await resp.json();
+      if (config.arena) {
+        arena2.setStandardWallHeight(config.arena.wallHeight);
+        if (config.arena.tileGrid && config.arena.tileGrid.length > 0) {
+          arena2.tileGrid = config.arena.tileGrid.map((row) => [...row]);
+          arena2.rebuildWalls();
+        } else if (config.arena.presetId) {
+          const chars2 = getAllCharacters ? getAllCharacters() : character ? [character] : [];
+          arena2.loadWallPreset(config.arena.presetId, [...chars2, ...objects2]);
+        }
+        const chars = getAllCharacters ? getAllCharacters() : character ? [character] : [];
+        arena2.syncEntitiesWithWalls([...chars, ...objects2]);
+        panel.updateWallPresetUI();
+      }
+      if (config.globalPhysics) {
+        arena2.gravity = config.globalPhysics.gravity;
+        GameObject.globalWorldCollisionDamageScale = config.globalPhysics.collisionDamageScale;
+        const loop = getGameLoop ? getGameLoop() : null;
+        if (loop) {
+          loop.worldCollisionDamageScale = config.globalPhysics.collisionDamageScale;
+        }
+      }
+      if (config.objects) {
+        panel.onClearObjects();
+        for (const ser of config.objects) {
+          const obj = deserializeGameObject(ser);
+          panel.onSpawnObject(obj);
+        }
+      }
+      if (config.prefabs && Array.isArray(config.prefabs)) {
+        prefabManager.loadFromConfig(config.prefabs);
+        panel.renderScenePrefabs();
+      }
+      if (config.spawners && Array.isArray(config.spawners)) {
+        sceneSpawnerManager.loadFromConfig(config.spawners);
+        panel.renderSceneSpawners();
+      }
+      panel.currentConfigVersion = config.version;
+      dirtyState.arena = false;
+      dirtyState.globalPhysics = false;
+      dirtyState.spawners = false;
+      dirtyState.modifiedObjects.clear();
+      dirtyState.deletedObjectIds.clear();
+      panel.updateDirtyBadge();
+      panel.updateSelectorOptions();
+      panel.renderEntityModules();
+      panel.syncEntitySliders();
+      panel.updateInspector();
+      const popover = container.querySelector("#save-options-popover");
+      if (popover) popover.style.display = "none";
+    } catch (err) {
+      console.error("Failed to reload config from disk:", err);
+      alert("Failed to reload from disk:\n" + (err.message || String(err)));
+    }
+  }
+}
+const _ControlsInspector = class _ControlsInspector {
+  // --- Public API ---
+  static isWindowOpen() {
+    return Boolean(this.popoutWindow && !this.popoutWindow.closed);
+  }
+  static isModalOpen() {
+    return Boolean(this.modalOverlay && document.body.contains(this.modalOverlay));
+  }
+  static ensureChannels(schema) {
+    if (!schema) return;
+    if (!schema.keyboardMouse.blocks) {
+      schema.keyboardMouse.blocks = JSON.parse(JSON.stringify(DefaultControlBlocks));
+    }
+    if (!schema.keyboardMouse.pipeline) {
+      schema.keyboardMouse.pipeline = JSON.parse(JSON.stringify(DefaultPipelineBindings));
+    }
+    if (!schema.pipeline) {
+      schema.pipeline = schema.keyboardMouse.pipeline;
+    }
+    if (!schema.keyboardMouse.channels) {
+      schema.keyboardMouse.channels = JSON.parse(JSON.stringify(DefaultPrebuiltChannels));
+    }
+    const migratePipeline = (pl) => {
+      if (!Array.isArray(pl)) return;
+      for (const b of pl) {
+        if (b && b.source && b.source.chordModifiers && Array.isArray(b.source.chordModifiers)) {
+          const chords = b.source.chordModifiers;
+          if (chords.length > 0) {
+            if (!b.source.additionalCodes) b.source.additionalCodes = [];
+            for (const c of chords) {
+              if (c && !b.source.additionalCodes.includes(c)) {
+                b.source.additionalCodes.push(c);
+              }
+            }
+          }
+          delete b.source.chordModifiers;
+        }
+      }
+    };
+    if (schema.keyboardMouse.pipeline) migratePipeline(schema.keyboardMouse.pipeline);
+    if (schema.pipeline) migratePipeline(schema.pipeline);
+  }
+  static ensureSchemaTags(schema) {
+    if (!schema) return;
+    this.ensureChannels(schema);
+    if (!schema.keyboardMouse.tags) {
+      schema.keyboardMouse.tags = [];
+    }
+    schema.keyboardMouse.tags = schema.keyboardMouse.tags.filter(
+      (t) => t.trigger.code !== "Always" && t.trigger.code !== "None" && Boolean(t.trigger.code)
+    );
+    const kTags = schema.keyboardMouse.tags;
+    if (kTags.length === 0) {
+      kTags.push({
+        id: "tag-kbm-action",
+        name: "Action",
+        trigger: { device: "mouse", code: "MouseRight", mode: "hold" }
+      });
+    }
+    for (const rule of schema.keyboardMouse.rules) {
+      if (rule.trigger.code === "Always" || rule.trigger.code === "None" || !rule.trigger.code) {
+        rule.tagId = void 0;
+        continue;
+      }
+      if (!rule.tagId) {
+        let matchingTag = kTags.find(
+          (t) => {
+            var _a, _b;
+            return t.trigger.code === rule.trigger.code && t.trigger.device === rule.trigger.device && (((_a = t.trigger.chordModifiers) == null ? void 0 : _a.join(",")) ?? "") === (((_b = rule.trigger.chordModifiers) == null ? void 0 : _b.join(",")) ?? "");
+          }
+        );
+        if (!matchingTag) {
+          const tagId = "tag-kbm-" + Math.random().toString(36).substring(2, 8);
+          matchingTag = {
+            id: tagId,
+            name: rule.name ? rule.name.replace(/\s*\(.*\)/, "").trim() : `${rule.trigger.code}`,
+            trigger: {
+              device: rule.trigger.device,
+              code: rule.trigger.code,
+              chordModifiers: rule.trigger.chordModifiers ? [...rule.trigger.chordModifiers] : void 0,
+              mode: rule.trigger.mode ?? "press"
+            }
+          };
+          kTags.push(matchingTag);
+        }
+        rule.tagId = matchingTag.id;
+      }
+    }
+    if (!schema.gamepad.tags) {
+      schema.gamepad.tags = [];
+    }
+    schema.gamepad.tags = schema.gamepad.tags.filter(
+      (t) => t.trigger.code !== "Always" && t.trigger.code !== "None" && Boolean(t.trigger.code)
+    );
+    const gpTags = schema.gamepad.tags;
+    if (gpTags.length === 0) {
+      gpTags.push({
+        id: "tag-pad-action",
+        name: "Action",
+        trigger: { device: "gamepad", code: "GamepadRT", mode: "hold" }
+      });
+    }
+    for (const rule of schema.gamepad.rules) {
+      if (rule.trigger.code === "Always" || rule.trigger.code === "None" || !rule.trigger.code) {
+        rule.tagId = void 0;
+        continue;
+      }
+      if (!rule.tagId) {
+        let matchingTag = gpTags.find((t) => t.trigger.code === rule.trigger.code);
+        if (!matchingTag) {
+          const tagId = "tag-pad-" + Math.random().toString(36).substring(2, 8);
+          matchingTag = {
+            id: tagId,
+            name: rule.name ? rule.name.replace(/\s*\(.*\)/, "").trim() : `${rule.trigger.code}`,
+            trigger: {
+              device: "gamepad",
+              code: rule.trigger.code,
+              mode: rule.trigger.mode ?? "press"
+            }
+          };
+          gpTags.push(matchingTag);
+        }
+        rule.tagId = matchingTag.id;
+      }
+    }
+    if (!schema.touch.tags) {
+      schema.touch.tags = [];
+    }
+  }
+  static getActiveDeviceTags(schema) {
+    if (this.activeTab === "keyboardMouse") {
+      if (!schema.keyboardMouse.tags) schema.keyboardMouse.tags = [];
+      return schema.keyboardMouse.tags;
+    }
+    if (this.activeTab === "gamepad") {
+      if (!schema.gamepad.tags) schema.gamepad.tags = [];
+      return schema.gamepad.tags;
+    }
+    if (!schema.touch.tags) schema.touch.tags = [];
+    return schema.touch.tags;
+  }
+  static getActiveSchema(char) {
+    if (char.controlSchema) {
+      this.ensureSchemaTags(char.controlSchema);
+      return char.controlSchema;
+    }
+    if (char.prefabId) {
+      const prefab = prefabManager.get(char.prefabId);
+      if (prefab == null ? void 0 : prefab.controlSchema) {
+        char.controlSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
+        this.ensureSchemaTags(char.controlSchema);
+        return char.controlSchema;
+      }
+    }
+    char.controlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
+    this.ensureSchemaTags(char.controlSchema);
+    return char.controlSchema;
+  }
+  static setActiveSchema(char, schema) {
+    char.controlSchema = JSON.parse(JSON.stringify(schema));
+  }
+  static notifyRuleFired(ruleId) {
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      const doc = this.popoutWindow.document;
+      const card = doc.getElementById(`rule-card-${ruleId}`);
+      if (card) {
+        card.style.borderColor = "#38bdf8";
+        card.style.boxShadow = "0 0 12px rgba(56, 189, 248, 0.8)";
+        setTimeout(() => {
+          if (card) {
+            card.style.borderColor = "rgba(255, 255, 255, 0.08)";
+            card.style.boxShadow = "none";
+          }
+        }, 150);
+      }
+    }
+    if (this.modalOverlay) {
+      const card = this.modalOverlay.querySelector(`#rule-card-${ruleId}`);
+      if (card) {
+        card.style.borderColor = "#38bdf8";
+        card.style.boxShadow = "0 0 12px rgba(56, 189, 248, 0.8)";
+        setTimeout(() => {
+          if (card) {
+            card.style.borderColor = "rgba(255, 255, 255, 0.08)";
+            card.style.boxShadow = "none";
+          }
+        }, 150);
+      }
+    }
+  }
+  static updateLiveDiagnostics(char, ctx) {
+    const isPopoutActive = Boolean(this.popoutWindow && !this.popoutWindow.closed);
+    const isModalActive = this.isModalOpen();
+    if (!isPopoutActive && !isModalActive) return;
+    if (this.modalChar !== char || !this.workingSchema) return;
+    const rules = this.activeTab === "keyboardMouse" ? this.workingSchema.keyboardMouse.rules : this.activeTab === "gamepad" ? this.workingSchema.gamepad.rules : this.workingSchema.touch.rules;
+    const effectiveCtx = ctx ?? {
+      character: char,
+      dt: 1 / 60,
+      isHoldingItem: Boolean(char.heldObject),
+      heldItemIsEdible: Boolean(char.canConsumeHeldObject()),
+      heldItemHasPrimaryAbility: Boolean(char.hasPrimaryItemAbility()),
+      targetInReach: null,
+      isGrounded: Boolean(char.isRestingOnSurface),
+      isClimbing: Boolean(char.isClimbing),
+      stagedAction: char.stagedAction,
+      facingAngle: char.facingAngle ?? 0,
+      mouseAimPos: { x: 0, y: 0 },
+      reticleAimPos: { x: 0, y: 0 },
+      isKeyDown: () => false,
+      isMouseButtonDown: () => false,
+      isGamepadButtonDown: () => false,
+      getGamepadAxis: () => ({ x: 0, y: 0 }),
+      schema: this.workingSchema
+    };
+    const checkRules = (ruleList) => {
+      for (const rule of ruleList) {
+        const match = ControlSchemaArbiter.evaluateAllConditions(rule, effectiveCtx);
+        if (isPopoutActive) {
+          const pip = this.popoutWindow.document.getElementById(`pip-${rule.id}`);
+          if (pip) {
+            pip.style.background = match ? "#10b981" : "#475569";
+            pip.style.boxShadow = match ? "0 0 6px rgba(16, 185, 129, 0.85)" : "none";
+          }
+        }
+        if (isModalActive && this.modalOverlay) {
+          const pip = this.modalOverlay.querySelector(`#pip-${rule.id}`);
+          if (pip) {
+            pip.style.background = match ? "#10b981" : "#475569";
+            pip.style.boxShadow = match ? "0 0 6px rgba(16, 185, 129, 0.85)" : "none";
+          }
+        }
+        for (const stmt of ControlSchemaArbiter.getRuleBody(rule)) {
+          if (stmt.type === "nestedThread") {
+            checkRules(stmt.rules);
+          }
+        }
+      }
+    };
+    checkRules(rules);
+  }
+  // --- Window / Modal Open & Lifecycle ---
+  static getWindowName(char) {
+    return "ControlsSchemaWindow_" + ((char == null ? void 0 : char.playerId) || "keyboard");
+  }
+  static openModal(panel, char) {
+    this.openWindow(panel, char);
+  }
+  static openWindow(panel, char) {
+    this.modalChar = char;
+    this.modalPanel = panel;
+    const schema = this.getActiveSchema(char);
+    this.ensureChannels(schema);
+    this.workingSchema = JSON.parse(JSON.stringify(schema));
+    this.showJsonEditor = false;
+    this.jsonErrorMessage = null;
+    this.listeningRuleId = null;
+    this.listeningForwardTrigger = false;
+    this.listeningLocoKey = null;
+    this.listeningPipelineTarget = null;
+    this.listeningBlockTarget = null;
+    if (typeof document !== "undefined" && document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch {
+      }
+    }
+    try {
+      localStorage.setItem("pcg_controls_popout_open", "true");
+    } catch {
+    }
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      try {
+        this.popoutWindow.document.title = `🎮 Controls Schema — ${char.name || "Character"}`;
+        this.popoutWindow.focus();
+        this.renderActiveView();
+        return;
+      } catch {
+        this.popoutWindow = null;
+      }
+    }
+    const width = 840;
+    const height = 900;
+    const left = Math.max(20, window.screenX + 30);
+    const top = Math.max(20, window.screenY + 30);
+    const windowFeatures = `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`;
+    let popout = null;
+    try {
+      popout = window.open("", this.getWindowName(char), windowFeatures);
+    } catch {
+      popout = null;
+    }
+    if (popout && !popout.closed) {
+      this.setupPopoutWindow(popout, char);
+      return;
+    }
+    this.openInCanvasModal(panel, char);
+  }
+  static setupPopoutWindow(popout, char) {
+    this.popoutWindow = popout;
+    this.isParentReloading = false;
+    this.lastRebindTime = Date.now();
+    if (this.modalOverlay) {
+      this.modalOverlay.remove();
+      this.modalOverlay = null;
+    }
+    try {
+      popout.document.open();
+      popout.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>🎮 Controls Schema — ${char.name || "Character"}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #090d16;
+      color: #e2e8f0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
+    ::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 5px; }
+    ::-webkit-scrollbar-thumb:hover { background: #7dd3fc; }
+    .btn-secondary-action {
+      background: #1e293b;
+      color: #cbd5e1;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-secondary-action:hover {
+      background: #334155;
+      color: #f8fafc;
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+    .dev-select {
+      background: #0f172a;
+      color: #cbd5e1;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 5px;
+      padding: 4px 6px;
+      outline: none;
+    }
+    .dev-select:focus {
+      border-color: #38bdf8;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <div id="controls-window-root" style="flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden;"></div>
+  <script>
+    (function() {
+      function tryRebind() {
+        try {
+          if (window.opener && window.opener.ControlsInspector && typeof window.opener.ControlsInspector.rebindPopoutWindow === "function") {
+            window.opener.ControlsInspector.rebindPopoutWindow(window);
+            return true;
+          }
+        } catch(e) {}
+        return false;
+      }
+
+      window.addEventListener("DOMContentLoaded", function() {
+        setTimeout(tryRebind, 50);
+      });
+
+      setInterval(function() {
+        try {
+          if (!window.opener || window.opener.closed) return;
+          if (window.__needsRebind && window.opener.ControlsInspector) {
+            window.__needsRebind = false;
+            tryRebind();
+          }
+        } catch(e) {}
+      }, 250);
+    })();
+  <\/script>
+</body>
+</html>`);
+      popout.document.close();
+      document.querySelectorAll("link[rel='stylesheet'], style").forEach((tag) => {
+        try {
+          popout.document.head.appendChild(tag.cloneNode(true));
+        } catch {
+        }
+      });
+      popout.addEventListener("unload", () => {
+        if (!_ControlsInspector.isParentReloading) {
+          try {
+            localStorage.removeItem("pcg_controls_popout_open");
+          } catch {
+          }
+          _ControlsInspector.popoutWindow = null;
+        }
+      });
+    } catch (e) {
+      console.warn("Could not setup popout document:", e);
+    }
+    this.renderActiveView();
+  }
+  static restorePopoutIfPreviouslyOpen(panel, char) {
+    let wasOpen = false;
+    try {
+      wasOpen = localStorage.getItem("pcg_controls_popout_open") === "true";
+    } catch {
+    }
+    if (!wasOpen) return;
+    this.modalChar = char;
+    this.modalPanel = panel;
+    const windowName = this.getWindowName(char);
+    let popout = null;
+    try {
+      popout = window.open("", windowName);
+    } catch {
+      popout = null;
+    }
+    if (popout && !popout.closed) {
+      const schema = this.getActiveSchema(char);
+      this.ensureChannels(schema);
+      this.workingSchema = JSON.parse(JSON.stringify(schema));
+      this.setupPopoutWindow(popout, char);
+    }
+  }
+  static rebindPopoutWindow(popout) {
+    if (!popout || popout.closed) return;
+    if (Date.now() - this.lastRebindTime < 350) return;
+    this.lastRebindTime = Date.now();
+    this.popoutWindow = popout;
+    this.isParentReloading = false;
+    if (!this.modalChar && window.character) {
+      this.modalChar = window.character;
+    }
+    if (!this.modalPanel && window.devPanel) {
+      this.modalPanel = window.devPanel;
+    }
+    if (this.modalChar) {
+      const schema = this.getActiveSchema(this.modalChar);
+      this.ensureChannels(schema);
+      this.workingSchema = JSON.parse(JSON.stringify(schema));
+      this.setupPopoutWindow(popout, this.modalChar);
+    }
+  }
+  static openInCanvasModal(_panel, _char) {
+    if (typeof document !== "undefined" && document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch {
+      }
+    }
+    if (this.modalOverlay) {
+      this.modalOverlay.remove();
+    }
+    const overlay = document.createElement("div");
+    overlay.id = "controls-modal-overlay";
+    overlay.style.cssText = `
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(3, 7, 18, 0.80);
+      backdrop-filter: blur(6px);
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      overflow: hidden;
+      box-sizing: border-box;
+    `;
+    document.body.appendChild(overlay);
+    this.modalOverlay = overlay;
+    overlay.onclick = (e) => {
+      if (e.target === overlay) {
+        this.closeModal();
+      }
+    };
+    this.keydownListener = (e) => {
+      if (e.code === "Escape") {
+        if (this.listeningRuleId || this.listeningForwardTrigger) return;
+        this.closeModal();
+      }
+    };
+    window.addEventListener("keydown", this.keydownListener);
+    this.renderActiveView();
+  }
+  static closeModal() {
+    try {
+      localStorage.removeItem("pcg_controls_popout_open");
+    } catch {
+    }
+    if (this.recorderCleanup) {
+      this.recorderCleanup();
+      this.recorderCleanup = null;
+    }
+    if (this.keydownListener) {
+      window.removeEventListener("keydown", this.keydownListener);
+      this.keydownListener = null;
+    }
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      this.popoutWindow.close();
+      this.popoutWindow = null;
+    }
+    if (this.modalOverlay) {
+      this.modalOverlay.remove();
+      this.modalOverlay = null;
+    }
+    const popover = document.getElementById("action-picker-popover");
+    if (popover) popover.remove();
+    this.modalChar = null;
+    this.modalPanel = null;
+    this.workingSchema = null;
+    this.listeningRuleId = null;
+    this.listeningForwardTrigger = false;
+    this.listeningLocoKey = null;
+    this.listeningPipelineTarget = null;
+    this.listeningBlockTarget = null;
+  }
+  static async saveAndCommit() {
+    if (!this.modalChar || !this.workingSchema) return;
+    const char = this.modalChar;
+    const schema = this.workingSchema;
+    const root = this.getRootContainer();
+    if (root) {
+      root.querySelectorAll(".select-action-stage-group").forEach((sel) => {
+        const rId = sel.dataset.ruleId;
+        const sIdx = parseInt(sel.dataset.statementIdx ?? "0", 10);
+        const val = sel.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const stmts = ControlSchemaArbiter.getRuleBody(rule);
+          if (stmts[sIdx] && stmts[sIdx].type === "action") {
+            const act = stmts[sIdx].action;
+            act.args = { ...act.args || {}, group: val };
+            rule.body = stmts;
+            ControlSchemaArbiter.syncRuleFromStatements(rule);
+          }
+        }
+      });
+      root.querySelectorAll(".select-action-stage").forEach((sel) => {
+        const rId = sel.dataset.ruleId;
+        const sIdx = parseInt(sel.dataset.statementIdx ?? "0", 10);
+        const val = sel.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const stmts = ControlSchemaArbiter.getRuleBody(rule);
+          if (stmts[sIdx] && stmts[sIdx].type === "action") {
+            const act = stmts[sIdx].action;
+            act.args = { ...act.args || {}, stage: val };
+            rule.body = stmts;
+            ControlSchemaArbiter.syncRuleFromStatements(rule);
+          }
+        }
+      });
+      root.querySelectorAll(".select-cond-stage-group").forEach((sel) => {
+        const rId = sel.dataset.ruleId;
+        const cPath = sel.dataset.condPath ?? "";
+        const val = sel.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = _ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.stageGroup = val;
+          }
+        }
+      });
+      root.querySelectorAll(".select-cond-stage").forEach((sel) => {
+        const rId = sel.dataset.ruleId;
+        const cPath = sel.dataset.condPath ?? "";
+        const val = sel.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = _ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.param = val;
+          }
+        }
+      });
+      root.querySelectorAll(".input-cond-param").forEach((inp) => {
+        const rId = inp.dataset.ruleId;
+        const cPath = inp.dataset.condPath ?? "";
+        const val = inp.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = _ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.param = val;
+          }
+        }
+      });
+    }
+    const saveBtn = root == null ? void 0 : root.querySelector("#btn-modal-save-close");
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "⏳ Saving to Project...";
+    }
+    try {
+      await DevConfigPersistence.saveControlSchema(this.modalPanel, char, schema);
+      const prefab = char.prefabId ? prefabManager.get(char.prefabId) : void 0;
+      const targetDesc = prefab ? `${char.name || "Character"} & ${prefab.name} Prefab` : char.name || "Character";
+      this.showToast(`✓ Saved & persisted controls for ${targetDesc} to worldConfig.json!`);
+    } catch (err) {
+      console.error("Failed to save controls:", err);
+      this.showToast(`❌ Save failed: ${err.message || err}`, true);
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "💾 Save & Apply";
+      }
+      this.renderActiveView();
+    }
+  }
+  static showToast(message, isError = false) {
+    const targets = [document];
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      targets.push(this.popoutWindow.document);
+    }
+    for (const doc of targets) {
+      const existing = doc.getElementById("controls-save-toast");
+      if (existing) existing.remove();
+      const toast = doc.createElement("div");
+      toast.id = "controls-save-toast";
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        background: ${isError ? "rgba(239, 68, 68, 0.95)" : "rgba(16, 185, 129, 0.95)"};
+        color: #ffffff;
+        padding: 10px 18px;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        z-index: 10001;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        pointer-events: none;
+      `;
+      toast.innerHTML = `<span>${isError ? "⚠️" : "✓"}</span> <span>${message}</span>`;
+      doc.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transition = "opacity 0.3s ease-out";
+        setTimeout(() => toast.remove(), 300);
+      }, 2e3);
+    }
+  }
+  // --- View Rendering (Popout Window or In-Canvas Dialog) ---
+  static getRootContainer() {
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      return this.popoutWindow.document.getElementById("controls-window-root");
+    }
+    if (this.modalOverlay) {
+      return this.modalOverlay;
+    }
+    return null;
+  }
+  static renderActiveView() {
+    const root = this.getRootContainer();
+    if (!root || !this.modalChar || !this.workingSchema) return;
+    const existingBody = root.querySelector("#controls-scroll-body");
+    const prevScrollTop = existingBody ? existingBody.scrollTop : 0;
+    const char = this.modalChar;
+    const schema = this.workingSchema;
+    const prefab = char.prefabId ? prefabManager.get(char.prefabId) : void 0;
+    const prefabName = prefab ? `${prefab.icon} ${prefab.name}` : null;
+    const isPopout = Boolean(this.popoutWindow && !this.popoutWindow.closed);
+    const activeRulesCount = this.activeTab === "keyboardMouse" ? schema.keyboardMouse.rules.length : this.activeTab === "gamepad" ? schema.gamepad.rules.length : schema.touch.rules.length;
+    const dialogHtml = `
+      <div id="controls-dialog-container" style="
+        background: #0b1120;
+        ${isPopout ? "height: 100%; border: none; border-radius: 0;" : "border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 10px; width: 880px; max-width: 96vw; height: min(900px, calc(100vh - 28px)); max-height: calc(100vh - 28px);"}
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        color: #ffffff;
+        box-shadow: ${isPopout ? "none" : "0 25px 60px rgba(0, 0, 0, 0.85)"};
+      ">
+        <style>
+          #controls-scroll-body::-webkit-scrollbar { width: 10px; height: 10px; }
+          #controls-scroll-body::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); border-radius: 5px; }
+          #controls-scroll-body::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 5px; border: 2px solid rgba(15, 23, 42, 0.6); }
+          #controls-scroll-body::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.55); }
+        </style>
+        <!-- Title Bar / Header -->
+        <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-bottom: 1px solid rgba(148, 163, 184, 0.2);">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.15rem;">🎮</span>
+            <div>
+              <div style="font-weight: 700; font-size: 0.94rem; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                Controls Schema: <span style="color: #ffffff;">${char.name || "Character"}</span>
+                <span class="badge" style="background: rgba(255, 255, 255, 0.08); color: #ffffff; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.2);">ID: ${char.id}</span>
+                ${isPopout ? `<span class="badge" style="background: rgba(255, 255, 255, 0.08); color: #ffffff; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.2);">🪟 Separate Window</span>` : ""}
+              </div>
+            </div>
+          </div>
+          <button id="btn-close-controls-modal" class="btn-secondary-action" style="padding: 4px 10px; font-size: 0.82rem; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;" title="Close Window">✕ Close</button>
+        </div>
+
+        <!-- Subheader: Linked Prefab Bar & Preset Selector -->
+        <div style="flex-shrink: 0; padding: 10px 18px; background: rgba(15, 23, 42, 0.7); border-bottom: 1px solid rgba(148, 163, 184, 0.15); display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 6px 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.76rem; color: #94a3b8; font-weight: 600;">Linked Archetype:</span>
+              <span style="font-size: 0.78rem; color: #ffffff; font-weight: 600;">${prefabName || "(Standalone Character)"}</span>
+              ${prefab ? `<span class="badge" style="background: rgba(255, 255, 255, 0.08); color: #ffffff; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.2);">Auto-Persists to Prefab on Save</span>` : ""}
+            </div>
+            <div style="display: flex; gap: 6px;">
+              ${prefab ? `
+                <button id="btn-revert-controls-from-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.05);" title="Discard unsaved changes and reload clean controls from prefab archetype">↺ Reset to Prefab Defaults</button>
+              ` : `
+                <button id="btn-make-char-prefab" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.05);" title="Turn this character into a reusable Character Prefab with this control schema">📦 Save as New Prefab</button>
+              `}
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+            <label style="font-size: 0.78rem; font-weight: 600; color: #94a3b8; white-space: nowrap;">Preset Template:</label>
+            <select id="select-control-preset" class="dev-select" style="flex: 1; font-size: 0.76rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.25);">
+              ${BuiltinControlSchemas.map(
+      (p) => `<option value="${p.id}" ${p.id === schema.id ? "selected" : ""}>${p.name}</option>`
+    ).join("")}
+              <option value="custom" ${!BuiltinControlSchemas.some((b) => b.id === schema.id) ? "selected" : ""}>Custom (User Modified)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Device Channel Tabs -->
+        <div style="flex-shrink: 0; display: flex; gap: 4px; padding: 8px 18px 0 18px; background: rgba(15, 23, 42, 0.5);">
+          <button id="tab-btn-kbm" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "keyboardMouse" ? "background: #0f172a; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); border-bottom: 2px solid #ffffff;" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}" >
+            ⌨️ Keyboard & Mouse
+          </button>
+          <button id="tab-btn-pad" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "gamepad" ? "background: #0f172a; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); border-bottom: 2px solid #ffffff;" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}" >
+            🎮 Gamepad
+          </button>
+          <button id="tab-btn-tch" class="btn-secondary-action" style="flex: 1; font-size: 0.78rem; padding: 7px 12px; font-weight: 600; border-bottom: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; ${this.activeTab === "touch" ? "background: #0f172a; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); border-bottom: 2px solid #ffffff;" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}" >
+            📱 Mobile Touch
+          </button>
+        </div>
+
+        <!-- Scrollable Modal Body -->
+        <div id="controls-scroll-body" style="flex: 1 1 0px; min-height: 0; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.4) rgba(15, 23, 42, 0.6); padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #090d16;">
+          
+          ${this.activeTab === "keyboardMouse" ? `
+            <!-- Mode Switcher Pill -->
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 8px; padding: 8px 14px;">
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="btn-mode-blocks" class="btn-secondary-action" type="button" style="font-size: 0.76rem; padding: 6px 14px; font-weight: 700; border-radius: 5px; ${this.viewMode === "blocks" ? "background: #38bdf8; color: #020617; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56,189,248,0.35);" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}">
+                  🧱 Modular Control Blocks (Prebuilt)
+                </button>
+                <button id="btn-mode-pipeline" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 6px 14px; font-weight: 600; border-radius: 5px; ${this.viewMode === "pipeline" ? "background: #38bdf8; color: #020617; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56,189,248,0.35);" : "background: transparent; color: #64748b; border: 1px solid rgba(148, 163, 184, 0.15);"}">
+                  🔀 Signal Pipeline (Advanced)
+                </button>
+              </div>
+              <span style="font-size: 0.70rem; color: #94a3b8;">
+                ${this.viewMode === "blocks" ? "✨ Prebuilt module blocks: self-contained logic, intuitive options, and ✕ buttons to disable" : "Left-to-Right raw wire signal flow"}
+              </span>
+            </div>
+
+            ${this.viewMode === "blocks" ? this.renderBlocksHtml(schema) : this.renderPipelineHtml(schema)}
+          ` : `
+            <!-- Gamepad / Touch Locomotion Paradigm Section -->
+            <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+              <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
+                <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
+                  🎮 Locomotion & Aiming
+                </span>
+              </div>
+              <div id="controls-paradigms-container">
+                ${this.renderParadigmsHtml(schema)}
+              </div>
+            </div>
+
+            <!-- Rules Matrix Header -->
+            <div id="section-rules-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15);">
+              <span style="font-size: 0.80rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
+                ⚡ Action Threads (${activeRulesCount} branches)
+              </span>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <button id="btn-add-control-rule" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600;">
+                  + Add Rule
+                </button>
+              </div>
+            </div>
+
+            <!-- Rules List Container -->
+            <div id="rules-list-container" style="display: flex; flex-direction: column; gap: 8px;">
+              ${this.renderRulesListHtml(char, schema)}
+            </div>
+          `}
+
+          <!-- Collapsible Raw JSON Editor Drawer -->
+          <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <button id="btn-toggle-json-drawer" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 10px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;">
+                ${this.showJsonEditor ? "▲ Hide Raw JSON" : "📋 View / Edit Raw JSON"}
+              </button>
+              <span style="font-size: 0.70rem; color: #64748b;">Direct JSON Schema inspection & export</span>
+            </div>
+
+            ${this.showJsonEditor ? `
+              <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 6px; padding: 8px;">
+                ${this.jsonErrorMessage ? `<div style="color: #ffffff; font-size: 0.72rem; background: rgba(239, 68, 68, 0.2); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.4);">⚠️ ${this.jsonErrorMessage}</div>` : ""}
+                <textarea id="textarea-controls-json" style="width: 100%; height: 200px; font-family: monospace; font-size: 0.72rem; background: #090d16; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 4px; padding: 8px; resize: vertical; box-sizing: border-box;" spellcheck="false">${JSON.stringify(
+      schema,
+      null,
+      2
+    )}</textarea>
+                <div style="display: flex; justify-content: flex-end; gap: 6px;">
+                  <button id="btn-copy-json" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;">📋 Copy JSON</button>
+                  <button id="btn-apply-json" class="btn-secondary-action" style="font-size: 0.72rem; padding: 3px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600;">Apply JSON Changes</button>
+                </div>
+              </div>
+            ` : ""}
+          </div>
+        </div>
+
+        <!-- Footer Bar -->
+        <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: rgba(15, 23, 42, 0.98); border-top: 1px solid rgba(148, 163, 184, 0.15);">
+          <div style="font-size: 0.74rem; color: #94a3b8;">
+            Schema: <strong style="color: #ffffff;">${schema.name}</strong>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="btn-modal-cancel" class="btn-secondary-action" style="padding: 6px 14px; font-size: 0.78rem; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); background: transparent;">Close</button>
+            <button id="btn-modal-save-close" class="btn-secondary-action" style="padding: 6px 18px; font-size: 0.78rem; font-weight: 700; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.4); background: rgba(255, 255, 255, 0.12);" title="Saves live controls, updates the linked prefab archetype, and permanently persists to worldConfig.json on disk">
+              💾 Save & Apply
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    root.innerHTML = dialogHtml;
+    if (prevScrollTop > 0) {
+      const newBody = root.querySelector("#controls-scroll-body");
+      if (newBody) newBody.scrollTop = prevScrollTop;
+    }
+    this.attachEventListeners(root);
+  }
+  // --- Sub-Section HTML Builders ---
+  static renderTagsSectionHtml(schema) {
+    const tags = this.getActiveDeviceTags(schema);
+    if (tags.length === 0) {
+      return `
+        <div style="text-align: center; color: #94a3b8; font-size: 0.74rem; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.2);">
+          No action keybind tags defined yet. Click "+ Add Keybind Tag" to create one.
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+          <button id="btn-add-tag" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.05);">
+            + Add Keybind Tag
+          </button>
+        </div>
+      `;
+    }
+    return `
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: grid; grid-template-columns: 1fr 150px 32px; gap: 8px; font-size: 0.68rem; font-weight: 700; color: #94a3b8; padding: 0 4px;">
+          <span>ACTION NAME</span>
+          <span>KEY / BUTTON BIND</span>
+          <span></span>
+        </div>
+        ${tags.map((tag) => {
+      const isListening = this.listeningTagId === tag.id;
+      const triggerLabel = this.formatTriggerLabel(tag);
+      return `
+            <div class="keybind-tag-row" style="display: grid; grid-template-columns: 1fr 150px 32px; gap: 8px; align-items: center; background: rgba(0,0,0,0.25); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 4px; padding: 4px 6px;">
+              <input type="text" class="input-tag-name dev-input" data-tag-id="${tag.id}" value="${tag.name}" placeholder="e.g. Action, Sprint, Aim, Jump..." style="font-size: 0.74rem; padding: 2px 6px; font-weight: 600; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.25);" />
+              <button class="btn-bind-tag btn-secondary-action" data-tag-id="${tag.id}" style="font-size: 0.72rem; padding: 3px 8px; font-weight: 600; text-align: center; border: 1px solid rgba(148, 163, 184, 0.25); ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #ffffff; background: rgba(255, 255, 255, 0.05);"}" title="Click to bind key or mouse button">
+                ${isListening ? "🔴 Press key..." : triggerLabel}
+              </button>
+              <button class="btn-delete-tag btn-secondary-action" data-tag-id="${tag.id}" style="padding: 2px 4px; color: #94a3b8; font-size: 0.70rem; border: 1px solid rgba(148, 163, 184, 0.2); background: transparent;" title="Delete Tag">
+                🗑️
+              </button>
+            </div>
+          `;
+    }).join("")}
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+          <button id="btn-add-tag" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.05);">
+            + Add Keybind Tag
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  static getActiveStageGroups(schema) {
+    if (!schema.stageGroups || !Array.isArray(schema.stageGroups) || schema.stageGroups.length === 0) {
+      if (schema.stages && Array.isArray(schema.stages) && schema.stages.length > 0) {
+        schema.stageGroups = [{ name: "default", stages: [...schema.stages] }];
+      } else {
+        schema.stageGroups = [{ name: "default", stages: ["none"] }];
+      }
+    }
+    for (const g of schema.stageGroups) {
+      if (!g.stages || !Array.isArray(g.stages) || g.stages.length === 0) {
+        g.stages = ["none"];
+      } else if (!g.stages.includes("none")) {
+        g.stages.unshift("none");
+      } else if (g.stages[0] !== "none") {
+        g.stages = ["none", ...g.stages.filter((s) => s !== "none")];
+      }
+    }
+    schema.stages = schema.stageGroups[0].stages;
+    return schema.stageGroups;
+  }
+  static getStagesForGroup(schema, groupName) {
+    const groups = this.getActiveStageGroups(schema);
+    const g = groups.find((grp) => grp.name === (groupName || "default")) || groups[0];
+    return g ? g.stages : ["none"];
+  }
+  static getActiveStages(schema) {
+    return this.getActiveStageGroups(schema)[0].stages;
+  }
+  static renameStageGroupInRules(schema, oldGroupName, newGroupName) {
+    var _a, _b, _c;
+    const processRule = (rule) => {
+      var _a2, _b2;
+      const conds = ControlSchemaArbiter.getRuleConditions(rule);
+      let condsChanged = false;
+      const updateCond = (cond) => {
+        if (cond.type === "stagedActionIs" && (cond.stageGroup === oldGroupName || !cond.stageGroup && oldGroupName === "default")) {
+          cond.stageGroup = newGroupName;
+          condsChanged = true;
+        }
+        if (cond.type === "group" && cond.conditions) {
+          for (const sub of cond.conditions) {
+            updateCond(sub);
+          }
+        }
+      };
+      for (const cond of conds) {
+        updateCond(cond);
+      }
+      if (condsChanged) {
+        rule.conditions = conds;
+        rule.condition = conds[0];
+      }
+      const stmts = ControlSchemaArbiter.getRuleBody(rule);
+      let stmtsChanged = false;
+      for (const stmt of stmts) {
+        if (stmt.type === "action") {
+          if (stmt.action.moduleId === "staging" && stmt.action.intent === "setStage") {
+            if (((_a2 = stmt.action.args) == null ? void 0 : _a2.group) === oldGroupName || !((_b2 = stmt.action.args) == null ? void 0 : _b2.group) && oldGroupName === "default") {
+              stmt.action.args = { ...stmt.action.args || {}, group: newGroupName };
+              stmtsChanged = true;
+            }
+          }
+        } else if (stmt.type === "nestedThread") {
+          for (const childRule of stmt.rules) {
+            processRule(childRule);
+          }
+        }
+      }
+      if (stmtsChanged) {
+        rule.body = stmts;
+        ControlSchemaArbiter.syncRuleFromStatements(rule);
+      }
+    };
+    if ((_a = schema.keyboardMouse) == null ? void 0 : _a.rules) {
+      for (const r of schema.keyboardMouse.rules) processRule(r);
+    }
+    if ((_b = schema.gamepad) == null ? void 0 : _b.rules) {
+      for (const r of schema.gamepad.rules) processRule(r);
+    }
+    if ((_c = schema.touch) == null ? void 0 : _c.rules) {
+      for (const r of schema.touch.rules) processRule(r);
+    }
+  }
+  static renameStageInRules(schema, groupName, oldName, newName) {
+    var _a, _b, _c;
+    const processRule = (rule) => {
+      var _a2, _b2, _c2;
+      const conds = ControlSchemaArbiter.getRuleConditions(rule);
+      let condsChanged = false;
+      const updateCond = (cond) => {
+        const matchesGroup = (cond.stageGroup || "default") === (groupName || "default");
+        if (cond.type === "stagedActionIs" && matchesGroup && (cond.param === oldName || !cond.param && oldName === "none")) {
+          cond.param = newName;
+          condsChanged = true;
+        }
+        if (cond.type === "group" && cond.conditions) {
+          for (const sub of cond.conditions) {
+            updateCond(sub);
+          }
+        }
+      };
+      for (const cond of conds) {
+        updateCond(cond);
+      }
+      if (condsChanged) {
+        rule.conditions = conds;
+        rule.condition = conds[0];
+      }
+      const stmts = ControlSchemaArbiter.getRuleBody(rule);
+      let stmtsChanged = false;
+      for (const stmt of stmts) {
+        if (stmt.type === "action") {
+          if (stmt.action.moduleId === "staging" && stmt.action.intent === "setStage") {
+            const matchesGroup = (((_a2 = stmt.action.args) == null ? void 0 : _a2.group) || "default") === (groupName || "default");
+            if (matchesGroup && (((_b2 = stmt.action.args) == null ? void 0 : _b2.stage) === oldName || !((_c2 = stmt.action.args) == null ? void 0 : _c2.stage) && oldName === "none")) {
+              stmt.action.args = { ...stmt.action.args || {}, stage: newName };
+              stmtsChanged = true;
+            }
+          }
+        } else if (stmt.type === "nestedThread") {
+          for (const childRule of stmt.rules) {
+            processRule(childRule);
+          }
+        }
+      }
+      if (stmtsChanged) {
+        rule.body = stmts;
+        ControlSchemaArbiter.syncRuleFromStatements(rule);
+      }
+    };
+    if ((_a = schema.keyboardMouse) == null ? void 0 : _a.rules) {
+      for (const r of schema.keyboardMouse.rules) processRule(r);
+    }
+    if ((_b = schema.gamepad) == null ? void 0 : _b.rules) {
+      for (const r of schema.gamepad.rules) processRule(r);
+    }
+    if ((_c = schema.touch) == null ? void 0 : _c.rules) {
+      for (const r of schema.touch.rules) processRule(r);
+    }
+  }
+  static deleteStageGroupInRules(schema, deletedGroupName) {
+    var _a, _b;
+    const firstGroup = ((_b = (_a = schema.stageGroups) == null ? void 0 : _a[0]) == null ? void 0 : _b.name) || "default";
+    this.renameStageGroupInRules(schema, deletedGroupName, firstGroup);
+  }
+  static deleteStageInRules(schema, groupName, deletedStageName) {
+    this.renameStageInRules(schema, groupName, deletedStageName, "none");
+  }
+  static getConditionListAndIndex(rule, pathStr) {
+    if (!pathStr && pathStr !== "0") return null;
+    const parts = pathStr.split(".").map((p) => parseInt(p, 10));
+    if (parts.some(isNaN)) return null;
+    const conds = ControlSchemaArbiter.getRuleConditions(rule);
+    let currentList = conds;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const idx = parts[i];
+      const parentGate = currentList[idx];
+      if (!parentGate || parentGate.type !== "group" || !parentGate.conditions) {
+        return null;
+      }
+      currentList = parentGate.conditions;
+    }
+    return { list: currentList, index: parts[parts.length - 1] };
+  }
+  static getConditionByPath(rule, pathStr) {
+    const res = this.getConditionListAndIndex(rule, pathStr);
+    if (!res || !res.list[res.index]) return null;
+    return res.list[res.index];
+  }
+  static getConditionGroupList(rule, pathStr) {
+    const conds = ControlSchemaArbiter.getRuleConditions(rule);
+    if (!pathStr || pathStr.trim() === "") {
+      return { list: conds };
+    }
+    const parts = pathStr.split(".").map((p) => parseInt(p, 10));
+    if (parts.some(isNaN)) return null;
+    let currentGroup;
+    let currentList = conds;
+    for (let i = 0; i < parts.length; i++) {
+      const idx = parts[i];
+      currentGroup = currentList[idx];
+      if (!currentGroup || currentGroup.type !== "group" || !currentGroup.conditions) {
+        return null;
+      }
+      currentList = currentGroup.conditions;
+    }
+    return { list: currentList, group: currentGroup };
+  }
+  static renderStagesSectionHtml(schema) {
+    const stageGroups = this.getActiveStageGroups(schema);
+    return `
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        ${stageGroups.map((group, gIdx) => `
+          <div class="stage-group-card" style="display: flex; flex-direction: column; gap: 6px; background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(167, 139, 250, 0.25); border-radius: 6px; padding: 7px 9px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; border-bottom: 1px solid rgba(167, 139, 250, 0.2); padding-bottom: 5px;">
+              <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+                <span style="font-size: 0.74rem;">📁</span>
+                <span style="font-size: 0.66rem; font-weight: 700; color: #a78bfa; text-transform: uppercase;">SET:</span>
+                <input
+                  type="text"
+                  class="input-stage-group-name dev-input"
+                  data-group-idx="${gIdx}"
+                  value="${group.name}"
+                  placeholder="Set name (e.g. default, stance)..."
+                  style="font-size: 0.72rem; padding: 2px 6px; font-weight: 700; color: #ffffff; background: #0f172a; border: 1px solid rgba(167, 139, 250, 0.35); max-width: 140px;"
+                />
+                ${gIdx === 0 ? `<span style="font-size: 0.62rem; color: #64748b; font-style: italic;">(Primary Set)</span>` : ""}
+              </div>
+              <div>
+                ${stageGroups.length > 1 ? `
+                  <button class="btn-delete-stage-group btn-secondary-action" data-group-idx="${gIdx}" style="padding: 2px 6px; color: #f87171; font-size: 0.66rem; border: 1px solid rgba(248, 113, 113, 0.3); background: transparent; cursor: pointer;" title="Delete Stage Set">
+                    🗑️ Delete Set
+                  </button>
+                ` : ""}
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 4px;">
+              ${group.stages.map((stg, sIdx) => {
+      const isNone = stg === "none";
+      return `
+                  <div class="control-stage-row" style="display: grid; grid-template-columns: 1fr 32px; gap: 8px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 4px; padding: 3px 6px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <span style="font-size: 0.70rem;">🎭</span>
+                      <input
+                        type="text"
+                        class="input-stage-name dev-input"
+                        data-group-idx="${gIdx}"
+                        data-stage-idx="${sIdx}"
+                        value="${stg}"
+                        placeholder="Stage name..."
+                        ${isNone ? "disabled" : ""}
+                        style="font-size: 0.72rem; padding: 2px 6px; font-weight: 600; color: ${isNone ? "#94a3b8" : "#ffffff"}; background: ${isNone ? "rgba(255,255,255,0.03)" : "#0f172a"}; border: 1px solid rgba(148, 163, 184, 0.25); flex: 1;"
+                      />
+                      ${isNone ? `<span style="font-size: 0.62rem; color: #64748b; font-style: italic; white-space: nowrap;">(Immutable Default)</span>` : ""}
+                    </div>
+                    <div>
+                      ${!isNone ? `
+                        <button class="btn-delete-stage btn-secondary-action" data-group-idx="${gIdx}" data-stage-idx="${sIdx}" style="padding: 2px 4px; color: #94a3b8; font-size: 0.68rem; border: 1px solid rgba(148, 163, 184, 0.2); background: transparent; cursor: pointer;" title="Delete Stage">
+                          🗑️
+                        </button>
+                      ` : ""}
+                    </div>
+                  </div>
+                `;
+    }).join("")}
+              <div style="display: flex; justify-content: flex-start; margin-top: 2px;">
+                <button class="btn-add-stage btn-secondary-action" data-group-idx="${gIdx}" type="button" style="font-size: 0.68rem; padding: 2px 8px; color: #ffffff; border: 1px dashed rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.03); cursor: pointer;">
+                  + Add Stage to "${group.name}"
+                </button>
+              </div>
+            </div>
+          </div>
+        `).join("")}
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+          <button id="btn-add-stage-group" class="btn-secondary-action" type="button" style="font-size: 0.72rem; padding: 3px 10px; color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.35); background: rgba(167, 139, 250, 0.08); cursor: pointer;">
+            + Add Stage Set
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  static formatChannelKeyLabel(code, chordModifiers) {
+    if (!code) return "None";
+    let base = code;
+    if (base.startsWith("Key")) base = base.substring(3);
+    else if (base.startsWith("Digit")) base = base.substring(5);
+    else if (base === "MouseLeft") base = "LMB";
+    else if (base === "MouseRight") base = "RMB";
+    else if (base === "MouseMiddle") base = "MMB";
+    else if (base === "Space") base = "Space";
+    else if (base === "ShiftLeft") base = "Shift";
+    else if (base === "ControlLeft") base = "Ctrl";
+    else if (base === "AltLeft") base = "Alt";
+    else if (base === "ArrowUp") base = "↑";
+    else if (base === "ArrowDown") base = "↓";
+    else if (base === "ArrowLeft") base = "←";
+    else if (base === "ArrowRight") base = "→";
+    if (chordModifiers && chordModifiers.length > 0) {
+      const mods = chordModifiers.map((m) => {
+        if (m.startsWith("Alt")) return "Alt";
+        if (m.startsWith("Shift")) return "Shift";
+        if (m.startsWith("Control") || m.startsWith("Ctrl")) return "Ctrl";
+        return m;
+      });
+      return `${mods.join(" + ")} + ${base}`;
+    }
+    return base;
+  }
+  static defaultCleanForSlot(slotName) {
+    if (slotName === "forwardTrigger" || slotName === "sprint" || slotName === "aimTrigger" || slotName === "consume") {
+      return false;
+    }
+    return true;
+  }
+  static renderInputSlot(blockId, slotName, slot, labelPrefix = "") {
+    const isListeningPrimary = this.listeningBlockTarget && this.listeningBlockTarget.blockId === blockId && this.listeningBlockTarget.slotName === slotName && this.listeningBlockTarget.gateIdx === void 0 && !this.listeningBlockTarget.isMoveKey;
+    const code = slot == null ? void 0 : slot.code;
+    const label = code ? this.formatChannelKeyLabel(code) : "None (Unassigned)";
+    const gateButtons = (slot == null ? void 0 : slot.gateButtons) || [];
+    const isClean = (slot == null ? void 0 : slot.requireCleanPress) !== void 0 ? Boolean(slot.requireCleanPress) : this.defaultCleanForSlot(slotName);
+    return `
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        ${labelPrefix ? `<span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">${labelPrefix}</span>` : ""}
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px;">
+          <!-- Primary Input Slot Badge -->
+          <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; padding: 1px 4px;">
+            <button class="btn-block-slot-bind btn-secondary-action" data-block-id="${blockId}" data-slot-name="${slotName}" type="button" style="
+              font-size: 0.72rem;
+              padding: 2px 6px;
+              font-weight: 600;
+              border: none;
+              background: transparent;
+              ${isListeningPrimary ? "color: #ef4444; font-weight: 700; animation: pulse 1s infinite;" : code ? "color: #fff;" : "color: #64748b; font-style: italic;"}
+            " title="Click to bind key or mouse button">
+              ${isListeningPrimary ? "🔴 Press key..." : code ? code.startsWith("Mouse") ? `🖱️ ${label}` : `⌨️ ${label}` : "🚫 None (Unassigned)"}
+            </button>
+            ${code ? `
+              <button class="btn-block-slot-clear" data-block-id="${blockId}" data-slot-name="${slotName}" type="button" style="
+                font-size: 0.64rem;
+                color: #ef4444;
+                background: transparent;
+                border: none;
+                cursor: pointer;
+                padding: 0 3px;
+                line-height: 1;
+              " title="Clear this input (disable completely)">✕</button>
+            ` : ""}
+          </div>
+
+          <!-- Gate Hold Keys Badges -->
+          ${gateButtons.map((gCode, gIdx) => {
+      const isListeningGate = this.listeningBlockTarget && this.listeningBlockTarget.blockId === blockId && this.listeningBlockTarget.slotName === slotName && this.listeningBlockTarget.gateIdx === gIdx;
+      const gLabel = this.formatChannelKeyLabel(gCode);
+      return `
+              <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 1px 4px;">
+                <span style="font-size: 0.62rem; color: #38bdf8; font-weight: 700;">+</span>
+                <button class="btn-block-slot-gate-bind btn-secondary-action" data-block-id="${blockId}" data-slot-name="${slotName}" data-gate-idx="${gIdx}" type="button" style="
+                  font-size: 0.68rem;
+                  padding: 1px 4px;
+                  font-weight: 600;
+                  border: none;
+                  background: transparent;
+                  color: #fff;
+                  ${isListeningGate ? "color: #ef4444; font-weight: 700;" : ""}
+                " title="Click to rebind held gate button">
+                  ${isListeningGate ? "🔴 Press..." : gLabel}
+                </button>
+                <button class="btn-block-slot-gate-remove" data-block-id="${blockId}" data-slot-name="${slotName}" data-gate-idx="${gIdx}" type="button" style="
+                  font-size: 0.62rem;
+                  color: #ef4444;
+                  background: transparent;
+                  border: none;
+                  cursor: pointer;
+                  padding: 0 2px;
+                  line-height: 1;
+                " title="Remove this held button requirement">✕</button>
+              </div>
+            `;
+    }).join("")}
+
+          <!-- Add Gate Button Button -->
+          <button class="btn-block-slot-add-gate btn-secondary-action" data-block-id="${blockId}" data-slot-name="${slotName}" type="button" style="
+            font-size: 0.60rem;
+            font-weight: 600;
+            padding: 2px 5px;
+            background: rgba(56, 189, 248, 0.08);
+            border: 1px dashed rgba(56, 189, 248, 0.4);
+            color: #38bdf8;
+            border-radius: 3px;
+            cursor: pointer;
+          " title="Require an additional held button for this action">+ Key</button>
+
+          <!-- Clean Press Toggle Checkbox -->
+          <label style="display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; cursor: pointer; user-select: none;" title="Require clean press: button must be released before triggering this action again (prevents continuous auto-repeat)">
+            <input type="checkbox" class="block-slot-clean-toggle" data-block-id="${blockId}" data-slot-name="${slotName}" ${isClean ? "checked" : ""} style="cursor: pointer; width: 12px; height: 12px; accent-color: #38bdf8;" />
+            <span style="font-size: 0.62rem; font-weight: 600; ${isClean ? "color: #38bdf8;" : "color: #64748b;"}">Clean</span>
+          </label>
+        </div>
+      </div>
+    `;
+  }
+  static renderBlockBodyHtml(block) {
+    var _a, _b;
+    switch (block.type) {
+      case "locomotion": {
+        const b = block;
+        b.mode = b.mode || "wasd";
+        b.moveKeys = b.moveKeys || { upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" };
+        b.forwardTrigger = b.forwardTrigger || { code: "MouseRight" };
+        b.reverseKey = b.reverseKey !== void 0 ? b.reverseKey : "KeyS";
+        b.strafeLeftKey = b.strafeLeftKey !== void 0 ? b.strafeLeftKey : "KeyA";
+        b.strafeRightKey = b.strafeRightKey !== void 0 ? b.strafeRightKey : "KeyD";
+        b.jump = b.jump || { code: "Space" };
+        b.sprint = b.sprint || { code: "ShiftLeft", mode: "hold" };
+        const renderMoveKey = (dir, keyName) => {
+          var _a2, _b2;
+          const isListening = ((_a2 = this.listeningBlockTarget) == null ? void 0 : _a2.blockId) === b.id && ((_b2 = this.listeningBlockTarget) == null ? void 0 : _b2.isMoveKey) === keyName;
+          const code = keyName === "reverseKey" || keyName === "strafeLeftKey" || keyName === "strafeRightKey" ? b[keyName] : b.moveKeys[keyName];
+          const lbl = code ? this.formatChannelKeyLabel(code) : "None";
+          return `
+            <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; padding: 1px 4px;">
+              <span style="font-size: 0.64rem; color: #94a3b8; font-weight: 700;">${dir}</span>
+              <button class="btn-block-move-key btn-secondary-action" data-block-id="${b.id}" data-move-key="${keyName}" type="button" style="
+                font-size: 0.68rem; padding: 2px 6px; font-weight: 600; border: none; background: transparent; ${isListening ? "color: #ef4444; font-weight: 700;" : code ? "color: #fff;" : "color: #64748b; font-style: italic;"}
+              ">${isListening ? "🔴 Press..." : lbl}</button>
+              ${code ? `<button class="btn-block-move-key-clear" data-block-id="${b.id}" data-move-key="${keyName}" type="button" style="font-size: 0.62rem; color: #ef4444; background: transparent; border: none; cursor: pointer; padding: 0 2px;">✕</button>` : ""}
+            </div>
+          `;
+        };
+        return `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Locomotion Mode:</span>
+              <select class="block-loco-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
+                <option value="wasd" ${b.mode === "wasd" ? "selected" : ""}>🏃 Direct 8-Way Movement (WASD)</option>
+                <option value="walkToMouse" ${b.mode === "walkToMouse" ? "selected" : ""}>🖱️ Walk to Mouse (Forward Drive Toward Cursor)</option>
+              </select>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
+              ${b.mode === "walkToMouse" ? `
+                <div>
+                  ${this.renderInputSlot(b.id, "forwardTrigger", b.forwardTrigger, "Forward Drive Button (Toward Cursor)")}
+                  <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                    Hold to run directly toward cursor. Facing automatically follows the mouse.
+                  </div>
+                  <div style="margin-top: 6px;">
+                    <span style="font-size: 0.62rem; color: #94a3b8; font-weight: 600;">Optional Relative Keys:</span>
+                    <div style="display: flex; gap: 4px; margin-top: 2px; flex-wrap: wrap;">
+                      ${renderMoveKey("Back", "reverseKey")}
+                      ${renderMoveKey("Left", "strafeLeftKey")}
+                      ${renderMoveKey("Right", "strafeRightKey")}
+                    </div>
+                  </div>
+                </div>
+              ` : `
+                <div>
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Directional Movement (WASD)</span>
+                    <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer; user-select: none;" title="Require clean tap for movement (step-by-step)">
+                      <input type="checkbox" class="block-move-keys-clean-toggle" data-block-id="${b.id}" ${((_a = b.moveKeys) == null ? void 0 : _a.requireCleanPress) ? "checked" : ""} style="cursor: pointer; width: 11px; height: 11px; accent-color: #38bdf8;" />
+                      <span style="font-size: 0.58rem; font-weight: 600; ${((_b = b.moveKeys) == null ? void 0 : _b.requireCleanPress) ? "color: #38bdf8;" : "color: #64748b;"}">Clean Tap</span>
+                    </label>
+                  </div>
+                  <div style="display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap;">
+                    ${renderMoveKey("↑", "upKey")}
+                    ${renderMoveKey("↓", "downKey")}
+                    ${renderMoveKey("←", "leftKey")}
+                    ${renderMoveKey("→", "rightKey")}
+                  </div>
+                </div>
+              `}
+              <div>
+                ${this.renderInputSlot(b.id, "jump", b.jump, "Jump / Vertical Hop")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "sprint", b.sprint, "Sprint")}
+                <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 0.62rem; color: #94a3b8;">Sprint Mode:</span>
+                  <select class="block-sprint-mode dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                    <option value="hold" ${b.sprint.mode !== "toggle" ? "selected" : ""}>Hold to Sprint</option>
+                    <option value="toggle" ${b.sprint.mode === "toggle" ? "selected" : ""}>Toggle Sprint</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      case "melee": {
+        const b = block;
+        b.punch = b.punch || { code: "KeyF" };
+        return `
+          <div style="display: flex; gap: 16px; align-items: start;">
+            <div>
+              ${this.renderInputSlot(b.id, "punch", b.punch, "Melee Punch / Attack")}
+            </div>
+            <div style="font-size: 0.68rem; color: #64748b; padding-top: 14px;">
+              Strikes in the direction of the aim cursor with physical punch force and cooldown.
+            </div>
+          </div>
+        `;
+      }
+      case "laser": {
+        const b = block;
+        b.aimTrigger = b.aimTrigger || { code: "MouseRight", gateButtons: ["AltLeft"] };
+        b.fireTrigger = b.fireTrigger || { code: "MouseLeft" };
+        b.powerLevel = b.powerLevel || { source: "mouseWheel", sensitivity: 1 };
+        return `
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
+            <div>
+              ${this.renderInputSlot(b.id, "aimTrigger", b.aimTrigger, "Aim Feature Trigger")}
+              <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 0.62rem; color: #94a3b8;">Aim Method (2D Input):</span>
+                <select class="block-laser-aim-mode dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                  <option value="mouseWorldPos" ${b.aimMode !== "rawDirection" && b.aimMode !== "mouseScreenPos" ? "selected" : ""}>🌐 Game Cursor (Mouse World Pos)</option>
+                  <option value="mouseScreenPos" ${b.aimMode === "mouseScreenPos" ? "selected" : ""}>🖥️ Screen Coordinates</option>
+                  <option value="rawDirection" ${b.aimMode === "rawDirection" ? "selected" : ""}>🧭 Raw Direction Heading</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              ${this.renderInputSlot(b.id, "fireTrigger", b.fireTrigger, "Fire Laser Trigger")}
+              <div style="margin-top: 4px;">
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 0.64rem; color: #94a3b8; cursor: pointer;">
+                  <input type="checkbox" class="block-laser-autofire" data-block-id="${b.id}" ${b.fireTrigger.autoFireWhenAiming ? "checked" : ""} />
+                  <span>Auto-fire continuously while aiming</span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Power Level (1D Input)</span>
+              <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                <select class="block-laser-power-source dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                  <option value="mouseWheel" ${b.powerLevel.source === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
+                  <option value="mouseDeltaY" ${b.powerLevel.source === "mouseDeltaY" ? "selected" : ""}>🖱️ Mouse Delta Y (Vertical Drag)</option>
+                  <option value="none" ${b.powerLevel.source === "none" ? "selected" : ""}>🚫 None / Fixed Power</option>
+                </select>
+                ${b.powerLevel.source !== "none" ? `
+                  <button class="btn-block-laser-power-clear" data-block-id="${b.id}" type="button" style="font-size: 0.62rem; color: #ef4444; background: transparent; border: none; cursor: pointer; padding: 0 3px;" title="Disable power level modulation">✕</button>
+                ` : ""}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      case "throw": {
+        const b = block;
+        b.mode = b.mode || "chargeAndRelease";
+        b.chargeTrigger = b.chargeTrigger || { code: "MouseLeft" };
+        b.aimTrigger = b.aimTrigger || { code: "MouseRight" };
+        b.fireTrigger = b.fireTrigger || { code: "MouseLeft" };
+        b.quickTrigger = b.quickTrigger || { code: "MouseLeft" };
+        b.arcModulation = b.arcModulation || { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 5e-3 };
+        let modeSpecificHtml = "";
+        if (b.mode === "chargeAndRelease") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "chargeTrigger", b.chargeTrigger, "Charge & Release Throw Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Hold to charge trajectory/power, release to throw. Aim near your feet to cancel without throwing.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "aimAndFire") {
+          modeSpecificHtml = `
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+              <div>
+                ${this.renderInputSlot(b.id, "aimTrigger", b.aimTrigger, "Aim Arc Preview Button")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "fireTrigger", b.fireTrigger, "Launch / Fire Throw Button")}
+              </div>
+              <div>
+                <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Arc Modulation (1D Input)</span>
+                <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                  <select class="block-throw-arc-source dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                    <option value="mouseDeltaY" ${b.arcModulation.source === "mouseDeltaY" ? "selected" : ""}>🖱️ Mouse Delta Y (Vertical Drag)</option>
+                    <option value="mouseWheel" ${b.arcModulation.source === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
+                    <option value="none" ${b.arcModulation.source === "none" ? "selected" : ""}>🚫 None / Fixed Arc</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "quickOptimal") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "quickTrigger", b.quickTrigger, "Instant Optimal Throw Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Throws the item immediately along the most efficient flattest ballistic arc on press.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "quickWallClear") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "quickTrigger", b.quickTrigger, "Instant Wall-Clear Throw Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Instantly calculates and fires the lowest energy trajectory that clears all intervening walls.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "aimWallClear") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "aimTrigger", b.aimTrigger, "Aim Wall-Clear Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Hold to preview lowest energy trajectory that clears intervening walls, release to fire.
+              </div>
+            </div>
+          `;
+        }
+        return `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Trajectory Manipulation Style:</span>
+              <select class="block-throw-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
+                <option value="chargeAndRelease" ${b.mode === "chargeAndRelease" ? "selected" : ""}>🏹 Charge and Release (Bow style)</option>
+                <option value="aimAndFire" ${b.mode === "aimAndFire" ? "selected" : ""}>🎯 Aim & Fire (Preview button + Launch button)</option>
+                <option value="quickOptimal" ${b.mode === "quickOptimal" ? "selected" : ""}>⚡ Most Efficient (Quick Optimal Arc)</option>
+                <option value="quickWallClear" ${b.mode === "quickWallClear" ? "selected" : ""}>🧱 Quick Wall-Clear (Lowest Energy No Wall Collision)</option>
+                <option value="aimWallClear" ${b.mode === "aimWallClear" ? "selected" : ""}>🏹 Aim Wall-Clear (Aim Lowest Energy, Release to Fire)</option>
+              </select>
+            </div>
+            ${modeSpecificHtml}
+          </div>
+        `;
+      }
+      case "itemInteraction": {
+        const b = block;
+        b.pickup = b.pickup || { code: "MouseLeft" };
+        b.drop = b.drop || { code: "KeyQ" };
+        b.swap = b.swap || { code: "KeyF" };
+        b.consume = b.consume || { code: "KeyE" };
+        b.swapRequiresHolding = Boolean(b.swapRequiresHolding);
+        b.triggerPickupWhenEmptyHanded = b.triggerPickupWhenEmptyHanded ?? true;
+        return `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: start;">
+              <div>
+                ${this.renderInputSlot(b.id, "pickup", b.pickup, "Pick Up Ground Item")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "drop", b.drop, "Drop Held Item")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "swap", b.swap, "Swap Ground/Held Item")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "consume", b.consume, "Consume / Bite Item")}
+              </div>
+            </div>
+            
+            <!-- Prebuilt Options -->
+            <div style="display: flex; flex-wrap: wrap; gap: 16px; padding-top: 8px; border-top: 1px dashed rgba(148,163,184,0.2); font-size: 0.68rem; color: #94a3b8;">
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" class="block-item-swap-requires-holding" data-block-id="${b.id}" ${b.swapRequiresHolding ? "checked" : ""} />
+                <span>Swap requires already holding an item (strict swap)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" class="block-item-trigger-pickup-empty" data-block-id="${b.id}" ${b.triggerPickupWhenEmptyHanded ? "checked" : ""} />
+                <span>Swap button triggers pickup when empty-handed</span>
+              </label>
+            </div>
+
+            <!-- Additional Pickup Slot -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="min-width: 200px;">
+                ${this.renderInputSlot(b.id, "additionalPickup", b.additionalPickup, "Additional Empty-Handed Pickup Button (Optional)")}
+              </div>
+              <span style="font-size: 0.62rem; color: #64748b; padding-top: 12px;">Extra dedicated button to pick up when empty-handed.</span>
+            </div>
+          </div>
+        `;
+      }
+      case "facing": {
+        const b = block;
+        b.mode = b.mode || "mouseWorldPos";
+        return `
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 0.68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Heading / Facing Direction:</span>
+            <select class="block-facing-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 2px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px;">
+              <option value="mouseWorldPos" ${b.mode === "mouseWorldPos" ? "selected" : ""}>🎯 Face Mouse Cursor / Reticle</option>
+              <option value="fromMovement" ${b.mode === "fromMovement" ? "selected" : ""}>🏃 Face Movement Vector Direction</option>
+            </select>
+          </div>
+        `;
+      }
+    }
+    return "";
+  }
+  static renderBlocksHtml(schema) {
+    if (!schema.keyboardMouse.blocks) {
+      schema.keyboardMouse.blocks = JSON.parse(JSON.stringify(DefaultControlBlocks));
+    }
+    const blocks = schema.keyboardMouse.blocks || [];
+    return `
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <!-- Header with Add Control Module dropdown -->
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 8px 14px;">
+          <div style="font-size: 0.74rem; color: #cbd5e1;">
+            <strong style="color: #38bdf8;">Modular Control System:</strong>
+            Each capability has its own self-contained block with prebuilt logic. Click any slot to rebind, or click <strong>✕</strong> to clear/disable.
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <select id="select-add-control-block" class="dev-select" style="font-size: 0.72rem; font-weight: 700; padding: 4px 8px; background: rgba(56,189,248,0.15); border: 1px solid #38bdf8; color: #38bdf8; border-radius: 4px;">
+              <option value="" disabled selected>+ Add Control Module...</option>
+              <option value="locomotion">+ Locomotion (Move, Jump, Sprint)</option>
+              <option value="itemInteraction">+ Item Interaction (Pickup, Drop, Swap, Eat)</option>
+              <option value="throw">+ Throwing & Ballistics</option>
+              <option value="melee">+ Melee Combat</option>
+              <option value="laser">+ Laser Beam</option>
+              <option value="facing">+ Heading / Facing Angle</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Blocks Container -->
+        <div id="control-blocks-container" style="display: flex; flex-direction: column; gap: 10px;">
+          ${blocks.length === 0 ? `
+            <div style="text-align: center; color: #64748b; font-size: 0.76rem; padding: 24px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px dashed rgba(148,163,184,0.2);">
+              No control blocks assigned. Select an option from "+ Add Control Module" to assign controls!
+            </div>
+          ` : blocks.map((b) => {
+      const typeIcons = {
+        locomotion: "🏃",
+        itemInteraction: "📦",
+        throw: "🏹",
+        melee: "🥊",
+        laser: "⚡",
+        facing: "🎯"
+      };
+      const icon = typeIcons[b.type] || "🎮";
+      return `
+              <div class="control-block-card" data-block-id="${b.id}" style="
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                background: rgba(15, 23, 42, 0.85);
+                border: 1px solid ${b.enabled ? "rgba(148, 163, 184, 0.25)" : "rgba(239, 68, 68, 0.25)"};
+                border-radius: 6px;
+                padding: 10px 14px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+                opacity: ${b.enabled ? "1" : "0.6"};
+              ">
+                <!-- Block Header -->
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 6px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.90rem;">${icon}</span>
+                    <span style="font-size: 0.78rem; font-weight: 700; color: #f8fafc;">${b.name || b.type.toUpperCase()}</span>
+                    <span style="font-size: 0.60rem; padding: 1px 5px; background: rgba(56,189,248,0.15); color: #38bdf8; border-radius: 3px; font-weight: 700; text-transform: uppercase;">${b.type}</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="display: flex; align-items: center; gap: 4px; font-size: 0.68rem; color: #94a3b8; cursor: pointer;">
+                      <input type="checkbox" class="block-toggle-enabled" data-block-id="${b.id}" ${b.enabled ? "checked" : ""} />
+                      <span>Enabled</span>
+                    </label>
+                    <button class="btn-block-delete btn-secondary-action" data-block-id="${b.id}" type="button" style="
+                      font-size: 0.66rem;
+                      color: #ef4444;
+                      padding: 2px 6px;
+                      border: 1px solid rgba(239, 68, 68, 0.3);
+                      background: rgba(239, 68, 68, 0.1);
+                      border-radius: 3px;
+                      cursor: pointer;
+                    " title="Remove this control module">🗑️ Remove</button>
+                  </div>
+                </div>
+
+                <!-- Block Body -->
+                <div class="control-block-body">
+                  ${this.renderBlockBodyHtml(b)}
+                </div>
+              </div>
+            `;
+    }).join("")}
+        </div>
+      </div>
+    `;
+  }
+  static startBlockKeyListening(blockId, slotName, gateIdx, isMoveKey) {
+    if (this.recorderCleanup) {
+      this.recorderCleanup();
+      this.recorderCleanup = null;
+    }
+    this.listeningBlockTarget = { blockId, slotName, gateIdx, isMoveKey };
+    this.renderActiveView();
+    const commitTrigger = (code) => {
+      const schema = this.workingSchema;
+      if (!schema || !schema.keyboardMouse.blocks) return;
+      const block = schema.keyboardMouse.blocks.find((b) => b.id === blockId);
+      if (!block) return;
+      if (isMoveKey && block.type === "locomotion") {
+        const loco = block;
+        if (isMoveKey === "reverseKey" || isMoveKey === "strafeLeftKey" || isMoveKey === "strafeRightKey") {
+          loco[isMoveKey] = code;
+        } else {
+          loco.moveKeys = loco.moveKeys || {};
+          loco.moveKeys[isMoveKey] = code;
+        }
+      } else {
+        const slot = block[slotName];
+        if (gateIdx !== void 0) {
+          if (slot && slot.gateButtons) {
+            slot.gateButtons[gateIdx] = code;
+          }
+        } else {
+          if (slot) {
+            slot.code = code;
+          } else {
+            block[slotName] = { code };
+          }
+        }
+      }
+      cleanup();
+      this.listeningBlockTarget = null;
+      this.renderActiveView();
+    };
+    const onKeyDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === "Escape") {
+        cleanup();
+        this.listeningBlockTarget = null;
+        this.renderActiveView();
+        return;
+      }
+      commitTrigger(e.code);
+    };
+    const onMouseDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const buttonMap = {
+        0: "MouseLeft",
+        1: "MouseMiddle",
+        2: "MouseRight",
+        3: "MouseBack",
+        4: "MouseForward"
+      };
+      commitTrigger(buttonMap[e.button] || `MouseButton${e.button}`);
+    };
+    const cleanup = () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("mousedown", onMouseDown, true);
+      if (this.popoutWindow && !this.popoutWindow.closed) {
+        this.popoutWindow.removeEventListener("keydown", onKeyDown, true);
+        this.popoutWindow.removeEventListener("mousedown", onMouseDown, true);
+      }
+      this.recorderCleanup = null;
+    };
+    this.recorderCleanup = cleanup;
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("mousedown", onMouseDown, true);
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      this.popoutWindow.addEventListener("keydown", onKeyDown, true);
+      this.popoutWindow.addEventListener("mousedown", onMouseDown, true);
+    }
+  }
+  static renderPipelineHtml(schema) {
+    this.ensureChannels(schema);
+    const pipeline = schema.keyboardMouse.pipeline || [];
+    const isListening = (bindingId, subKey) => {
+      if (!this.listeningPipelineTarget) return false;
+      return this.listeningPipelineTarget.bindingId === bindingId && this.listeningPipelineTarget.subKey === subKey;
+    };
+    return `
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <!-- Header description -->
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 8px 14px;">
+          <div style="font-size: 0.74rem; color: #cbd5e1;">
+            <strong style="color: #38bdf8;">Left-to-Right Modular Input Pipeline:</strong>
+            Raw Hardware Input ➔ Processor & Cleaning ➔ Character Module Socket. Every row is completely independent and deletable.
+          </div>
+          <button id="btn-add-pipeline-binding" class="btn-secondary-action" type="button" style="font-size: 0.74rem; font-weight: 700; padding: 4px 12px; background: rgba(56,189,248,0.15); border: 1px solid #38bdf8; color: #38bdf8; border-radius: 4px;">
+            + Add Input Binding
+          </button>
+        </div>
+
+        <!-- Table Column Headers -->
+        <div style="display: grid; grid-template-columns: 240px 24px 1fr 24px 220px 48px; gap: 8px; padding: 0 12px; font-size: 0.68rem; font-weight: 700; color: #94a3b8;">
+          <span>RAW INPUT (SOURCE)</span>
+          <span style="text-align: center;"></span>
+          <span>PROCESSOR & CLEANING (CENTER)</span>
+          <span style="text-align: center;"></span>
+          <span>SOCKET & CONDITION (RIGHT)</span>
+          <span style="text-align: center;">DELETE</span>
+        </div>
+
+        <!-- Pipeline Rows Container -->
+        <div id="pipeline-rows-container" style="display: flex; flex-direction: column; gap: 8px;">
+          ${pipeline.length === 0 ? `
+            <div style="text-align: center; color: #64748b; font-size: 0.76rem; padding: 24px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px dashed rgba(148,163,184,0.2);">
+              No input bindings defined. Click "+ Add Input Binding" to connect an input!
+            </div>
+          ` : pipeline.map((b) => {
+      var _a;
+      const { source, processor: proc } = b;
+      if (!b.gateButtons) {
+        b.gateButtons = [];
+        if (source.type === "button" && source.additionalCodes && source.additionalCodes.length > 0) {
+          b.gateButtons.push(...source.additionalCodes);
+          delete source.additionalCodes;
+        }
+      }
+      if (proc.type === "1d_scalar" && ((_a = proc.gateButton) == null ? void 0 : _a.code)) {
+        if (!b.gateButtons.includes(proc.gateButton.code)) {
+          b.gateButtons.push(proc.gateButton.code);
+        }
+      }
+      const gateButtons = b.gateButtons;
+      const gateHtml = `
+              <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 5px; padding-top: 4px; border-top: 1px dashed rgba(148,163,184,0.2);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.60rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">While Holding:</span>
+                  <button class="btn-pipe-add-gate-key btn-secondary-action" data-binding-id="${b.id}" type="button" style="
+                    font-size: 0.58rem;
+                    font-weight: 600;
+                    padding: 1px 5px;
+                    background: rgba(56, 189, 248, 0.08);
+                    border: 1px dashed rgba(56, 189, 248, 0.4);
+                    color: #38bdf8;
+                    border-radius: 3px;
+                    cursor: pointer;
+                  " title="Add button that must be held down">+ Button</button>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 3px; align-items: center;">
+                  ${gateButtons.length === 0 ? `
+                    <span style="font-size: 0.60rem; color: #64748b; font-style: italic;">No hold requirement</span>
+                  ` : gateButtons.map((gCode, gIdx) => {
+        const isListeningGate = isListening(b.id, `gateKey_${gIdx}`);
+        const gLabel = this.formatChannelKeyLabel(gCode);
+        return `
+                      <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 1px 4px;">
+                        <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="gateKey_${gIdx}" type="button" style="
+                          font-size: 0.66rem;
+                          padding: 1px 4px;
+                          font-weight: 600;
+                          border: none;
+                          background: transparent;
+                          color: #fff;
+                          ${isListeningGate ? "color: #ef4444; font-weight: 700; animation: pulse 1s infinite;" : ""}
+                        " title="Click to rebind held gate button">
+                          ${isListeningGate ? "🔴 Press..." : `⌨️ ${gLabel}`}
+                        </button>
+                        <button class="btn-pipe-remove-gate-key" data-binding-id="${b.id}" data-gate-index="${gIdx}" type="button" style="
+                          font-size: 0.62rem;
+                          color: #ef4444;
+                          background: transparent;
+                          border: none;
+                          cursor: pointer;
+                          padding: 0 2px;
+                          line-height: 1;
+                        " title="Remove this held button requirement">✕</button>
+                      </div>
+                    `;
+      }).join("")}
+                </div>
+              </div>
+            `;
+      let sourceHtml = "";
+      if (source.type === "button") {
+        const listening = isListening(b.id, "button");
+        const label = this.formatChannelKeyLabel(source.code);
+        sourceHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">RAW BUTTON</span>
+                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
+                      <option value="button" selected>Button</option>
+                      <option value="composite_4key">4-Key WASD</option>
+                      <option value="1d_scalar">1D Scalar</option>
+                      <option value="2d_vector">2D Vector</option>
+                    </select>
+                  </div>
+                  <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; padding: 1px 4px; width: fit-content;">
+                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="button" type="button" style="
+                      font-size: 0.72rem;
+                      padding: 2px 6px;
+                      font-weight: 600;
+                      border: none;
+                      background: transparent;
+                      ${listening ? "color: #ef4444; font-weight: 700; animation: pulse 1s infinite;" : "color: #fff;"}
+                    " title="Click to bind primary key or mouse button">
+                      ${listening ? "🔴 Press key..." : `⌨️ ${label}`}
+                    </button>
+                  </div>
+                  ${gateHtml}
+                </div>
+              `;
+      } else if (source.type === "composite_4key") {
+        sourceHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">4-KEY COMPOSITE</span>
+                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
+                      <option value="button">Button</option>
+                      <option value="composite_4key" selected>4-Key WASD</option>
+                      <option value="1d_scalar">1D Scalar</option>
+                      <option value="2d_vector">2D Vector</option>
+                    </select>
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="upKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "upKey") ? "background: #ef4444; color: #fff;" : ""}">
+                      ↑ ${this.formatChannelKeyLabel(source.upKey)}
+                    </button>
+                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="downKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "downKey") ? "background: #ef4444; color: #fff;" : ""}">
+                      ↓ ${this.formatChannelKeyLabel(source.downKey)}
+                    </button>
+                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="leftKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "leftKey") ? "background: #ef4444; color: #fff;" : ""}">
+                      ← ${this.formatChannelKeyLabel(source.leftKey)}
+                    </button>
+                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="rightKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "rightKey") ? "background: #ef4444; color: #fff;" : ""}">
+                      → ${this.formatChannelKeyLabel(source.rightKey)}
+                    </button>
+                  </div>
+                  ${gateHtml}
+                </div>
+              `;
+      } else if (source.type === "1d_scalar") {
+        sourceHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">1D SCALAR INPUT</span>
+                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
+                      <option value="button">Button</option>
+                      <option value="composite_4key">4-Key WASD</option>
+                      <option value="1d_scalar" selected>1D Scalar</option>
+                      <option value="2d_vector">2D Vector</option>
+                    </select>
+                  </div>
+                  <select class="pipe-source-scalar dev-select" data-binding-id="${b.id}" style="font-size: 0.72rem; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); padding: 3px 6px; border-radius: 4px;">
+                    <option value="mouseDeltaY" ${source.source === "mouseDeltaY" ? "selected" : ""}>🖱️ Mouse Delta Y (Vertical)</option>
+                    <option value="mouseDeltaX" ${source.source === "mouseDeltaX" ? "selected" : ""}>🖱️ Mouse Delta X (Horizontal)</option>
+                    <option value="mouseWheel" ${source.source === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
+                  </select>
+                  ${gateHtml}
+                </div>
+              `;
+      } else if (source.type === "2d_vector") {
+        sourceHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">2D VECTOR INPUT</span>
+                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
+                      <option value="button">Button</option>
+                      <option value="composite_4key">4-Key WASD</option>
+                      <option value="1d_scalar">1D Scalar</option>
+                      <option value="2d_vector" selected>2D Vector</option>
+                    </select>
+                  </div>
+                  <select class="pipe-source-vector dev-select" data-binding-id="${b.id}" style="font-size: 0.72rem; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); padding: 3px 6px; border-radius: 4px;">
+                    <option value="mouseWorldPos" ${source.source === "mouseWorldPos" ? "selected" : ""}>🌐 Mouse World Position</option>
+                    <option value="mouseScreenPos" ${source.source === "mouseScreenPos" ? "selected" : ""}>🖥️ Mouse Screen Position</option>
+                  </select>
+                  ${gateHtml}
+                </div>
+              `;
+      }
+      let centerHtml = "";
+      if (proc.type === "button") {
+        centerHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">Button Processor:</span>
+                    <select class="pipe-proc-trigger-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                      <option value="down" ${proc.triggerMode === "down" ? "selected" : ""}>Down (Fresh Press)</option>
+                      <option value="hold" ${proc.triggerMode === "hold" ? "selected" : ""}>Hold (Sustained)</option>
+                      <option value="up" ${proc.triggerMode === "up" ? "selected" : ""}>Up (Release)</option>
+                      <option value="timedHold" ${proc.triggerMode === "timedHold" ? "selected" : ""}>Timed Hold (>200ms)</option>
+                    </select>
+                  </div>
+                  <div style="display: flex; gap: 12px; font-size: 0.68rem; color: #94a3b8;">
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Ignores key if already claimed by another active ability">
+                      <input type="checkbox" class="pipe-proc-clean" data-binding-id="${b.id}" ${proc.requireCleanPress ? "checked" : ""} />
+                      <span>Require Clean Press</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Claims physical key so other abilities on this key won't fire during hold">
+                      <input type="checkbox" class="pipe-proc-claim" data-binding-id="${b.id}" ${proc.claimOnFire ? "checked" : ""} />
+                      <span>Claim On Fire</span>
+                    </label>
+                  </div>
+                </div>
+              `;
+      } else if (proc.type === "1d_scalar") {
+        centerHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">1D Scalar Processor:</span>
+                    <select class="pipe-proc-scalar-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                      <option value="accumulator" ${proc.mode === "accumulator" ? "selected" : ""}>Accumulator (0.0 to 1.0)</option>
+                      <option value="delta" ${proc.mode === "delta" ? "selected" : ""}>Instant Delta</option>
+                    </select>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; color: #94a3b8;">
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Freezes game reticle in place and locks & hides real OS cursor while actively reading mouse input">
+                      <input type="checkbox" class="pipe-proc-cursor-lock" data-binding-id="${b.id}" ${proc.autoCursorLock ? "checked" : ""} />
+                      <span style="color: #38bdf8; font-weight: 600;">🔒 Auto Lock Game & Real Cursor</span>
+                    </label>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <span>Sens:</span>
+                      <input type="number" class="pipe-proc-sens dev-input" data-binding-id="${b.id}" value="${proc.sensitivity ?? 5e-3}" step="0.001" style="width: 50px; font-size: 0.68rem; padding: 1px 4px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;" />
+                    </div>
+                  </div>
+                </div>
+              `;
+      } else if (proc.type === "2d_vector") {
+        centerHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">2D Vector Processor:</span>
+                    <select class="pipe-proc-vector-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                      <option value="direct" ${proc.mode === "direct" ? "selected" : ""}>Direct Cartesian (WASD)</option>
+                      <option value="facingRelative" ${proc.mode === "facingRelative" ? "selected" : ""}>Facing-Relative Strafe</option>
+                    </select>
+                  </div>
+                  <div style="font-size: 0.64rem; color: #64748b;">Normalizes direction vector and filters inputs</div>
+                </div>
+              `;
+      } else if (proc.type === "facing") {
+        centerHtml = `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">Facing Angle Processor:</span>
+                    <select class="pipe-proc-facing-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                      <option value="fromMousePos" ${proc.mode === "fromMousePos" ? "selected" : ""}>From Mouse World Pos</option>
+                      <option value="fromMovement" ${proc.mode === "fromMovement" ? "selected" : ""}>From Movement Direction</option>
+                    </select>
+                  </div>
+                  <div style="font-size: 0.64rem; color: #64748b;">Calculates heading angle independently from thrust</div>
+                </div>
+              `;
+      }
+      return `
+              <div class="pipeline-binding-row" data-binding-id="${b.id}" style="
+                display: grid;
+                grid-template-columns: 240px 24px 1fr 24px 220px 48px;
+                align-items: center;
+                gap: 8px;
+                background: rgba(15, 23, 42, 0.75);
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                border-radius: 6px;
+                padding: 8px 12px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+              ">
+                <!-- Column 1: Raw Input (Left) -->
+                <div>${sourceHtml}</div>
+
+                <!-- Column 2: Arrow 1 -->
+                <div style="display: flex; justify-content: center; align-items: center; color: #38bdf8; font-size: 0.95rem;">➔</div>
+
+                <!-- Column 3: Processor / Adapter (Center) -->
+                <div>${centerHtml}</div>
+
+                <!-- Column 4: Arrow 2 -->
+                <div style="display: flex; justify-content: center; align-items: center; color: #34d399; font-size: 0.95rem;">➔</div>
+
+                <!-- Column 5: Module Socket & Condition (Right) -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <div>
+                    <div style="font-size: 0.64rem; font-weight: 700; color: #34d399;">MODULE SOCKET</div>
+                    <select class="pipe-target-socket dev-select" data-binding-id="${b.id}" style="width: 100%; font-size: 0.70rem; padding: 2px 4px; background: #0f172a; color: #ffffff; border: 1px solid rgba(52,211,153,0.3); border-radius: 3px;">
+                      <optgroup label="Locomotion">
+                        <option value="locomotion.moveVector" ${b.target === "locomotion.moveVector" ? "selected" : ""}>🏃 Locomotion.Move Vector</option>
+                        <option value="locomotion.forwardThrust" ${b.target === "locomotion.forwardThrust" ? "selected" : ""}>🚀 Locomotion.Forward Thrust</option>
+                        <option value="locomotion.reverseThrust" ${b.target === "locomotion.reverseThrust" ? "selected" : ""}>🛑 Locomotion.Reverse Thrust</option>
+                        <option value="locomotion.strafeLeft" ${b.target === "locomotion.strafeLeft" ? "selected" : ""}>⬅️ Locomotion.Strafe Left</option>
+                        <option value="locomotion.strafeRight" ${b.target === "locomotion.strafeRight" ? "selected" : ""}>➡️ Locomotion.Strafe Right</option>
+                        <option value="locomotion.sprint" ${b.target === "locomotion.sprint" ? "selected" : ""}>⚡ Locomotion.Sprint</option>
+                        <option value="locomotion.jump" ${b.target === "locomotion.jump" ? "selected" : ""}>🦘 Locomotion.Jump</option>
+                      </optgroup>
+                      <optgroup label="Character Heading">
+                        <option value="character.facing" ${b.target === "character.facing" ? "selected" : ""}>🎯 Character.Facing Angle</option>
+                      </optgroup>
+                      <optgroup label="Throw & Ballistics">
+                        <option value="throw.chargeBow" ${b.target === "throw.chargeBow" ? "selected" : ""}>🏹 Throw.Charge Bow (Hold to Flatten/Loft, Release to Fire)</option>
+                        <option value="throw.quickOptimal" ${b.target === "throw.quickOptimal" ? "selected" : ""}>⚡ Throw.Quick Optimal (Most Efficient Trajectory)</option>
+                        <option value="throw.quickWallClear" ${b.target === "throw.quickWallClear" ? "selected" : ""}>⚡ Throw.Quick Wall-Clear (Lowest Energy No Wall Collision)</option>
+                        <option value="throw.aimWallClear" ${b.target === "throw.aimWallClear" ? "selected" : ""}>🏹 Throw.Aim Wall-Clear (Aim Lowest Energy No Wall Collision)</option>
+                        <option value="throw.chargeArc" ${b.target === "throw.chargeArc" ? "selected" : ""}>⏳ Throw.Charge Arc (Hold to Flatten/Loft)</option>
+                        <option value="throw.aim" ${b.target === "throw.aim" ? "selected" : ""}>🎯 Throw.Aim Arc (Manual)</option>
+                        <option value="throw.arcHeight" ${b.target === "throw.arcHeight" ? "selected" : ""}>📐 Throw.Arc Height Modulation</option>
+                        <option value="throw.fire" ${b.target === "throw.fire" ? "selected" : ""}>🔥 Throw.Fire Release</option>
+                      </optgroup>
+                      <optgroup label="Interaction & Consumables">
+                        <option value="pickup.grab" ${b.target === "pickup.grab" ? "selected" : ""}>📦 Pickup.Grab Ground Item</option>
+                        <option value="pickup.drop" ${b.target === "pickup.drop" ? "selected" : ""}>📤 Pickup.Drop Held Item</option>
+                        <option value="pickup.swap" ${b.target === "pickup.swap" ? "selected" : ""}>🔄 Pickup.Quick Swap</option>
+                        <option value="consume.bite" ${b.target === "consume.bite" ? "selected" : ""}>🍎 Consume.Bite / Eat</option>
+                      </optgroup>
+                      <optgroup label="Combat">
+                        <option value="melee.punch" ${b.target === "melee.punch" ? "selected" : ""}>🥊 Melee.Punch</option>
+                        <option value="laser.aim" ${b.target === "laser.aim" ? "selected" : ""}>⚡ Laser.Aim Chord</option>
+                        <option value="laser.fire" ${b.target === "laser.fire" ? "selected" : ""}>⚡ Laser.Fire</option>
+                        <option value="laser.power" ${b.target === "laser.power" ? "selected" : ""}>⚡ Laser.Power Level</option>
+                      </optgroup>
+                    </select>
+                  </div>
+                  <div>
+                    <div style="font-size: 0.64rem; font-weight: 700; color: #a78bfa;">CONDITION</div>
+                    <select class="pipe-binding-condition dev-select" data-binding-id="${b.id}" style="width: 100%; font-size: 0.68rem; padding: 2px 4px; background: #0f172a; color: #e2e8f0; border: 1px solid rgba(167,139,250,0.3); border-radius: 3px;">
+                      <option value="none" ${!b.condition || b.condition === "none" ? "selected" : ""}>Always (No Condition)</option>
+                      <option value="emptyHanded" ${b.condition === "emptyHanded" ? "selected" : ""}>Empty Handed (No Item)</option>
+                      <option value="holdingItem" ${b.condition === "holdingItem" ? "selected" : ""}>Holding Any Item</option>
+                      <option value="holdingConsumable" ${b.condition === "holdingConsumable" ? "selected" : ""}>Holding Consumable / Ability</option>
+                      <option value="holdingThrowable" ${b.condition === "holdingThrowable" ? "selected" : ""}>Holding Throwable (Not Edible)</option>
+                      <option value="targetInReach" ${b.condition === "targetInReach" ? "selected" : ""}>Target Object In Reach</option>
+                      <option value="targetNotInReach" ${b.condition === "targetNotInReach" ? "selected" : ""}>No Target In Reach</option>
+                      <option value="isGrounded" ${b.condition === "isGrounded" ? "selected" : ""}>Grounded On Surface</option>
+                      <option value="isClimbing" ${b.condition === "isClimbing" ? "selected" : ""}>Climbing Wall</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Column 6: Delete -->
+                <div style="display: flex; align-items: center; justify-content: center;">
+                  <button class="btn-delete-pipeline-binding btn-icon" data-binding-id="${b.id}" type="button" style="padding: 3px 6px; font-size: 0.76rem; color: #ef4444; background: transparent; border: 1px solid rgba(239,68,68,0.25); border-radius: 4px; cursor: pointer;" title="Delete this input binding">
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            `;
+    }).join("")}
+        </div>
+      </div>
+    `;
+  }
+  static startPipelineKeyListening(bindingId, subKey) {
+    if (this.recorderCleanup) this.recorderCleanup();
+    this.listeningPipelineTarget = { bindingId, subKey: subKey === "button" ? void 0 : subKey };
+    this.renderActiveView();
+    if (!this.workingSchema) return;
+    const schema = this.workingSchema;
+    this.ensureChannels(schema);
+    const pipeline = schema.keyboardMouse.pipeline || [];
+    const binding = pipeline.find((b) => b.id === bindingId);
+    if (!binding) return;
+    const commitTrigger = (device, code) => {
+      if (subKey === "gate") {
+        if (binding.processor.type === "1d_scalar") {
+          binding.processor.gateButton = {
+            device,
+            code,
+            mode: "hold"
+          };
+        }
+      } else if (subKey === "upKey" || subKey === "downKey" || subKey === "leftKey" || subKey === "rightKey") {
+        if (binding.source.type === "composite_4key") {
+          binding.source[subKey] = code;
+        }
+      } else if (subKey && subKey.startsWith("extraKey_")) {
+        const extraIdx = parseInt(subKey.split("_")[1], 10);
+        if (binding.source.type === "button") {
+          binding.source.additionalCodes = binding.source.additionalCodes || [];
+          binding.source.additionalCodes[extraIdx] = code;
+        }
+      } else if (subKey && subKey.startsWith("gateKey_")) {
+        const gateIdx = parseInt(subKey.split("_")[1], 10);
+        binding.gateButtons = binding.gateButtons || [];
+        binding.gateButtons[gateIdx] = code;
+      } else {
+        if (binding.source.type === "button") {
+          binding.source.device = device;
+          binding.source.code = code;
+          delete binding.source.chordModifiers;
+        } else {
+          binding.source = {
+            type: "button",
+            device,
+            code
+          };
+        }
+      }
+      cleanup();
+      this.listeningPipelineTarget = null;
+      this.renderActiveView();
+    };
+    const onKeyDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === "Escape") {
+        cleanup();
+        this.listeningPipelineTarget = null;
+        this.renderActiveView();
+        return;
+      }
+      commitTrigger("keyboard", e.code);
+    };
+    const onMouseDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const buttonMap = {
+        0: "MouseLeft",
+        1: "MouseMiddle",
+        2: "MouseRight",
+        3: "MouseBack",
+        4: "MouseForward"
+      };
+      const code = buttonMap[e.button] || `MouseButton${e.button}`;
+      commitTrigger("mouse", code);
+    };
+    const cleanup = () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("mousedown", onMouseDown, true);
+      if (this.popoutWindow && !this.popoutWindow.closed) {
+        this.popoutWindow.removeEventListener("keydown", onKeyDown, true);
+        this.popoutWindow.removeEventListener("mousedown", onMouseDown, true);
+      }
+      this.recorderCleanup = null;
+    };
+    this.recorderCleanup = cleanup;
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("mousedown", onMouseDown, true);
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      this.popoutWindow.addEventListener("keydown", onKeyDown, true);
+      this.popoutWindow.addEventListener("mousedown", onMouseDown, true);
+    }
+  }
+  static renderParadigmsHtml(schema) {
+    var _a, _b, _c, _d, _e;
+    if (this.activeTab === "keyboardMouse") {
+      const cfg = schema.keyboardMouse;
+      const isFwd = cfg.locomotion.mode === "forwardFacingDrive";
+      const fwdCode = ((_a = cfg.locomotion.forwardTrigger) == null ? void 0 : _a.code) || "MouseRight";
+      const isListeningFwd = this.listeningForwardTrigger;
+      const renderLocoKeyRow = (label, keyName) => {
+        const val = cfg.locomotion[keyName];
+        const isListening = this.listeningLocoKey === keyName;
+        return `
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.4); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.18);">
+            <span style="font-size: 0.74rem; color: #94a3b8; font-weight: 500;">${label}:</span>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <button data-loco-key="${keyName}" class="btn-bind-loco-key btn-secondary-action" style="font-size: 0.74rem; padding: 2px 8px; font-weight: 600; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.05); ${isListening ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : val ? "color: #ffffff;" : "color: #64748b; font-style: italic;"}">
+                ${isListening ? "🔴 Press key..." : val ? `⌨️ ${val}` : "(Unbound)"}
+              </button>
+              ${val ? `<button data-clear-loco-key="${keyName}" class="btn-clear-loco-key btn-icon" style="padding: 2px 6px; font-size: 0.70rem; color: #94a3b8; background: transparent; border: 1px solid rgba(148, 163, 184, 0.2);" title="Unbind key">✕</button>` : ""}
+            </div>
+          </div>
+        `;
+      };
+      return `
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label style="font-size: 0.76rem; color: #ffffff; font-weight: 600;">Locomotion Mode:</label>
+            <select id="select-loco-mode" class="dev-select" style="width: 58%; font-size: 0.74rem; color: #ffffff; background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.25);">
+              <option value="directVector" ${cfg.locomotion.mode === "directVector" ? "selected" : ""}>Direct 8-Way (WASD)</option>
+              <option value="forwardFacingDrive" ${isFwd ? "selected" : ""}>Forward-Facing Drive (Move to Mouse)</option>
+            </select>
+          </div>
+
+          ${isFwd ? `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.04); padding: 6px 8px; border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.2);">
+              <span style="font-size: 0.74rem; color: #ffffff; font-weight: 600;">Forward Drive Trigger:</span>
+              <button id="btn-bind-fwd-trigger" class="btn-secondary-action" style="font-size: 0.74rem; padding: 2px 8px; font-weight: 600; border: 1px solid rgba(148, 163, 184, 0.25); background: rgba(255, 255, 255, 0.05); ${isListeningFwd ? "background: #ef4444; color: #fff; animation: pulse 1s infinite;" : "color: #ffffff;"}">
+                ${isListeningFwd ? "🔴 Press key/mouse..." : `⌨️ ${fwdCode}`}
+              </button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
+              ${renderLocoKeyRow("Reverse (Optional)", "reverseKey")}
+              ${renderLocoKeyRow("Strafe Left (Optional)", "strafeLeftKey")}
+              ${renderLocoKeyRow("Strafe Right (Optional)", "strafeRightKey")}
+            </div>
+            <span style="font-size: 0.70rem; color: #94a3b8; line-height: 1.3;">
+              Creature faces mouse cursor. Drive trigger moves forward. Reverse and strafe keys are optional — click ✕ to unbind them and free A, S, D for abilities.
+            </span>
+          ` : `
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              ${renderLocoKeyRow("Move Forward / Up", "moveForwardKey")}
+              ${renderLocoKeyRow("Move Backward / Down", "reverseKey")}
+              ${renderLocoKeyRow("Strafe Left", "strafeLeftKey")}
+              ${renderLocoKeyRow("Strafe Right", "strafeRightKey")}
+            </div>
+            <span style="font-size: 0.70rem; color: #64748b; line-height: 1.3;">
+              Direct directional movement. Unbound keys will produce zero movement.
+            </span>
+          `}
+
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label style="font-size: 0.76rem; color: #cbd5e1; font-weight: 600;">Aiming Mode:</label>
+            <select id="select-aim-mode" class="dev-select" style="width: 58%; font-size: 0.74rem;">
+              <option value="faceMouseCursor" ${cfg.aiming.mode === "faceMouseCursor" ? "selected" : ""}>Face Mouse Cursor</option>
+              <option value="faceMovement" ${cfg.aiming.mode === "faceMovement" ? "selected" : ""}>Face Movement Direction</option>
+            </select>
+          </div>
+        </div>
+      `;
+    }
+    if (this.activeTab === "gamepad") {
+      const cfg = schema.gamepad;
+      return `
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label style="font-size: 0.76rem; color: #cbd5e1; font-weight: 600;">Left Stick Primary:</label>
+            <select id="select-pad-left-primary" class="dev-select" style="width: 58%; font-size: 0.74rem;">
+              <option value="directLocomotion" ${cfg.leftStick.primaryMode === "directLocomotion" ? "selected" : ""}>Direct Locomotion (Walk)</option>
+              <option value="cursorSteer" ${cfg.leftStick.primaryMode === "cursorSteer" ? "selected" : ""}>Cursor Reticle Steer</option>
+            </select>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label style="font-size: 0.76rem; color: #cbd5e1; font-weight: 600;">Dynamic Override:</label>
+            <select id="select-pad-dynamic-override" class="dev-select" style="width: 58%; font-size: 0.74rem;">
+              <option value="never" ${((_b = cfg.leftStick.dynamicOverride) == null ? void 0 : _b.triggerCondition) === "never" ? "selected" : ""}>Disabled (Always Primary)</option>
+              <option value="whenLtHeld" ${((_c = cfg.leftStick.dynamicOverride) == null ? void 0 : _c.triggerCondition) === "whenLtHeld" ? "selected" : ""}>When Left Trigger (LT) Held</option>
+              <option value="whenAiming" ${((_d = cfg.leftStick.dynamicOverride) == null ? void 0 : _d.triggerCondition) === "whenAiming" ? "selected" : ""}>When Aiming Ability (Laser/Throw)</option>
+              <option value="whenHoldingItem" ${((_e = cfg.leftStick.dynamicOverride) == null ? void 0 : _e.triggerCondition) === "whenHoldingItem" ? "selected" : ""}>When Holding Any Object</option>
+            </select>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label style="font-size: 0.76rem; color: #cbd5e1; font-weight: 600;">Right Stick:</label>
+            <select id="select-pad-right-mode" class="dev-select" style="width: 58%; font-size: 0.74rem;">
+              <option value="twinStickAim" ${cfg.rightStick.mode === "twinStickAim" ? "selected" : ""}>Twin Stick 360 Aim</option>
+              <option value="disabled" ${cfg.rightStick.mode === "disabled" ? "selected" : ""}>Disabled</option>
+            </select>
+          </div>
+        </div>
+      `;
+    }
+    return `
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 0.76rem; color: #38bdf8; font-weight: 600;">📱 Mobile Virtual Joysticks & Action Buttons</span>
+        <span style="font-size: 0.70rem; color: #94a3b8; line-height: 1.3;">
+          Supports multi-joystick layouts with concentric walk/sprint rings, dynamic follow-drag centers, tap-to-trigger actions, and responsive screen anchors.
+        </span>
+      </div>
+    `;
+  }
+  static renderRulesListHtml(char, schema) {
+    var _a;
+    const rules = this.activeTab === "keyboardMouse" ? schema.keyboardMouse.rules : this.activeTab === "gamepad" ? schema.gamepad.rules : schema.touch.rules;
+    const tags = this.getActiveDeviceTags(schema);
+    const stageGroups = this.getActiveStageGroups(schema);
+    for (const rule of rules) {
+      if (rule.tagId) {
+        const mode = ((_a = rule.trigger) == null ? void 0 : _a.mode) || "press";
+        const condType = mode === "hold" ? "tagHeld" : mode === "release" ? "tagReleased" : "tagPressed";
+        const conds = ControlSchemaArbiter.getRuleConditions(rule);
+        if (conds.length === 1 && conds[0].type === "always") {
+          rule.conditions = [{ type: condType, param: rule.tagId }];
+        } else if (!conds.some((c) => c.type === "tagHeld" || c.type === "tagPressed" || c.type === "tagReleased")) {
+          rule.conditions = [{ type: condType, param: rule.tagId }, ...conds];
+        } else {
+          rule.conditions = conds;
+        }
+        rule.condition = rule.conditions[0];
+        if (!rule.threadId) {
+          rule.threadId = `thread-${rule.tagId}`;
+        }
+        rule.tagId = void 0;
+        rule.trigger = { device: "keyboard", code: "Always", mode: "hold" };
+      }
+      if (!rule.threadId) {
+        rule.threadId = `thread-${rule.id}`;
+      }
+    }
+    if (rules.length === 0) {
+      return `
+        <div style="text-align: center; color: #94a3b8; font-size: 0.76rem; padding: 18px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px;">
+          No conditional threads defined. Click "+ Add New Conditional Thread" to build a control cascade.
+        </div>
+      `;
+    }
+    const renderActionStatementHtml = (rule, act, sIdx, totalStmts) => {
+      const actionDef = ControlActionCatalog.findAction(act.moduleId, act.intent);
+      const actionLabel = actionDef ? actionDef.label : `${act.moduleId}:${act.intent}`;
+      const cat = ControlActionCatalog.categories.find((c) => c.id === act.moduleId);
+      const isModuleMissing = cat && !cat.isAttached(char);
+      return `
+        <div class="then-statement-action" style="display: flex; align-items: center; justify-content: space-between; gap: 6px; background: rgba(255,255,255,0.02); border: 1px solid rgba(148,163,184,0.15); border-radius: 3px; padding: 2px 6px;">
+          <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+            <span style="font-size: 0.62rem; color: #94a3b8; width: 14px;">${sIdx + 1}.</span>
+            <button class="btn-open-action-picker btn-secondary-action" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.68rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.05); border-radius: 3px; text-align: left; flex: 1;" title="Change Action Function">
+              ${actionLabel} ▼
+            </button>
+            ${act.moduleId === "staging" ? (() => {
+        var _a2, _b;
+        const currentGroup = ((_a2 = act.args) == null ? void 0 : _a2.group) || ((_b = stageGroups[0]) == null ? void 0 : _b.name) || "default";
+        const stagesInGroup = _ControlsInspector.getStagesForGroup(schema, currentGroup);
+        return `
+                <select class="select-action-stage-group dev-select" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.68rem; padding: 1px 4px; color: #a78bfa; border: 1px solid rgba(167,139,250,0.3); background: #0f172a; max-width: 95px;" title="Target Stage Set">
+                  ${stageGroups.map((g) => `<option value="${g.name}" ${currentGroup === g.name ? "selected" : ""}>📁 ${g.name}</option>`).join("")}
+                </select>
+                <select class="select-action-stage dev-select" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.68rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: #0f172a; max-width: 105px;" title="Target Stage within ${currentGroup}">
+                  ${stagesInGroup.map((stg) => {
+          var _a3;
+          return `<option value="${stg}" ${(((_a3 = act.args) == null ? void 0 : _a3.stage) || "none") === stg ? "selected" : ""}>🎭 ${stg}</option>`;
+        }).join("")}
+                </select>
+              `;
+      })() : ""}
+            ${isModuleMissing ? `<span style="font-size: 0.58rem; color: #94a3b8;" title="Character lacks this behavior module">⚠️ Missing</span>` : ""}
+          </div>
+          <div style="display: flex; align-items: center; gap: 3px; flex-shrink: 0;">
+            <button class="btn-move-statement-up btn-icon" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${sIdx > 0 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${sIdx > 0 ? "pointer" : "default"};" ${sIdx === 0 ? "disabled" : ""} title="Move Action Up">▲</button>
+            <button class="btn-move-statement-down btn-icon" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${sIdx < totalStmts - 1 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${sIdx < totalStmts - 1 ? "pointer" : "default"};" ${sIdx === totalStmts - 1 ? "disabled" : ""} title="Move Action Down">▼</button>
+            <button class="btn-delete-statement btn-icon" data-rule-id="${rule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Action">✕</button>
+          </div>
+        </div>
+      `;
+    };
+    const renderNestedThreadStatementHtml = (parentRule, stmt, sIdx, totalStmts, depth) => {
+      const threadRules = stmt.rules;
+      const bg = "rgba(10, 15, 29, 0.85)";
+      const border = "rgba(148, 163, 184, 0.25)";
+      return `
+        <div class="control-thread-card nested-thread-card" data-parent-rule-id="${parentRule.id}" data-thread-id="${stmt.threadId}" style="display: flex; flex-direction: column; gap: 6px; background: ${bg}; border: 1px solid ${border}; border-radius: 6px; padding: 8px 10px; margin-top: 3px; margin-bottom: 3px;">
+          <!-- Nested Thread Card Header -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 4px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 0.62rem; color: #94a3b8; width: 14px;">${sIdx + 1}.</span>
+              <span style="font-size: 0.66rem; font-weight: 700; color: #ffffff; letter-spacing: 0.03em;">🔀 Nested Cascade Block</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 3px;">
+              <button class="btn-move-statement-up btn-icon" data-rule-id="${parentRule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${sIdx > 0 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${sIdx > 0 ? "pointer" : "default"};" ${sIdx === 0 ? "disabled" : ""} title="Move Nested Thread Up">▲ Thread</button>
+              <button class="btn-move-statement-down btn-icon" data-rule-id="${parentRule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${sIdx < totalStmts - 1 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${sIdx < totalStmts - 1 ? "pointer" : "default"};" ${sIdx === totalStmts - 1 ? "disabled" : ""} title="Move Nested Thread Down">▼ Thread</button>
+              <button class="btn-delete-statement btn-icon" data-rule-id="${parentRule.id}" data-statement-idx="${sIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Entire Nested Thread">🗑️</button>
+            </div>
+          </div>
+
+          <!-- Cascade Branches in Block -->
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            ${threadRules.map((r, rIdx) => {
+        const isLast = rIdx === threadRules.length - 1;
+        const conds = ControlSchemaArbiter.getRuleConditions(r);
+        const isAlways = conds.length === 1 && conds[0].type === "always";
+        const badge = rIdx === 0 ? "IF" : isLast && isAlways ? "ELSE" : "ELSE IF";
+        return renderBranchRowHtml(r, badge, depth, rIdx, threadRules.length, stmt.threadId);
+      }).join("")}
+          </div>
+
+          <!-- Add Branch to this Cascade Block -->
+          <div style="display: flex; justify-content: flex-start; margin-top: 2px;">
+            <button class="btn-add-thread-branch btn-secondary-action" data-thread-id="${stmt.threadId}" style="font-size: 0.64rem; padding: 3px 8px; color: #ffffff; border: 1px dashed rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.03); border-radius: 4px; cursor: pointer;">
+              + Add Else If Branch
+            </button>
+          </div>
+        </div>
+      `;
+    };
+    const renderConditionTreeHtml = (rule, condList, op, parentPath, depth = 0) => {
+      const isRoot = parentPath === "";
+      return `
+        <div style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;">
+          ${condList.map((cond, cIdx) => {
+        const currentPath = parentPath !== "" ? `${parentPath}.${cIdx}` : `${cIdx}`;
+        const opBadgeHtml = cIdx > 0 ? `
+                <button class="btn-toggle-cond-op" data-rule-id="${rule.id}" data-group-path="${parentPath}" type="button" style="font-size: 0.60rem; font-weight: 800; color: ${op === "or" ? "#f59e0b" : "#38bdf8"}; background: ${op === "or" ? "rgba(245, 158, 11, 0.15)" : "rgba(56, 189, 248, 0.15)"}; border: 1px solid ${op === "or" ? "rgba(245, 158, 11, 0.4)" : "rgba(56, 189, 248, 0.4)"}; border-radius: 3px; padding: 0 4px; cursor: pointer; text-transform: uppercase;" title="Click to toggle between AND / OR">${op.toUpperCase()}</button>
+              ` : "";
+        if (cond.type === "group") {
+          const groupOp = cond.op || "or";
+          const subConds = cond.conditions || [];
+          return `
+                  ${opBadgeHtml}
+                  <div class="cond-group-block" style="display: inline-flex; align-items: center; gap: 3px; background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.35); border-radius: 4px; padding: 1px 4px;">
+                    <span style="font-size: 0.82rem; font-weight: 800; color: #c084fc; user-select: none;">(</span>
+                    ${renderConditionTreeHtml(rule, subConds, groupOp, currentPath, depth + 1)}
+                    <span style="font-size: 0.82rem; font-weight: 800; color: #c084fc; user-select: none;">)</span>
+                    <button class="btn-delete-condition btn-icon" data-rule-id="${rule.id}" data-cond-path="${currentPath}" type="button" style="font-size: 0.58rem; padding: 0 3px; color: #f87171; background: transparent; border: 1px solid rgba(248, 113, 113, 0.3); border-radius: 2px; cursor: pointer;" title="Remove Condition Group">✕</button>
+                  </div>
+                `;
+        }
+        return `
+                ${opBadgeHtml}
+                <div style="display: inline-flex; align-items: center; gap: 3px; background: rgba(255,255,255,0.04); border: 1px solid rgba(148,163,184,0.2); border-radius: 3px; padding: 1px 4px;">
+                  <select class="select-rule-cond dev-select" data-rule-id="${rule.id}" data-cond-path="${currentPath}" style="font-size: 0.68rem; padding: 1px 4px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;">
+                    <optgroup label="🎮 Keybind / Control Inputs">
+                      <option value="tagPressed" ${cond.type === "tagPressed" ? "selected" : ""}>Keybind: Press</option>
+                      <option value="tagHeld" ${cond.type === "tagHeld" ? "selected" : ""}>Keybind: Hold</option>
+                      <option value="tagReleased" ${cond.type === "tagReleased" ? "selected" : ""}>Keybind: Release</option>
+                      <option value="buttonHeld" ${cond.type === "buttonHeld" ? "selected" : ""}>Raw Key/Button Code...</option>
+                    </optgroup>
+                    <optgroup label="🌍 Game Conditions">
+                      <option value="always" ${cond.type === "always" ? "selected" : ""}>Always (Unconditional)</option>
+                      <option value="stagedActionIs" ${cond.type === "stagedActionIs" ? "selected" : ""}>Stage Is...</option>
+                      <option value="emptyHanded" ${cond.type === "emptyHanded" ? "selected" : ""}>Empty-Handed</option>
+                      <option value="holdingPlainObject" ${cond.type === "holdingPlainObject" || cond.type === "holdingObjectWithoutAbility" ? "selected" : ""}>Holding Plain Item (No Ability)</option>
+                      <option value="holdingItemWithPrimaryAbility" ${cond.type === "holdingItemWithPrimaryAbility" || cond.type === "holdingEdible" ? "selected" : ""}>Holding Item With Ability</option>
+                      <option value="holdingObject" ${cond.type === "holdingObject" ? "selected" : ""}>Holding Any Item</option>
+                      <option value="targetInReach" ${cond.type === "targetInReach" ? "selected" : ""}>Target in Reach</option>
+                      <option value="grounded" ${cond.type === "grounded" ? "selected" : ""}>On Ground</option>
+                      <option value="climbing" ${cond.type === "climbing" ? "selected" : ""}>Climbing Wall</option>
+                      <option value="isAimingTrajectory" ${cond.type === "isAimingTrajectory" ? "selected" : ""}>Aiming Trajectory (Throw)</option>
+                      <option value="isLaserAiming" ${cond.type === "isLaserAiming" ? "selected" : ""}>Aiming Laser</option>
+                      <option value="isAiming" ${cond.type === "isAiming" ? "selected" : ""}>Aiming (Any)</option>
+                    </optgroup>
+                  </select>
+                  ${cond.type === "tagPressed" || cond.type === "tagHeld" || cond.type === "tagReleased" ? `
+                    <select class="select-cond-tag dev-select" data-rule-id="${rule.id}" data-cond-path="${currentPath}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 140px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Select keybind tag to check">
+                      ${tags.map((tg) => `<option value="${tg.id}" ${cond.param === tg.id || cond.param === tg.name ? "selected" : ""}>🏷️ ${tg.name}</option>`).join("")}
+                    </select>
+                  ` : cond.type === "stagedActionIs" ? (() => {
+          var _a2;
+          const currentGroup = cond.stageGroup || ((_a2 = stageGroups[0]) == null ? void 0 : _a2.name) || "default";
+          const stagesInGroup = _ControlsInspector.getStagesForGroup(schema, currentGroup);
+          return `
+                          <select class="select-cond-stage-group dev-select" data-rule-id="${rule.id}" data-cond-path="${currentPath}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 95px; color: #a78bfa; border: 1px solid rgba(167,139,250,0.3); background: #0f172a;" title="Stage Set">
+                            ${stageGroups.map((g) => `<option value="${g.name}" ${currentGroup === g.name ? "selected" : ""}>📁 ${g.name}</option>`).join("")}
+                          </select>
+                          <select class="select-cond-stage dev-select" data-rule-id="${rule.id}" data-cond-path="${currentPath}" style="font-size: 0.68rem; padding: 1px 4px; max-width: 105px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" title="Stage within ${currentGroup}">
+                            ${stagesInGroup.map((stg) => `<option value="${stg}" ${(cond.param || "none") === stg ? "selected" : ""}>🎭 ${stg}</option>`).join("")}
+                          </select>
+                        `;
+        })() : cond.type === "buttonHeld" ? `<input class="input-cond-param dev-input" data-rule-id="${rule.id}" data-cond-path="${currentPath}" value="${cond.param ?? "MouseRight"}" placeholder="e.g. MouseRight" style="font-size: 0.68rem; padding: 1px 4px; width: 90px; color: #ffffff; border: 1px solid rgba(148,163,184,0.2); background: #0f172a;" />` : ""}
+                  ${condList.length > 1 || !isRoot ? `<button class="btn-delete-condition btn-icon" data-rule-id="${rule.id}" data-cond-path="${currentPath}" type="button" style="font-size: 0.58rem; padding: 0 3px; color: #94a3b8; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: pointer;" title="Remove Condition">✕</button>` : ""}
+                </div>
+              `;
+      }).join("")}
+          <button class="btn-add-condition btn-secondary-action" data-rule-id="${rule.id}" data-group-path="${parentPath}" type="button" style="font-size: 0.60rem; padding: 1px 5px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px;" title="Add condition">+ Cond</button>
+          <button class="btn-add-cond-group btn-secondary-action" data-rule-id="${rule.id}" data-group-path="${parentPath}" type="button" style="font-size: 0.60rem; padding: 1px 5px; color: #c084fc; border: 1px solid rgba(168,85,247,0.35); background: rgba(168,85,247,0.1); border-radius: 3px;" title="Add nested condition group (OR / AND)">${isRoot ? "+ (Group)" : "+ ( )"}</button>
+        </div>
+      `;
+    };
+    const renderBranchRowHtml = (rule, branchBadge, depth = 0, branchIdx = 0, totalBranches = 1, threadId = "") => {
+      const conds = ControlSchemaArbiter.getRuleConditions(rule);
+      const rootOp = rule.conditionOp || "and";
+      const statements = ControlSchemaArbiter.getRuleBody(rule);
+      return `
+        <div class="thread-branch-block" id="rule-card-${rule.id}" style="display: flex; flex-direction: column; gap: 6px; background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 5px; padding: 7px 10px;">
+          <!-- Top Row: Branch Label + Status Pip + Horizontally Stacked Conditions with Nested Groups -->
+          <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+              <span class="rule-status-pip" id="pip-${rule.id}" style="width: 7px; height: 7px; border-radius: 50%; background: #475569; flex-shrink: 0;" title="Live Condition Status"></span>
+
+              <span style="font-size: 0.66rem; font-weight: 700; color: #ffffff; background: rgba(255,255,255,0.08); border: 1px solid rgba(148,163,184,0.25); padding: 1px 6px; border-radius: 3px; letter-spacing: 0.04em;">
+                ${branchBadge}:
+              </span>
+
+              <!-- Stacked Conditions (Listed Horizontally with Nested Groups) -->
+              ${renderConditionTreeHtml(rule, conds, rootOp, "")}
+            </div>
+
+            <!-- Branch Reorder & Delete Buttons -->
+            <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+              ${totalBranches > 1 ? `
+                <button class="btn-move-branch-up btn-icon" data-thread-id="${threadId}" data-branch-idx="${branchIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${branchIdx > 0 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${branchIdx > 0 ? "pointer" : "default"};" ${branchIdx === 0 ? "disabled" : ""} title="Move Branch Up">▲</button>
+                <button class="btn-move-branch-down btn-icon" data-thread-id="${threadId}" data-branch-idx="${branchIdx}" style="font-size: 0.58rem; padding: 1px 4px; color: ${branchIdx < totalBranches - 1 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${branchIdx < totalBranches - 1 ? "pointer" : "default"};" ${branchIdx === totalBranches - 1 ? "disabled" : ""} title="Move Branch Down">▼</button>
+              ` : ""}
+              <button class="btn-delete-rule btn-secondary-action" data-rule-id="${rule.id}" style="flex: 0 0 20px; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); font-size: 0.66rem; border-radius: 3px; background: transparent; cursor: pointer;" title="Remove Branch">
+                🗑️
+              </button>
+            </div>
+          </div>
+
+          <!-- Bottom Block: THEN Action Execution (Stacked Vertically Like Classic Code) -->
+          <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 14px; border-left: 2px solid rgba(148, 163, 184, 0.25); margin-left: 6px; margin-top: 3px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 0.66rem; font-weight: 700; color: #ffffff; letter-spacing: 0.04em;">
+                THEN:
+              </span>
+              <div style="display: flex; gap: 4px;">
+                <button class="btn-add-action btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.60rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px; cursor: pointer;" title="Add action function">+ Add Action</button>
+                <button class="btn-add-nested-thread btn-secondary-action" data-rule-id="${rule.id}" style="font-size: 0.60rem; padding: 1px 6px; color: #ffffff; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.04); border-radius: 3px; cursor: pointer;" title="Add nested IF/THEN block inside this action">+ Add Nested Thread</button>
+              </div>
+            </div>
+
+            <!-- Vertically Ordered Statements in THEN Body (Actions & Nested Cascade Blocks Interleaved) -->
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              ${statements.length === 0 ? `<div style="font-size: 0.62rem; color: #64748b; font-style: italic; padding: 2px 4px;">No actions or nested blocks in this THEN body.</div>` : statements.map((stmt, sIdx) => {
+        if (stmt.type === "action") {
+          return renderActionStatementHtml(rule, stmt.action, sIdx, statements.length);
+        } else {
+          return renderNestedThreadStatementHtml(rule, stmt, sIdx, statements.length, depth + 1);
+        }
+      }).join("")}
+            </div>
+          </div>
+        </div>
+      `;
+    };
+    const renderCascadeBlocksHtml = (ruleList, depth = 0) => {
+      const threadMap = /* @__PURE__ */ new Map();
+      for (const rule of ruleList) {
+        if (!rule.threadId) {
+          rule.threadId = `thread-${rule.id}`;
+        }
+        const tId = rule.threadId;
+        if (!threadMap.has(tId)) threadMap.set(tId, []);
+        threadMap.get(tId).push(rule);
+      }
+      const threadCards = [];
+      const totalBlocks = threadMap.size;
+      let bIdx = 0;
+      for (const [tId, threadRules] of threadMap.entries()) {
+        const bg = depth === 0 ? "rgba(15, 23, 42, 0.7)" : "rgba(10, 15, 29, 0.85)";
+        const border = depth === 0 ? "rgba(148, 163, 184, 0.2)" : "rgba(148, 163, 184, 0.25)";
+        threadCards.push(`
+          <div class="control-thread-card" style="display: flex; flex-direction: column; gap: 8px; background: ${bg}; border: 1px solid ${border}; border-radius: 6px; padding: ${depth === 0 ? "10px 12px" : "8px 10px"}; margin-top: ${depth > 0 ? "6px" : "0"};">
+            ${depth === 0 && totalBlocks > 1 ? `
+              <!-- Top-level Block Reorder Controls -->
+              <div style="display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-bottom: -2px;">
+                <button class="btn-move-cascade-block-up btn-icon" data-thread-id="${tId}" style="font-size: 0.58rem; padding: 1px 6px; color: ${bIdx > 0 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${bIdx > 0 ? "pointer" : "default"};" ${bIdx === 0 ? "disabled" : ""} title="Move Entire Block Up">▲ Block</button>
+                <button class="btn-move-cascade-block-down btn-icon" data-thread-id="${tId}" style="font-size: 0.58rem; padding: 1px 6px; color: ${bIdx < totalBlocks - 1 ? "#ffffff" : "#475569"}; background: transparent; border: 1px solid rgba(148,163,184,0.2); border-radius: 2px; cursor: ${bIdx < totalBlocks - 1 ? "pointer" : "default"};" ${bIdx === totalBlocks - 1 ? "disabled" : ""} title="Move Entire Block Down">▼ Block</button>
+              </div>
+            ` : ""}
+
+            <!-- Cascade Branches in Block -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              ${threadRules.map((r, rIdx) => {
+          const isLast = rIdx === threadRules.length - 1;
+          const conds = ControlSchemaArbiter.getRuleConditions(r);
+          const isAlways = conds.length === 1 && conds[0].type === "always";
+          const badge = rIdx === 0 ? "IF" : isLast && isAlways ? "ELSE" : "ELSE IF";
+          return renderBranchRowHtml(r, badge, depth, rIdx, threadRules.length, tId);
+        }).join("")}
+            </div>
+
+            <!-- Add Branch to this Cascade Block -->
+            <div style="display: flex; justify-content: flex-start; margin-top: 2px;">
+              <button class="btn-add-thread-branch btn-secondary-action" data-thread-id="${tId}" style="font-size: 0.64rem; padding: 3px 8px; color: #ffffff; border: 1px dashed rgba(148, 163, 184, 0.3); background: rgba(255, 255, 255, 0.03); border-radius: 4px; cursor: pointer;">
+                + Add Else If Branch
+              </button>
+            </div>
+          </div>
+        `);
+        bIdx++;
+      }
+      return threadCards.join("");
+    };
+    return `
+      ${renderCascadeBlocksHtml(rules, 0)}
+      <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+        <button id="btn-add-control-thread" class="btn-secondary-action" style="font-size: 0.72rem; padding: 4px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600; cursor: pointer;">
+          + Add Cascade Block
+        </button>
+      </div>
+    `;
+  }
+  static formatTriggerLabel(item) {
+    const t = "trigger" in item ? item.trigger : item;
+    const devIcon = t.device === "keyboard" ? "⌨️" : t.device === "mouse" ? "🖱️" : "🎮";
+    const chord = t.chordModifiers && t.chordModifiers.length > 0 ? `${t.chordModifiers.join("+")} + ` : "";
+    return `${devIcon} ${chord}${t.code}`;
+  }
+  // --- Event Listeners Attachment ---
+  static attachEventListeners(root) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v;
+    if (!this.modalChar || !this.workingSchema) return;
+    const char = this.modalChar;
+    const schema = this.workingSchema;
+    const prefab = char.prefabId ? prefabManager.get(char.prefabId) : void 0;
+    (_a = root.querySelector("#btn-close-controls-modal")) == null ? void 0 : _a.addEventListener("click", () => {
+      this.closeModal();
+    });
+    (_b = root.querySelector("#btn-modal-cancel")) == null ? void 0 : _b.addEventListener("click", () => {
+      this.closeModal();
+    });
+    (_c = root.querySelector("#btn-modal-save-close")) == null ? void 0 : _c.addEventListener("click", () => {
+      this.saveAndCommit();
+    });
+    (_d = root.querySelector("#btn-revert-controls-from-prefab")) == null ? void 0 : _d.addEventListener("click", () => {
+      if (prefab == null ? void 0 : prefab.controlSchema) {
+        this.workingSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
+        this.showToast(`Reset to default ${prefab.name} controls`);
+        this.renderActiveView();
+      }
+    });
+    (_e = root.querySelector("#btn-make-char-prefab")) == null ? void 0 : _e.addEventListener("click", async () => {
+      const p = prefabManager.createFromEntity(char);
+      p.controlSchema = JSON.parse(JSON.stringify(schema));
+      char.controlSchema = JSON.parse(JSON.stringify(schema));
+      char.prefabId = p.id;
+      await DevConfigPersistence.saveControlSchema(this.modalPanel, char, schema);
+      this.showToast(`Created Prefab: ${p.name} and saved to project!`);
+      this.renderActiveView();
+    });
+    const selectPreset = root.querySelector("#select-control-preset");
+    if (selectPreset) {
+      selectPreset.addEventListener("change", () => {
+        const pId = selectPreset.value;
+        const found = BuiltinControlSchemas.find((b) => b.id === pId);
+        if (found) {
+          this.workingSchema = JSON.parse(JSON.stringify(found));
+          this.renderActiveView();
+        }
+      });
+    }
+    (_f = root.querySelector("#tab-btn-kbm")) == null ? void 0 : _f.addEventListener("click", () => {
+      this.activeTab = "keyboardMouse";
+      this.renderActiveView();
+    });
+    (_g = root.querySelector("#tab-btn-pad")) == null ? void 0 : _g.addEventListener("click", () => {
+      this.activeTab = "gamepad";
+      this.renderActiveView();
+    });
+    (_h = root.querySelector("#tab-btn-tch")) == null ? void 0 : _h.addEventListener("click", () => {
+      this.activeTab = "touch";
+      this.renderActiveView();
+    });
+    (_i = root.querySelector("#btn-mode-blocks")) == null ? void 0 : _i.addEventListener("click", () => {
+      this.viewMode = "blocks";
+      this.renderActiveView();
+    });
+    (_j = root.querySelector("#btn-mode-pipeline")) == null ? void 0 : _j.addEventListener("click", () => {
+      this.viewMode = "pipeline";
+      this.renderActiveView();
+    });
+    if (this.viewMode === "blocks" && schema.keyboardMouse.blocks) {
+      const blocks = schema.keyboardMouse.blocks || [];
+      const selectAddBlock = root.querySelector("#select-add-control-block");
+      if (selectAddBlock) {
+        selectAddBlock.addEventListener("change", () => {
+          const type = selectAddBlock.value;
+          if (!type) return;
+          const newId = `block-${type}-${Date.now().toString(36)}`;
+          if (type === "locomotion") {
+            blocks.push({
+              type: "locomotion",
+              id: newId,
+              name: "Locomotion",
+              enabled: true,
+              moveKeys: { upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" },
+              jump: { code: "Space" },
+              sprint: { code: "ShiftLeft", mode: "hold" }
+            });
+          } else if (type === "itemInteraction") {
+            blocks.push({
+              type: "itemInteraction",
+              id: newId,
+              name: "Item Interaction",
+              enabled: true,
+              pickup: { code: "MouseLeft" },
+              drop: { code: "KeyQ" },
+              swap: { code: "KeyF" },
+              consume: { code: "KeyE" },
+              swapRequiresHolding: false,
+              triggerPickupWhenEmptyHanded: true
+            });
+          } else if (type === "throw") {
+            blocks.push({
+              type: "throw",
+              id: newId,
+              name: "Throwing & Ballistics",
+              enabled: true,
+              mode: "chargeAndRelease",
+              chargeTrigger: { code: "MouseLeft" },
+              aimTrigger: { code: "MouseRight" },
+              fireTrigger: { code: "MouseLeft" },
+              quickTrigger: { code: "MouseLeft" },
+              arcModulation: { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 5e-3 }
+            });
+          } else if (type === "melee") {
+            blocks.push({
+              type: "melee",
+              id: newId,
+              name: "Melee Combat",
+              enabled: true,
+              punch: { code: "KeyF" }
+            });
+          } else if (type === "laser") {
+            blocks.push({
+              type: "laser",
+              id: newId,
+              name: "Laser Beam",
+              enabled: true,
+              aimTrigger: { code: "MouseRight", gateButtons: ["AltLeft"] },
+              aimMode: "mouseWorldPos",
+              fireTrigger: { code: "MouseLeft", autoFireWhenAiming: false },
+              powerLevel: { source: "mouseWheel", sensitivity: 1 }
+            });
+          } else if (type === "facing") {
+            blocks.push({
+              type: "facing",
+              id: newId,
+              name: "Aim / Heading Facing",
+              enabled: true,
+              mode: "mouseWorldPos"
+            });
+          }
+          this.renderActiveView();
+        });
+      }
+      root.querySelectorAll(".btn-block-delete").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.blockId;
+          const idx = blocks.findIndex((b) => b.id === bId);
+          if (idx >= 0) {
+            blocks.splice(idx, 1);
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".block-toggle-enabled").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = chk.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.enabled = e.target.checked;
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".btn-block-slot-bind").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.blockId;
+          const slotName = btn.dataset.slotName;
+          if (bId && slotName) {
+            this.startBlockKeyListening(bId, slotName);
+          }
+        });
+      });
+      root.querySelectorAll(".btn-block-slot-clear").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.blockId;
+          const slotName = btn.dataset.slotName;
+          const block = blocks.find((b) => b.id === bId);
+          if (block && slotName) {
+            const slot = block[slotName];
+            if (slot) {
+              slot.code = null;
+            }
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".btn-block-slot-gate-bind").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.blockId;
+          const slotName = btn.dataset.slotName;
+          const gateIdx = parseInt(btn.dataset.gateIdx || "-1", 10);
+          if (bId && slotName && gateIdx >= 0) {
+            this.startBlockKeyListening(bId, slotName, gateIdx);
+          }
+        });
+      });
+      root.querySelectorAll(".btn-block-slot-gate-remove").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.blockId;
+          const slotName = btn.dataset.slotName;
+          const gateIdx = parseInt(btn.dataset.gateIdx || "-1", 10);
+          const block = blocks.find((b) => b.id === bId);
+          if (block && slotName && gateIdx >= 0) {
+            const slot = block[slotName];
+            if (slot && slot.gateButtons) {
+              slot.gateButtons.splice(gateIdx, 1);
+            }
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".btn-block-slot-add-gate").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.blockId;
+          const slotName = btn.dataset.slotName;
+          const block = blocks.find((b) => b.id === bId);
+          if (bId && block && slotName) {
+            let slot = block[slotName];
+            if (!slot) {
+              slot = { code: null, gateButtons: [] };
+              block[slotName] = slot;
+            }
+            slot.gateButtons = slot.gateButtons || [];
+            const newIdx = slot.gateButtons.length;
+            slot.gateButtons.push("KeyD");
+            this.startBlockKeyListening(bId, slotName, newIdx);
+          }
+        });
+      });
+      root.querySelectorAll(".btn-block-move-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.blockId;
+          const moveKey = btn.dataset.moveKey;
+          if (bId && moveKey) {
+            this.startBlockKeyListening(bId, "moveKeys", void 0, moveKey);
+          }
+        });
+      });
+      root.querySelectorAll(".btn-block-move-key-clear").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.blockId;
+          const moveKey = btn.dataset.moveKey;
+          const block = blocks.find((b) => b.id === bId);
+          if (block && block.type === "locomotion" && moveKey) {
+            const loco = block;
+            if (moveKey === "reverseKey" || moveKey === "strafeLeftKey" || moveKey === "strafeRightKey") {
+              loco[moveKey] = null;
+            } else if (loco.moveKeys) {
+              loco.moveKeys[moveKey] = null;
+            }
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".block-loco-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.mode = e.target.value;
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".block-slot-clean-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = chk.dataset.blockId;
+          const slotName = chk.dataset.slotName;
+          const block = blocks.find((b) => b.id === bId);
+          if (block && slotName) {
+            const slot = block[slotName];
+            const checked = e.target.checked;
+            if (slot) {
+              slot.requireCleanPress = checked;
+            } else {
+              block[slotName] = { code: null, requireCleanPress: checked };
+            }
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".block-move-keys-clean-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = chk.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block && block.type === "locomotion") {
+            const loco = block;
+            loco.moveKeys = loco.moveKeys || {};
+            loco.moveKeys.requireCleanPress = e.target.checked;
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".block-sprint-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block && block.sprint) {
+            block.sprint.mode = e.target.value;
+          }
+        });
+      });
+      root.querySelectorAll(".block-laser-aim-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.aimMode = e.target.value;
+          }
+        });
+      });
+      root.querySelectorAll(".block-laser-autofire").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = chk.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block && block.fireTrigger) {
+            block.fireTrigger.autoFireWhenAiming = e.target.checked;
+          }
+        });
+      });
+      root.querySelectorAll(".block-laser-power-source").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.powerLevel = block.powerLevel || {};
+            block.powerLevel.source = e.target.value;
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".btn-block-laser-power-clear").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block && block.powerLevel) {
+            block.powerLevel.source = "none";
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".block-throw-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.mode = e.target.value;
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".block-throw-arc-source").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.arcModulation = block.arcModulation || {};
+            block.arcModulation.source = e.target.value;
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".block-item-swap-requires-holding").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = chk.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.swapRequiresHolding = e.target.checked;
+          }
+        });
+      });
+      root.querySelectorAll(".block-item-trigger-pickup-empty").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = chk.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.triggerPickupWhenEmptyHanded = e.target.checked;
+          }
+        });
+      });
+      root.querySelectorAll(".block-facing-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.mode = e.target.value;
+          }
+        });
+      });
+    }
+    if (this.viewMode === "pipeline" && schema.keyboardMouse.pipeline) {
+      const pipeline = schema.keyboardMouse.pipeline;
+      (_k = root.querySelector("#btn-add-pipeline-binding")) == null ? void 0 : _k.addEventListener("click", () => {
+        pipeline.push({
+          id: "pipe-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+          name: "New Binding",
+          enabled: true,
+          source: { type: "button", device: "keyboard", code: "KeyE" },
+          processor: { type: "button", triggerMode: "down", requireCleanPress: true, claimOnFire: true },
+          target: "pickup.grab"
+        });
+        schema.pipeline = pipeline;
+        this.renderActiveView();
+      });
+      root.querySelectorAll(".btn-delete-pipeline-binding").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.bindingId;
+          schema.keyboardMouse.pipeline = pipeline.filter((b) => b.id !== bId);
+          schema.pipeline = schema.keyboardMouse.pipeline;
+          this.renderActiveView();
+        });
+      });
+      root.querySelectorAll(".btn-pipeline-bind").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.bindingId;
+          const subkey = btn.dataset.subkey;
+          if (bId) {
+            this.startPipelineKeyListening(bId, subkey);
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-switch-source-type").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.bindingId;
+          const val = e.target.value;
+          const b = pipeline.find((p) => p.id === bId);
+          if (!b) return;
+          if (val === "button") {
+            b.source = { type: "button", device: "keyboard", code: "KeyE" };
+            b.processor = { type: "button", triggerMode: "down", requireCleanPress: true, claimOnFire: true };
+          } else if (val === "composite_4key") {
+            b.source = { type: "composite_4key", upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" };
+            b.processor = { type: "2d_vector", mode: "direct" };
+            b.target = "locomotion.moveVector";
+          } else if (val === "1d_scalar") {
+            b.source = { type: "1d_scalar", source: "mouseDeltaY" };
+            b.processor = { type: "1d_scalar", mode: "accumulator", sensitivity: 5e-3, clampMin: 0, clampMax: 1, initialValue: 0.5, autoCursorLock: true, gateButton: { device: "mouse", code: "MouseLeft", mode: "hold" } };
+            b.target = "throw.arcHeight";
+          } else if (val === "2d_vector") {
+            b.source = { type: "2d_vector", source: "mouseWorldPos" };
+            b.processor = { type: "facing", mode: "fromMousePos" };
+            b.target = "character.facing";
+          }
+          this.renderActiveView();
+        });
+      });
+      root.querySelectorAll(".pipe-source-scalar").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.source.type === "1d_scalar") {
+            b.source.source = e.target.value;
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-source-vector").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.source.type === "2d_vector") {
+            b.source.source = e.target.value;
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-proc-trigger-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "button") {
+            b.processor.triggerMode = e.target.value;
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-proc-clean").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = chk.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "button") {
+            b.processor.requireCleanPress = e.target.checked;
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-proc-claim").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = chk.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "button") {
+            b.processor.claimOnFire = e.target.checked;
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-proc-scalar-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "1d_scalar") {
+            b.processor.mode = e.target.value;
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-proc-cursor-lock").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = chk.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "1d_scalar") {
+            b.processor.autoCursorLock = e.target.checked;
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-proc-sens").forEach((inp) => {
+        inp.addEventListener("change", (e) => {
+          const bId = inp.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "1d_scalar") {
+            b.processor.sensitivity = parseFloat(e.target.value) || 5e-3;
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-proc-vector-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "2d_vector") {
+            b.processor.mode = e.target.value;
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-proc-facing-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.processor.type === "facing") {
+            b.processor.mode = e.target.value;
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-target-socket").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b) {
+            b.target = e.target.value;
+          }
+        });
+      });
+      root.querySelectorAll(".pipe-binding-condition").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b) {
+            b.condition = e.target.value;
+          }
+        });
+      });
+      root.querySelectorAll(".btn-pipe-add-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.source.type === "button") {
+            b.source.additionalCodes = b.source.additionalCodes || [];
+            const newIdx = b.source.additionalCodes.length;
+            b.source.additionalCodes.push("ShiftLeft");
+            this.startPipelineKeyListening(b.id, `extraKey_${newIdx}`);
+          }
+        });
+      });
+      root.querySelectorAll(".btn-pipe-remove-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.bindingId;
+          const keyIdx = parseInt(btn.dataset.keyIndex || "-1", 10);
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.source.type === "button" && b.source.additionalCodes && keyIdx >= 0) {
+            b.source.additionalCodes.splice(keyIdx, 1);
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".btn-pipe-remove-primary-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.source.type === "button" && b.source.additionalCodes && b.source.additionalCodes.length > 0) {
+            const nextCode = b.source.additionalCodes.shift();
+            b.source.code = nextCode;
+            b.source.device = nextCode.startsWith("Mouse") ? "mouse" : "keyboard";
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".btn-pipe-add-gate-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.bindingId;
+          const b = pipeline.find((p) => p.id === bId);
+          if (b) {
+            b.gateButtons = b.gateButtons || [];
+            const newIdx = b.gateButtons.length;
+            b.gateButtons.push("KeyD");
+            this.startPipelineKeyListening(b.id, `gateKey_${newIdx}`);
+          }
+        });
+      });
+      root.querySelectorAll(".btn-pipe-remove-gate-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = btn.dataset.bindingId;
+          const gateIdx = parseInt(btn.dataset.gateIndex || "-1", 10);
+          const b = pipeline.find((p) => p.id === bId);
+          if (b && b.gateButtons && gateIdx >= 0) {
+            b.gateButtons.splice(gateIdx, 1);
+            this.renderActiveView();
+          }
+        });
+      });
+    }
+    const selectLoco = root.querySelector("#select-loco-mode");
+    if (selectLoco) {
+      selectLoco.addEventListener("change", () => {
+        schema.keyboardMouse.locomotion.mode = selectLoco.value;
+        this.renderActiveView();
+      });
+    }
+    const btnFwdTrigger = root.querySelector("#btn-bind-fwd-trigger");
+    if (btnFwdTrigger) {
+      btnFwdTrigger.addEventListener("click", () => {
+        this.startForwardTriggerListening();
+      });
+    }
+    root.querySelectorAll(".btn-bind-loco-key").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const keyName = btn.dataset.locoKey;
+        if (keyName) this.startLocoKeyListening(keyName);
+      });
+    });
+    root.querySelectorAll(".btn-clear-loco-key").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const keyName = btn.dataset.clearLocoKey;
+        if (keyName && schema.keyboardMouse.locomotion) {
+          delete schema.keyboardMouse.locomotion[keyName];
+          this.renderActiveView();
+        }
+      });
+    });
+    const selectAim = root.querySelector("#select-aim-mode");
+    if (selectAim) {
+      selectAim.addEventListener("change", () => {
+        schema.keyboardMouse.aiming.mode = selectAim.value;
+      });
+    }
+    const selectPadLeft = root.querySelector("#select-pad-left-primary");
+    if (selectPadLeft) {
+      selectPadLeft.addEventListener("change", () => {
+        schema.gamepad.leftStick.primaryMode = selectPadLeft.value;
+      });
+    }
+    const selectPadOverride = root.querySelector("#select-pad-dynamic-override");
+    if (selectPadOverride) {
+      selectPadOverride.addEventListener("change", () => {
+        if (!schema.gamepad.leftStick.dynamicOverride) {
+          schema.gamepad.leftStick.dynamicOverride = {
+            triggerCondition: "whenLtHeld",
+            overrideMode: "cursorSteer"
+          };
+        }
+        schema.gamepad.leftStick.dynamicOverride.triggerCondition = selectPadOverride.value;
+      });
+    }
+    const selectPadRight = root.querySelector("#select-pad-right-mode");
+    if (selectPadRight) {
+      selectPadRight.addEventListener("change", () => {
+        schema.gamepad.rightStick.mode = selectPadRight.value;
+      });
+    }
+    (_l = root.querySelector("#btn-collapse-all-rules")) == null ? void 0 : _l.addEventListener("click", () => {
+      const rules = this.activeTab === "keyboardMouse" ? schema.keyboardMouse.rules : this.activeTab === "gamepad" ? schema.gamepad.rules : schema.touch.rules;
+      for (const r of rules) {
+        this.collapsedRuleIds.add(r.id);
+      }
+      this.renderActiveView();
+    });
+    (_m = root.querySelector("#btn-expand-all-rules")) == null ? void 0 : _m.addEventListener("click", () => {
+      this.collapsedRuleIds.clear();
+      this.renderActiveView();
+    });
+    (_n = root.querySelector("#btn-jump-to-tags")) == null ? void 0 : _n.addEventListener("click", () => {
+      const scrollBody = root.querySelector("#controls-scroll-body");
+      if (scrollBody) {
+        scrollBody.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+    (_o = root.querySelector("#btn-jump-to-rules")) == null ? void 0 : _o.addEventListener("click", () => {
+      const rulesHeader = root.querySelector("#section-rules-header");
+      if (rulesHeader) {
+        rulesHeader.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+    (_p = root.querySelector("#btn-add-tag")) == null ? void 0 : _p.addEventListener("click", () => {
+      const tags = this.getActiveDeviceTags(schema);
+      const isPad = this.activeTab === "gamepad";
+      const newTag = {
+        id: (isPad ? "tag-pad-" : "tag-kbm-") + Math.random().toString(36).substring(2, 8),
+        name: `Tag ${tags.length + 1}`,
+        trigger: isPad ? { device: "gamepad", code: "GamepadA", mode: "press" } : { device: "keyboard", code: "KeyF", mode: "press" }
+      };
+      tags.push(newTag);
+      this.renderActiveView();
+    });
+    root.querySelectorAll(".input-tag-name").forEach((inp) => {
+      inp.addEventListener("input", (e) => {
+        const tagId = inp.dataset.tagId;
+        const val = e.target.value;
+        const tags = this.getActiveDeviceTags(schema);
+        const tag = tags.find((t) => t.id === tagId);
+        if (tag) tag.name = val;
+      });
+      inp.addEventListener("change", () => {
+        this.renderActiveView();
+      });
+    });
+    root.querySelectorAll(".btn-bind-tag").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tagId = btn.dataset.tagId;
+        if (tagId) {
+          this.startTagTriggerListening(tagId);
+        }
+      });
+    });
+    root.querySelectorAll(".btn-delete-tag").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        var _a2;
+        const tagId = btn.dataset.tagId;
+        const tags = this.getActiveDeviceTags(schema);
+        const idx = tags.findIndex((t) => t.id === tagId);
+        if (idx !== -1) {
+          tags.splice(idx, 1);
+          const rules = this.activeTab === "keyboardMouse" ? schema.keyboardMouse.rules : this.activeTab === "gamepad" ? schema.gamepad.rules : schema.touch.rules;
+          for (const rule of rules) {
+            if (rule.tagId === tagId) {
+              rule.tagId = (_a2 = tags[0]) == null ? void 0 : _a2.id;
+              if (tags[0]) {
+                rule.trigger.code = tags[0].trigger.code;
+                rule.trigger.device = tags[0].trigger.device;
+                rule.trigger.chordModifiers = tags[0].trigger.chordModifiers ? [...tags[0].trigger.chordModifiers] : void 0;
+              }
+            }
+          }
+          this.renderActiveView();
+        }
+      });
+    });
+    (_q = root.querySelector("#btn-add-stage-group")) == null ? void 0 : _q.addEventListener("click", () => {
+      const groups = _ControlsInspector.getActiveStageGroups(schema);
+      let counter = groups.length + 1;
+      let newName = `set_${counter}`;
+      while (groups.some((g) => g.name === newName)) {
+        counter++;
+        newName = `set_${counter}`;
+      }
+      groups.push({ name: newName, stages: ["none"] });
+      this.renderActiveView();
+    });
+    root.querySelectorAll(".input-stage-group-name").forEach((inp) => {
+      inp.addEventListener("change", (e) => {
+        const gIdx = parseInt(inp.dataset.groupIdx ?? "-1", 10);
+        const groups = _ControlsInspector.getActiveStageGroups(schema);
+        if (gIdx >= 0 && groups[gIdx]) {
+          const oldName = groups[gIdx].name;
+          const newName = e.target.value.trim();
+          if (!newName || groups.some((g, i) => i !== gIdx && g.name === newName)) {
+            e.target.value = oldName;
+            return;
+          }
+          groups[gIdx].name = newName;
+          _ControlsInspector.renameStageGroupInRules(schema, oldName, newName);
+          this.renderActiveView();
+        }
+      });
+    });
+    root.querySelectorAll(".btn-delete-stage-group").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const gIdx = parseInt(btn.dataset.groupIdx ?? "-1", 10);
+        const groups = _ControlsInspector.getActiveStageGroups(schema);
+        if (groups.length > 1 && gIdx >= 0 && groups[gIdx]) {
+          const oldName = groups[gIdx].name;
+          groups.splice(gIdx, 1);
+          _ControlsInspector.deleteStageGroupInRules(schema, oldName);
+          this.renderActiveView();
+        }
+      });
+    });
+    root.querySelectorAll(".btn-add-stage").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const gIdx = parseInt(btn.dataset.groupIdx ?? "0", 10);
+        const groups = _ControlsInspector.getActiveStageGroups(schema);
+        if (groups[gIdx]) {
+          const group = groups[gIdx];
+          let counter = 1;
+          let newName = `stage_${counter}`;
+          while (group.stages.includes(newName)) {
+            counter++;
+            newName = `stage_${counter}`;
+          }
+          group.stages.push(newName);
+          this.renderActiveView();
+        }
+      });
+    });
+    root.querySelectorAll(".input-stage-name").forEach((inp) => {
+      inp.addEventListener("change", (e) => {
+        const gIdx = parseInt(inp.dataset.groupIdx ?? "0", 10);
+        const sIdx = parseInt(inp.dataset.stageIdx ?? "-1", 10);
+        if (sIdx <= 0) return;
+        const groups = _ControlsInspector.getActiveStageGroups(schema);
+        if (groups[gIdx] && groups[gIdx].stages[sIdx]) {
+          const group = groups[gIdx];
+          const oldName = group.stages[sIdx];
+          const newName = e.target.value.trim();
+          if (!newName || newName === "none" || group.stages.includes(newName) && group.stages.indexOf(newName) !== sIdx) {
+            e.target.value = oldName;
+            return;
+          }
+          group.stages[sIdx] = newName;
+          _ControlsInspector.renameStageInRules(schema, group.name, oldName, newName);
+          this.renderActiveView();
+        }
+      });
+    });
+    root.querySelectorAll(".btn-delete-stage").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const gIdx = parseInt(btn.dataset.groupIdx ?? "0", 10);
+        const sIdx = parseInt(btn.dataset.stageIdx ?? "-1", 10);
+        if (sIdx <= 0) return;
+        const groups = _ControlsInspector.getActiveStageGroups(schema);
+        if (groups[gIdx] && groups[gIdx].stages[sIdx]) {
+          const group = groups[gIdx];
+          const oldName = group.stages[sIdx];
+          group.stages.splice(sIdx, 1);
+          _ControlsInspector.deleteStageInRules(schema, group.name, oldName);
+          this.renderActiveView();
+        }
+      });
+    });
+    const addNewThread = () => {
+      const rules = this.activeTab === "keyboardMouse" ? schema.keyboardMouse.rules : this.activeTab === "gamepad" ? schema.gamepad.rules : schema.touch.rules;
+      const threadId = `thread-${Date.now().toString(36)}`;
+      const newRule = {
+        id: "rule-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+        name: "Action Branch",
+        enabled: true,
+        priority: 50,
+        threadId,
+        trigger: { device: "keyboard", code: "Always", mode: "hold" },
+        conditions: [{ type: "always" }],
+        condition: { type: "always" },
+        actions: [{ moduleId: "throwPickup", intent: "grabItem" }],
+        action: { moduleId: "throwPickup", intent: "grabItem" }
+      };
+      rules.push(newRule);
+      this.renderActiveView();
+    };
+    (_r = root.querySelector("#btn-add-control-rule")) == null ? void 0 : _r.addEventListener("click", addNewThread);
+    (_s = root.querySelector("#btn-add-control-thread")) == null ? void 0 : _s.addEventListener("click", addNewThread);
+    root.querySelectorAll(".btn-add-thread-branch").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const threadId = btn.dataset.threadId || `thread-${Date.now().toString(36)}`;
+        const rootRules = this.activeTab === "keyboardMouse" ? schema.keyboardMouse.rules : this.activeTab === "gamepad" ? schema.gamepad.rules : schema.touch.rules;
+        const targetList = this.findRuleListForThread(schema, threadId) ?? rootRules;
+        const newRule = {
+          id: "rule-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+          name: "Action Branch",
+          enabled: true,
+          priority: 50,
+          threadId,
+          trigger: { device: "keyboard", code: "Always", mode: "hold" },
+          conditions: [{ type: "always" }],
+          condition: { type: "always" },
+          actions: [{ moduleId: "throwPickup", intent: "grabItem" }],
+          action: { moduleId: "throwPickup", intent: "grabItem" }
+        };
+        targetList.push(newRule);
+        this.renderActiveView();
+      });
+    });
+    root.querySelectorAll(".btn-add-nested-thread").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = btn.dataset.ruleId;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          this.addNestedThreadToRule(rule);
+        }
+      });
+    });
+    root.querySelectorAll(".btn-toggle-rule-collapse").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = btn.dataset.ruleId;
+        if (rId) {
+          if (this.collapsedRuleIds.has(rId)) {
+            this.collapsedRuleIds.delete(rId);
+          } else {
+            this.collapsedRuleIds.add(rId);
+          }
+          this.renderActiveView();
+        }
+      });
+    });
+    root.querySelectorAll(".select-rule-tag").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        const rId = sel.dataset.ruleId;
+        const tagId = e.target.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          if (!tagId) {
+            rule.tagId = void 0;
+            rule.trigger.code = "Always";
+            rule.trigger.device = "keyboard";
+            rule.trigger.chordModifiers = void 0;
+          } else {
+            rule.tagId = tagId;
+            const tags = this.getActiveDeviceTags(schema);
+            const tag = tags.find((t) => t.id === tagId);
+            if (tag) {
+              rule.trigger.code = tag.trigger.code;
+              rule.trigger.device = tag.trigger.device;
+              rule.trigger.chordModifiers = tag.trigger.chordModifiers ? [...tag.trigger.chordModifiers] : void 0;
+            }
+          }
+          this.renderActiveView();
+        }
+      });
+    });
+    root.querySelectorAll(".select-rule-mode").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        const rId = sel.dataset.ruleId;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          rule.trigger.mode = e.target.value;
+          this.renderActiveView();
+        }
+      });
+    });
+    root.querySelectorAll(".btn-toggle-cond-op").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = btn.dataset.ruleId;
+        const gPath = btn.dataset.groupPath ?? "";
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          if (gPath === "") {
+            rule.conditionOp = (rule.conditionOp ?? "and") === "and" ? "or" : "and";
+          } else {
+            const res = _ControlsInspector.getConditionGroupList(rule, gPath);
+            if (res == null ? void 0 : res.group) {
+              res.group.op = (res.group.op ?? "or") === "and" ? "or" : "and";
+            }
+          }
+          this.renderActiveView();
+        }
+      });
+    });
+    root.querySelectorAll(".btn-add-condition").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = btn.dataset.ruleId;
+        const gPath = btn.dataset.groupPath ?? "";
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const res = _ControlsInspector.getConditionGroupList(rule, gPath);
+          if (res) {
+            res.list.push({ type: "always" });
+            rule.conditions = ControlSchemaArbiter.getRuleConditions(rule);
+            rule.condition = rule.conditions[0];
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+    root.querySelectorAll(".btn-add-cond-group").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = btn.dataset.ruleId;
+        const gPath = btn.dataset.groupPath ?? "";
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const res = _ControlsInspector.getConditionGroupList(rule, gPath);
+          if (res) {
+            res.list.push({
+              type: "group",
+              op: "or",
+              conditions: [{ type: "always" }, { type: "always" }]
+            });
+            rule.conditions = ControlSchemaArbiter.getRuleConditions(rule);
+            rule.condition = rule.conditions[0];
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+    root.querySelectorAll(".btn-delete-condition").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = btn.dataset.ruleId;
+        const cPath = btn.dataset.condPath ?? "";
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const res = _ControlsInspector.getConditionListAndIndex(rule, cPath);
+          if (res) {
+            if (res.list.length > 1) {
+              res.list.splice(res.index, 1);
+            } else {
+              res.list[0] = { type: "always" };
+            }
+            rule.conditions = ControlSchemaArbiter.getRuleConditions(rule);
+            rule.condition = rule.conditions[0];
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+    root.querySelectorAll(".select-rule-cond").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        var _a2, _b2, _c2;
+        const rId = sel.dataset.ruleId;
+        const cPath = sel.dataset.condPath ?? "";
+        const val = e.target.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = _ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            if (val === "stagedActionIs") {
+              targetCond.type = "stagedActionIs";
+              const groups = _ControlsInspector.getActiveStageGroups(schema);
+              if (!targetCond.stageGroup || !groups.some((g) => g.name === targetCond.stageGroup)) {
+                targetCond.stageGroup = ((_a2 = groups[0]) == null ? void 0 : _a2.name) || "default";
+              }
+              const stages = _ControlsInspector.getStagesForGroup(schema, targetCond.stageGroup);
+              if (!targetCond.param || !stages.includes(targetCond.param)) {
+                targetCond.param = "none";
+              }
+            } else if (val === "tagPressed" || val === "tagHeld" || val === "tagReleased") {
+              targetCond.type = val;
+              const tags = this.getActiveDeviceTags(schema);
+              if (!targetCond.param || !tags.some((t) => t.id === targetCond.param)) {
+                targetCond.param = ((_b2 = tags[0]) == null ? void 0 : _b2.id) ?? "";
+              }
+            } else if (val === "buttonHeld") {
+              targetCond.type = "buttonHeld";
+              if (!targetCond.param) targetCond.param = "MouseRight";
+            } else {
+              targetCond.type = val;
+              targetCond.param = void 0;
+            }
+            rule.condition = (_c2 = rule.conditions) == null ? void 0 : _c2[0];
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+    root.querySelectorAll(".select-cond-tag").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        var _a2;
+        const rId = sel.dataset.ruleId;
+        const cPath = sel.dataset.condPath ?? "";
+        const val = e.target.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = _ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.param = val;
+            rule.condition = (_a2 = rule.conditions) == null ? void 0 : _a2[0];
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+    root.querySelectorAll(".select-cond-stage-group").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        var _a2;
+        const rId = sel.dataset.ruleId;
+        const cPath = sel.dataset.condPath ?? "";
+        const val = e.target.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = _ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.stageGroup = val;
+            const stages = _ControlsInspector.getStagesForGroup(schema, val);
+            if (!targetCond.param || !stages.includes(targetCond.param)) {
+              targetCond.param = "none";
+            }
+            rule.condition = (_a2 = rule.conditions) == null ? void 0 : _a2[0];
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+    root.querySelectorAll(".select-cond-stage").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        var _a2;
+        const rId = sel.dataset.ruleId;
+        const cPath = sel.dataset.condPath ?? "";
+        const val = e.target.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = _ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.param = val;
+            rule.condition = (_a2 = rule.conditions) == null ? void 0 : _a2[0];
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+    root.querySelectorAll(".input-cond-param").forEach((inp) => {
+      inp.addEventListener("input", (e) => {
+        const rId = inp.dataset.ruleId;
+        const cPath = inp.dataset.condPath ?? "";
+        const val = e.target.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const targetCond = _ControlsInspector.getConditionByPath(rule, cPath);
+          if (targetCond) {
+            targetCond.param = val;
+          }
+        }
+      });
+    });
+    root.querySelectorAll(".select-action-stage-group").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        const rId = sel.dataset.ruleId;
+        const sIdx = parseInt(sel.dataset.statementIdx ?? "0", 10);
+        const val = e.target.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const stmts = ControlSchemaArbiter.getRuleBody(rule);
+          if (stmts[sIdx] && stmts[sIdx].type === "action") {
+            const act = stmts[sIdx].action;
+            act.args = { ...act.args || {}, group: val };
+            const stages = _ControlsInspector.getStagesForGroup(schema, val);
+            if (!act.args.stage || !stages.includes(act.args.stage)) {
+              act.args.stage = "none";
+            }
+            rule.body = stmts;
+            ControlSchemaArbiter.syncRuleFromStatements(rule);
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+    root.querySelectorAll(".select-action-stage").forEach((sel) => {
+      sel.addEventListener("change", (e) => {
+        const rId = sel.dataset.ruleId;
+        const sIdx = parseInt(sel.dataset.statementIdx ?? "0", 10);
+        const val = e.target.value;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          const stmts = ControlSchemaArbiter.getRuleBody(rule);
+          if (stmts[sIdx] && stmts[sIdx].type === "action") {
+            const act = stmts[sIdx].action;
+            act.args = { ...act.args || {}, stage: val };
+            rule.body = stmts;
+            ControlSchemaArbiter.syncRuleFromStatements(rule);
+            this.renderActiveView();
+          }
+        }
+      });
+    });
+    root.querySelectorAll(".btn-add-action").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = btn.dataset.ruleId;
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          this.addActionToRule(rule);
+        }
+      });
+    });
+    root.querySelectorAll(".btn-move-statement-up").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = btn.dataset.ruleId;
+        const sIdx = parseInt(btn.dataset.statementIdx ?? "0", 10);
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          this.moveStatement(rule, sIdx, -1);
+        }
+      });
+    });
+    root.querySelectorAll(".btn-move-statement-down").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = btn.dataset.ruleId;
+        const sIdx = parseInt(btn.dataset.statementIdx ?? "0", 10);
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          this.moveStatement(rule, sIdx, 1);
+        }
+      });
+    });
+    root.querySelectorAll(".btn-delete-statement").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = btn.dataset.ruleId;
+        const sIdx = parseInt(btn.dataset.statementIdx ?? "0", 10);
+        const rule = this.findRule(schema, rId);
+        if (rule) {
+          this.deleteStatement(rule, sIdx);
+        }
+      });
+    });
+    root.querySelectorAll(".btn-move-branch-up").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tId = btn.dataset.threadId;
+        const bIdx = parseInt(btn.dataset.branchIdx ?? "0", 10);
+        if (tId) {
+          this.moveBranch(schema, tId, bIdx, -1);
+        }
+      });
+    });
+    root.querySelectorAll(".btn-move-branch-down").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tId = btn.dataset.threadId;
+        const bIdx = parseInt(btn.dataset.branchIdx ?? "0", 10);
+        if (tId) {
+          this.moveBranch(schema, tId, bIdx, 1);
+        }
+      });
+    });
+    root.querySelectorAll(".btn-move-cascade-block-up").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tId = btn.dataset.threadId;
+        if (tId) {
+          this.moveCascadeBlock(schema, tId, -1);
+        }
+      });
+    });
+    root.querySelectorAll(".btn-move-cascade-block-down").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tId = btn.dataset.threadId;
+        if (tId) {
+          this.moveCascadeBlock(schema, tId, 1);
+        }
+      });
+    });
+    root.querySelectorAll(".btn-open-action-picker").forEach((btn) => {
+      btn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        const rId = btn.dataset.ruleId;
+        const sIdx = parseInt(btn.dataset.statementIdx ?? btn.dataset.actionIdx ?? "0", 10);
+        if (rId) {
+          this.showActionPickerMenu(rId, sIdx, btn);
+        }
+      });
+    });
+    root.querySelectorAll(".btn-delete-rule").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rId = btn.dataset.ruleId;
+        this.deleteRule(schema, rId);
+        this.renderActiveView();
+      });
+    });
+    (_t = root.querySelector("#btn-toggle-json-drawer")) == null ? void 0 : _t.addEventListener("click", () => {
+      this.showJsonEditor = !this.showJsonEditor;
+      this.jsonErrorMessage = null;
+      this.renderActiveView();
+    });
+    (_u = root.querySelector("#btn-apply-json")) == null ? void 0 : _u.addEventListener("click", () => {
+      const textarea = root.querySelector("#textarea-controls-json");
+      if (!textarea) return;
+      try {
+        const parsed = JSON.parse(textarea.value);
+        if (!parsed.id || !parsed.name || !parsed.keyboardMouse || !parsed.gamepad) {
+          throw new Error("JSON missing essential ControlSchema properties (id, name, keyboardMouse, gamepad).");
+        }
+        this.workingSchema = parsed;
+        this.jsonErrorMessage = null;
+        this.showToast("Parsed & Applied JSON Schema");
+        this.renderActiveView();
+      } catch (err) {
+        this.jsonErrorMessage = err.message || "Invalid JSON syntax";
+        this.renderActiveView();
+      }
+    });
+    (_v = root.querySelector("#btn-copy-json")) == null ? void 0 : _v.addEventListener("click", () => {
+      const textarea = root.querySelector("#textarea-controls-json");
+      if (textarea) {
+        navigator.clipboard.writeText(textarea.value);
+        this.showToast("Copied JSON to clipboard");
+      }
+    });
+  }
+  static findRule(schema, ruleId) {
+    if (!ruleId) return void 0;
+    const rootRules = this.activeTab === "keyboardMouse" ? schema.keyboardMouse.rules : this.activeTab === "gamepad" ? schema.gamepad.rules : schema.touch.rules;
+    function search(list) {
+      for (const r of list) {
+        if (r.id === ruleId) return r;
+        for (const stmt of ControlSchemaArbiter.getRuleBody(r)) {
+          if (stmt.type === "nestedThread") {
+            const found = search(stmt.rules);
+            if (found) return found;
+          }
+        }
+        if (r.children && r.children.length > 0) {
+          const found = search(r.children);
+          if (found) return found;
+        }
+      }
+      return void 0;
+    }
+    return search(rootRules);
+  }
+  static deleteRule(schema, ruleId) {
+    if (!ruleId) return;
+    const rootRules = this.activeTab === "keyboardMouse" ? schema.keyboardMouse.rules : this.activeTab === "gamepad" ? schema.gamepad.rules : schema.touch.rules;
+    function remove(list) {
+      const idx = list.findIndex((r) => r.id === ruleId);
+      if (idx !== -1) {
+        list.splice(idx, 1);
+        return true;
+      }
+      for (const r of list) {
+        for (const stmt of ControlSchemaArbiter.getRuleBody(r)) {
+          if (stmt.type === "nestedThread") {
+            if (remove(stmt.rules)) {
+              ControlSchemaArbiter.syncRuleFromStatements(r);
+              return true;
+            }
+          }
+        }
+        if (r.children && r.children.length > 0) {
+          if (remove(r.children)) return true;
+        }
+      }
+      return false;
+    }
+    remove(rootRules);
+  }
+  static findRuleListForThread(schema, threadId) {
+    const rootRules = this.activeTab === "keyboardMouse" ? schema.keyboardMouse.rules : this.activeTab === "gamepad" ? schema.gamepad.rules : schema.touch.rules;
+    function search(list) {
+      if (list.some((r) => r.threadId === threadId)) {
+        return list;
+      }
+      for (const r of list) {
+        for (const stmt of ControlSchemaArbiter.getRuleBody(r)) {
+          if (stmt.type === "nestedThread") {
+            const found = search(stmt.rules);
+            if (found) return found;
+          }
+        }
+        if (r.children && r.children.length > 0) {
+          const found = search(r.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    return search(rootRules);
+  }
+  static addActionToRule(rule) {
+    const stmts = ControlSchemaArbiter.getRuleBody(rule);
+    stmts.push({
+      type: "action",
+      action: { moduleId: "locomotion", intent: "jump" }
+    });
+    rule.body = stmts;
+    ControlSchemaArbiter.syncRuleFromStatements(rule);
+    this.renderActiveView();
+  }
+  static addNestedThreadToRule(rule) {
+    const stmts = ControlSchemaArbiter.getRuleBody(rule);
+    const subThreadId = `subthread-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 5)}`;
+    const newChildRule = {
+      id: "rule-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+      name: "Nested Action Branch",
+      enabled: true,
+      priority: 50,
+      threadId: subThreadId,
+      trigger: { device: "keyboard", code: "Always", mode: "hold" },
+      conditions: [{ type: "always" }],
+      condition: { type: "always" },
+      actions: [{ moduleId: "throwPickup", intent: "grabItem" }],
+      action: { moduleId: "throwPickup", intent: "grabItem" },
+      body: [{ type: "action", action: { moduleId: "throwPickup", intent: "grabItem" } }]
+    };
+    stmts.push({
+      type: "nestedThread",
+      threadId: subThreadId,
+      rules: [newChildRule]
+    });
+    rule.body = stmts;
+    ControlSchemaArbiter.syncRuleFromStatements(rule);
+    this.renderActiveView();
+  }
+  static moveStatement(rule, stmtIdx, delta) {
+    const stmts = ControlSchemaArbiter.getRuleBody(rule);
+    const targetIdx = stmtIdx + delta;
+    if (targetIdx < 0 || targetIdx >= stmts.length) return;
+    const temp = stmts[stmtIdx];
+    stmts[stmtIdx] = stmts[targetIdx];
+    stmts[targetIdx] = temp;
+    rule.body = stmts;
+    ControlSchemaArbiter.syncRuleFromStatements(rule);
+    this.renderActiveView();
+  }
+  static deleteStatement(rule, stmtIdx) {
+    const stmts = ControlSchemaArbiter.getRuleBody(rule);
+    if (stmtIdx >= 0 && stmtIdx < stmts.length) {
+      stmts.splice(stmtIdx, 1);
+      rule.body = stmts;
+      ControlSchemaArbiter.syncRuleFromStatements(rule);
+      this.renderActiveView();
+    }
+  }
+  static moveBranch(schema, threadId, branchIdx, delta) {
+    const list = this.findRuleListForThread(schema, threadId);
+    if (!list) return;
+    const threadRules = list.filter((r) => r.threadId === threadId);
+    const targetBranchIdx = branchIdx + delta;
+    if (targetBranchIdx < 0 || targetBranchIdx >= threadRules.length) return;
+    const ruleA = threadRules[branchIdx];
+    const ruleB = threadRules[targetBranchIdx];
+    const idxA = list.indexOf(ruleA);
+    const idxB = list.indexOf(ruleB);
+    if (idxA !== -1 && idxB !== -1) {
+      list[idxA] = ruleB;
+      list[idxB] = ruleA;
+      this.renderActiveView();
+    }
+  }
+  static moveCascadeBlock(schema, threadId, delta) {
+    var _a;
+    const rootRules = this.activeTab === "keyboardMouse" ? schema.keyboardMouse.rules : this.activeTab === "gamepad" ? schema.gamepad.rules : schema.touch.rules;
+    const distinctThreadIds = [];
+    for (const r of rootRules) {
+      const tId = r.threadId || `thread-${r.id}`;
+      if (!distinctThreadIds.includes(tId)) {
+        distinctThreadIds.push(tId);
+      }
+    }
+    const curIdx = distinctThreadIds.indexOf(threadId);
+    const targetIdx = curIdx + delta;
+    if (curIdx === -1 || targetIdx < 0 || targetIdx >= distinctThreadIds.length) return;
+    const otherThreadId = distinctThreadIds[targetIdx];
+    const groups = /* @__PURE__ */ new Map();
+    for (const tId of distinctThreadIds) {
+      groups.set(tId, []);
+    }
+    for (const r of rootRules) {
+      const tId = r.threadId || `thread-${r.id}`;
+      (_a = groups.get(tId)) == null ? void 0 : _a.push(r);
+    }
+    distinctThreadIds[curIdx] = otherThreadId;
+    distinctThreadIds[targetIdx] = threadId;
+    rootRules.length = 0;
+    for (const tId of distinctThreadIds) {
+      const grp = groups.get(tId);
+      if (grp) rootRules.push(...grp);
+    }
+    this.renderActiveView();
+  }
+  // --- "Press Input to Bind" Tag Recorder (Layer 1) ---
+  static syncRulesForTag(schema, tag) {
+    const rules = this.activeTab === "keyboardMouse" ? schema.keyboardMouse.rules : this.activeTab === "gamepad" ? schema.gamepad.rules : schema.touch.rules;
+    for (const rule of rules) {
+      if (rule.tagId === tag.id) {
+        rule.trigger.device = tag.trigger.device;
+        rule.trigger.code = tag.trigger.code;
+        rule.trigger.chordModifiers = tag.trigger.chordModifiers ? [...tag.trigger.chordModifiers] : void 0;
+      }
+    }
+  }
+  static startTagTriggerListening(tagId) {
+    if (this.recorderCleanup) this.recorderCleanup();
+    this.listeningTagId = tagId;
+    this.renderActiveView();
+    if (!this.workingSchema) return;
+    const schema = this.workingSchema;
+    const tags = this.getActiveDeviceTags(schema);
+    const tag = tags.find((t) => t.id === tagId);
+    if (!tag) return;
+    if (this.activeTab === "gamepad") {
+      let isDone = false;
+      let animId = null;
+      const pollGamepad = () => {
+        if (isDone) return;
+        const gamepads = typeof navigator.getGamepads === "function" ? navigator.getGamepads() : [];
+        for (let g = 0; g < gamepads.length; g++) {
+          const gp = gamepads[g];
+          if (!gp) continue;
+          for (let b = 0; b < gp.buttons.length; b++) {
+            if (gp.buttons[b].pressed || gp.buttons[b].value > 0.5) {
+              const code = ControlSchemaArbiter.formatGamepadButtonIndex(b);
+              tag.trigger = {
+                device: "gamepad",
+                code,
+                mode: "press"
+              };
+              this.syncRulesForTag(schema, tag);
+              cleanup2();
+              this.listeningTagId = null;
+              this.renderActiveView();
+              return;
+            }
+          }
+        }
+        animId = requestAnimationFrame(pollGamepad);
+      };
+      const cleanup2 = () => {
+        isDone = true;
+        if (animId !== null) cancelAnimationFrame(animId);
+        window.removeEventListener("keydown", onKeyDown2, true);
+        if (this.popoutWindow && !this.popoutWindow.closed) {
+          this.popoutWindow.removeEventListener("keydown", onKeyDown2, true);
+        }
+        this.recorderCleanup = null;
+      };
+      const onKeyDown2 = (e) => {
+        if (e.code === "Escape") {
+          cleanup2();
+          this.listeningTagId = null;
+          this.renderActiveView();
+        }
+      };
+      this.recorderCleanup = cleanup2;
+      window.addEventListener("keydown", onKeyDown2, true);
+      if (this.popoutWindow && !this.popoutWindow.closed) {
+        this.popoutWindow.addEventListener("keydown", onKeyDown2, true);
+      }
+      animId = requestAnimationFrame(pollGamepad);
+      return;
+    }
+    let heldModifier = null;
+    let chordTimer = null;
+    const commitTrigger = (device, code, chordModifiers) => {
+      tag.trigger = {
+        device,
+        code,
+        chordModifiers: chordModifiers && chordModifiers.length > 0 ? chordModifiers : void 0,
+        mode: "press"
+      };
+      this.syncRulesForTag(schema, tag);
+      cleanup();
+      this.listeningTagId = null;
+      this.renderActiveView();
+    };
+    const isModifier = (code) => ["AltLeft", "AltRight", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "MetaLeft", "MetaRight"].includes(code);
+    const onKeyDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === "Escape") {
+        cleanup();
+        this.listeningTagId = null;
+        this.renderActiveView();
+        return;
+      }
+      if (isModifier(e.code)) {
+        if (!heldModifier) {
+          heldModifier = e.code;
+          chordTimer = setTimeout(() => {
+            if (heldModifier) {
+              commitTrigger("keyboard", heldModifier);
+            }
+          }, 250);
+        }
+        return;
+      }
+      if (heldModifier) {
+        if (chordTimer) clearTimeout(chordTimer);
+        commitTrigger("keyboard", e.code, [heldModifier]);
+      } else {
+        commitTrigger("keyboard", e.code);
+      }
+    };
+    const onKeyUp = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (heldModifier && e.code === heldModifier) {
+        if (chordTimer) clearTimeout(chordTimer);
+        commitTrigger("keyboard", heldModifier);
+      }
+    };
+    const onMouseDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const btnName = e.button === 0 ? "MouseLeft" : e.button === 1 ? "MouseMiddle" : "MouseRight";
+      if (heldModifier) {
+        if (chordTimer) clearTimeout(chordTimer);
+        commitTrigger("mouse", btnName, [heldModifier]);
+      } else {
+        commitTrigger("mouse", btnName);
+      }
+    };
+    const onContextMenu = (e) => {
+      e.preventDefault();
+    };
+    const cleanup = () => {
+      if (chordTimer) clearTimeout(chordTimer);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("mousedown", onMouseDown, true);
+      window.removeEventListener("contextmenu", onContextMenu, true);
+      if (this.popoutWindow && !this.popoutWindow.closed) {
+        this.popoutWindow.removeEventListener("keydown", onKeyDown, true);
+        this.popoutWindow.removeEventListener("keyup", onKeyUp, true);
+        this.popoutWindow.removeEventListener("mousedown", onMouseDown, true);
+        this.popoutWindow.removeEventListener("contextmenu", onContextMenu, true);
+      }
+      this.recorderCleanup = null;
+    };
+    this.recorderCleanup = cleanup;
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("mousedown", onMouseDown, true);
+    window.addEventListener("contextmenu", onContextMenu, true);
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      this.popoutWindow.addEventListener("keydown", onKeyDown, true);
+      this.popoutWindow.addEventListener("keyup", onKeyUp, true);
+      this.popoutWindow.addEventListener("mousedown", onMouseDown, true);
+      this.popoutWindow.addEventListener("contextmenu", onContextMenu, true);
+    }
+  }
+  static startForwardTriggerListening() {
+    if (this.recorderCleanup) this.recorderCleanup();
+    this.listeningForwardTrigger = true;
+    this.renderActiveView();
+    if (!this.workingSchema) return;
+    const schema = this.workingSchema;
+    const onKeyDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === "Escape") {
+        cleanup();
+        this.listeningForwardTrigger = false;
+        this.renderActiveView();
+        return;
+      }
+      schema.keyboardMouse.locomotion.forwardTrigger = {
+        device: "keyboard",
+        code: e.code,
+        mode: "hold"
+      };
+      cleanup();
+      this.listeningForwardTrigger = false;
+      this.renderActiveView();
+    };
+    const onMouseDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const btnName = e.button === 0 ? "MouseLeft" : e.button === 1 ? "MouseMiddle" : "MouseRight";
+      schema.keyboardMouse.locomotion.forwardTrigger = {
+        device: "mouse",
+        code: btnName,
+        mode: "hold"
+      };
+      cleanup();
+      this.listeningForwardTrigger = false;
+      this.renderActiveView();
+    };
+    const onContextMenu = (e) => {
+      e.preventDefault();
+    };
+    const cleanup = () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("mousedown", onMouseDown, true);
+      window.removeEventListener("contextmenu", onContextMenu, true);
+      if (this.popoutWindow && !this.popoutWindow.closed) {
+        this.popoutWindow.removeEventListener("keydown", onKeyDown, true);
+        this.popoutWindow.removeEventListener("mousedown", onMouseDown, true);
+        this.popoutWindow.removeEventListener("contextmenu", onContextMenu, true);
+      }
+      this.recorderCleanup = null;
+    };
+    this.recorderCleanup = cleanup;
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("mousedown", onMouseDown, true);
+    window.addEventListener("contextmenu", onContextMenu, true);
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      this.popoutWindow.addEventListener("keydown", onKeyDown, true);
+      this.popoutWindow.addEventListener("mousedown", onMouseDown, true);
+      this.popoutWindow.addEventListener("contextmenu", onContextMenu, true);
+    }
+  }
+  static startLocoKeyListening(keyName) {
+    if (this.recorderCleanup) this.recorderCleanup();
+    this.listeningLocoKey = keyName;
+    this.renderActiveView();
+    if (!this.workingSchema) return;
+    const schema = this.workingSchema;
+    const onKeyDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === "Escape") {
+        cleanup();
+        this.listeningLocoKey = null;
+        this.renderActiveView();
+        return;
+      }
+      schema.keyboardMouse.locomotion[keyName] = e.code;
+      cleanup();
+      this.listeningLocoKey = null;
+      this.renderActiveView();
+    };
+    const cleanup = () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      if (this.popoutWindow && !this.popoutWindow.closed) {
+        this.popoutWindow.removeEventListener("keydown", onKeyDown, true);
+      }
+      this.recorderCleanup = null;
+    };
+    this.recorderCleanup = cleanup;
+    window.addEventListener("keydown", onKeyDown, true);
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      this.popoutWindow.addEventListener("keydown", onKeyDown, true);
+    }
+  }
+  // --- Categorized Action Function Popover ---
+  static showActionPickerMenu(ruleId, statementIdx, anchorBtn) {
+    const activeDoc = this.popoutWindow && !this.popoutWindow.closed ? this.popoutWindow.document : document;
+    const existing = activeDoc.getElementById("action-picker-popover");
+    if (existing) existing.remove();
+    if (!this.modalChar || !this.workingSchema) return;
+    const char = this.modalChar;
+    const rule = this.findRule(this.workingSchema, ruleId);
+    if (!rule) return;
+    const { attached, unattached } = ControlActionCatalog.getCategorizedForCharacter(char);
+    const popover = activeDoc.createElement("div");
+    popover.id = "action-picker-popover";
+    popover.style.cssText = `
+      position: fixed;
+      z-index: 10005;
+      background: #090d16;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 8px;
+      padding: 10px;
+      max-height: 340px;
+      width: 290px;
+      overflow-y: auto;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.85);
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-family: inherit;
+    `;
+    const rect = anchorBtn.getBoundingClientRect();
+    const winHeight = this.popoutWindow && !this.popoutWindow.closed ? this.popoutWindow.innerHeight : window.innerHeight;
+    const winWidth = this.popoutWindow && !this.popoutWindow.closed ? this.popoutWindow.innerWidth : window.innerWidth;
+    popover.style.top = `${Math.min(winHeight - 360, rect.bottom + 4)}px`;
+    popover.style.left = `${Math.max(10, Math.min(winWidth - 310, rect.left - 100))}px`;
+    popover.innerHTML = `
+      <div style="font-size: 0.74rem; font-weight: 700; color: #ffffff; padding-bottom: 6px; border-bottom: 1px solid rgba(148, 163, 184, 0.2);">
+        Select Target Action Function
+      </div>
+
+      <!-- Attached Modules (Prioritized) -->
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-size: 0.66rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.05em;">⭐ ATTACHED MODULES</span>
+        ${attached.map(
+      (cat) => `
+          <div style="display: flex; flex-direction: column; background: rgba(255,255,255,0.03); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 4px; padding: 4px;">
+            <span style="font-size: 0.70rem; font-weight: 600; color: #ffffff;">${cat.icon} ${cat.label}</span>
+            <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 2px; padding-left: 6px;">
+              ${cat.actions.map(
+        (act) => `
+                <button class="btn-select-action" data-mod="${cat.id}" data-intent="${act.id}" style="text-align: left; background: none; border: none; color: #ffffff; font-size: 0.70rem; padding: 3px 4px; border-radius: 3px; cursor: pointer;">
+                  • <strong style="color: #ffffff;">${act.label}</strong>
+                </button>
+              `
+      ).join("")}
+            </div>
+          </div>
+        `
+    ).join("")}
+      </div>
+
+      <!-- Unattached Modules (Collapsed by default) -->
+      ${unattached.length > 0 ? `
+        <details style="margin-top: 4px;">
+          <summary style="font-size: 0.66rem; font-weight: 700; color: #94a3b8; cursor: pointer;">
+            📦 OTHER MODULES (${unattached.length})
+          </summary>
+          <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+            ${unattached.map(
+      (cat) => `
+              <div style="display: flex; flex-direction: column; background: rgba(0,0,0,0.3); border-radius: 4px; padding: 4px;">
+                <span style="font-size: 0.68rem; color: #64748b;">${cat.icon} ${cat.label}</span>
+                <div style="display: flex; flex-direction: column; gap: 2px; padding-left: 6px;">
+                  ${cat.actions.map(
+        (act) => `
+                    <button class="btn-select-action" data-mod="${cat.id}" data-intent="${act.id}" style="text-align: left; background: none; border: none; color: #64748b; font-size: 0.68rem; padding: 2px 4px; cursor: pointer;">
+                      • ${act.label}
+                    </button>
+                  `
+      ).join("")}
+                </div>
+              </div>
+            `
+    ).join("")}
+          </div>
+        </details>
+      ` : ""}
+    `;
+    activeDoc.body.appendChild(popover);
+    popover.querySelectorAll(".btn-select-action").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        var _a, _b, _c;
+        if (!this.workingSchema) return;
+        const schema = this.workingSchema;
+        const mod = btn.dataset.mod;
+        const intent = btn.dataset.intent;
+        if (mod && intent) {
+          const actDef = ControlActionCatalog.findAction(mod, intent);
+          if ((actDef == null ? void 0 : actDef.recommendedMode) && rule.trigger.mode === "press") {
+            rule.trigger.mode = actDef.recommendedMode;
+          }
+          const stmts = ControlSchemaArbiter.getRuleBody(rule);
+          if (stmts[statementIdx] && stmts[statementIdx].type === "action") {
+            stmts[statementIdx].action.moduleId = mod;
+            stmts[statementIdx].action.intent = intent;
+            if (mod === "staging" && intent === "setStage") {
+              const defaultGrp = ((_a = _ControlsInspector.getActiveStageGroups(schema)[0]) == null ? void 0 : _a.name) || "default";
+              const existingArgs = stmts[statementIdx].action.args || {};
+              stmts[statementIdx].action.args = {
+                group: existingArgs.group || defaultGrp,
+                stage: existingArgs.stage || "none"
+              };
+            }
+          } else {
+            const actions = ControlSchemaArbiter.getRuleActions(rule);
+            if (actions[statementIdx]) {
+              actions[statementIdx].moduleId = mod;
+              actions[statementIdx].intent = intent;
+              if (mod === "staging" && intent === "setStage") {
+                const defaultGrp = ((_b = _ControlsInspector.getActiveStageGroups(schema)[0]) == null ? void 0 : _b.name) || "default";
+                const existingArgs = actions[statementIdx].args || {};
+                actions[statementIdx].args = {
+                  group: existingArgs.group || defaultGrp,
+                  stage: existingArgs.stage || "none"
+                };
+              }
+            } else {
+              const defaultGrp = ((_c = _ControlsInspector.getActiveStageGroups(schema)[0]) == null ? void 0 : _c.name) || "default";
+              actions.push({
+                moduleId: mod,
+                intent,
+                args: mod === "staging" ? { group: defaultGrp, stage: "none" } : void 0
+              });
+            }
+            rule.actions = actions;
+            rule.action = actions[0];
+          }
+          rule.body = stmts;
+          ControlSchemaArbiter.syncRuleFromStatements(rule);
+          popover.remove();
+          this.renderActiveView();
+        }
+      });
+    });
+    const onDocClick = (e) => {
+      if (!popover.contains(e.target) && e.target !== anchorBtn) {
+        popover.remove();
+        activeDoc.removeEventListener("click", onDocClick);
+      }
+    };
+    setTimeout(() => activeDoc.addEventListener("click", onDocClick), 10);
+  }
+};
+__publicField(_ControlsInspector, "modalChar", null);
+__publicField(_ControlsInspector, "modalPanel", null);
+__publicField(_ControlsInspector, "popoutWindow", null);
+__publicField(_ControlsInspector, "isParentReloading", false);
+__publicField(_ControlsInspector, "lastRebindTime", 0);
+__publicField(_ControlsInspector, "modalOverlay", null);
+__publicField(_ControlsInspector, "workingSchema", null);
+__publicField(_ControlsInspector, "activeTab", "keyboardMouse");
+__publicField(_ControlsInspector, "viewMode", "blocks");
+__publicField(_ControlsInspector, "listeningBlockTarget", null);
+__publicField(_ControlsInspector, "showJsonEditor", false);
+__publicField(_ControlsInspector, "jsonErrorMessage", null);
+__publicField(_ControlsInspector, "collapsedRuleIds", /* @__PURE__ */ new Set());
+__publicField(_ControlsInspector, "listeningTagId", null);
+__publicField(_ControlsInspector, "listeningRuleId", null);
+__publicField(_ControlsInspector, "listeningForwardTrigger", false);
+__publicField(_ControlsInspector, "listeningLocoKey", null);
+__publicField(_ControlsInspector, "listeningPipelineTarget", null);
+__publicField(_ControlsInspector, "recorderCleanup", null);
+__publicField(_ControlsInspector, "keydownListener", null);
+let ControlsInspector = _ControlsInspector;
+if (typeof window !== "undefined") {
+  window.ControlsInspector = ControlsInspector;
+  window.addEventListener("beforeunload", () => {
+    ControlsInspector.isParentReloading = true;
+    if (ControlsInspector.popoutWindow && !ControlsInspector.popoutWindow.closed) {
+      try {
+        ControlsInspector.popoutWindow.__needsRebind = true;
+        const root = ControlsInspector.popoutWindow.document.getElementById("controls-window-root");
+        if (root) {
+          root.innerHTML = `
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; font-family:sans-serif; color:#94a3b8; background:#090d16;">
+              <div style="font-size:2rem; animation: pulse 1s infinite;">🔄</div>
+              <div style="margin-top:12px; font-size:1rem; font-weight:600; color:#ffffff;">Reloading with Game...</div>
+              <div style="margin-top:4px; font-size:0.75rem;">Reconnecting controls schema to refreshed game instance</div>
+            </div>
+          `;
+        }
+      } catch {
+      }
+    }
+  });
+}
 const PLAYER_COLORS = [
   "#f59e0b",
   // P1: Amber Gold
@@ -12334,13 +18895,13 @@ const PLAYER_COLORS = [
   "#3b82f6"
   // P6: Blue
 ];
-const version = 207;
-const lastSaved = "2026-11-02T07:04:29.568Z";
+const version = 214;
+const lastSaved = "2026-11-02T07:14:18.343Z";
 const arena = { "width": 20, "height": 14, "wallHeight": 1, "presetId": "standard", "tileGrid": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]] };
 const globalPhysics = { "gravity": 30, "collisionDamageScale": 0.1, "collisionMode": "dynamic" };
-const player = /* @__PURE__ */ JSON.parse('{"name":"Player 1","prefabId":"prefab_player","color":"#f59e0b","mass":1.2,"colliderRadius":0.44,"hasWalking":true,"walkingModule":{"walkInAir":true,"canSprint":true,"maxWalkForce":35,"maxWalkSpeed":5.2,"sprintSpeed":8.06,"walkPowerCapacity":400,"sprintPowerCapacity":1200,"airFriction":1,"walkConsumesEnergy":false,"walkAllowPartialPower":false,"sprintConsumesEnergy":true,"sprintAllowPartialPower":true,"maxWalkPower":400,"maxSprintPower":1200},"hasJump":true,"jumpModule":{"jumpImpulse":16.5,"maxInitialSpeed":8.8,"jumpPowerCapacity":1200,"jumpConsumesEnergy":true,"jumpAllowPartialPower":true},"hasThrow":true,"throwModule":{"throwPowerCapacity":1200,"maxPower":1200,"maxThrowSpeed":69,"throwForce":69,"maxThrowHeight":5,"consumesEnergy":true},"hasHealth":true,"healthModule":{"maxHp":100,"naturalHealRate":2,"joulesPerHp":80,"maxPower":500,"currentHp":100,"hpPerJoule":80,"consumesEnergy":true,"allowPartialPower":true},"hasEnergyPool":true,"energyPool":{"staminaCapacity":5000,"staminaRegenRate":500,"energyPoolCapacity":10000,"currentStamina":5000,"currentEnergy":10000,"muscleEfficiency":0.25,"infiniteEnergy":false,"debugAutoRefillOnEmpty":false},"hasMelee":true,"meleeModule":{"impactForce":350,"maxPower":500,"allowPartialPower":true,"punchFrequency":4,"reach":1.2,"width":0.8},"hasLaser":true,"laserModule":{"maxPower":2000,"maxRange":15,"damageRate":50,"thickness":0.35,"allowPartialPower":true},"damageSolverModule":{"selfImpactWeight":0,"minShockThreshold":0,"enabled":true,"impactSusceptibility":1},"id":"obj-a0git3s","controlSchema":{"id":"default","name":"Default (Action Context)","description":"Standard twin-stick and WASD setup with smart contextual action triggers.","activeDevice":"keyboardMouse","keyboardMouse":{"aiming":{"mode":"faceMouseCursor"},"locomotion":{"mode":"forwardFacingDrive","forwardTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"}},"rules":[{"id":"rule-mvutadk33p6","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutadk3","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingPlainObject"}],"condition":{"type":"holdingPlainObject"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvutfwetv21","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"throw","stageGroup":"action"},{"type":"tagPressed","param":"tag-kbm-ffc1ts"}],"condition":{"type":"stagedActionIs","param":"throw","stageGroup":"action"},"actions":[{"moduleId":"throw","intent":"releaseThrow"}],"action":{"moduleId":"throw","intent":"releaseThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"releaseThrow"}}],"children":[]},{"id":"rule-mvutbcys4cb","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagHeld","param":"tag-kbm-ffc1ts"},"actions":[],"body":[{"type":"nestedThread","threadId":"subthread-mvutc9vqisq","rules":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"stagedActionIs","param":"laser","stageGroup":"action"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"itemAbility","stageGroup":"action"}]}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"},{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"grab","stageGroup":"action"}]}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"},{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}}],"children":[]}]}],"children":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser"}],"condition":{"type":"stagedActionIs","param":"laser"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]}]},{"id":"rule-mvuxjb3jumc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuxjb3j","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagReleased","param":"tag-kbm-ffc1ts"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyuaktqyz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyuakt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-scjxrr"}],"condition":{"type":"tagHeld","param":"tag-kbm-scjxrr"},"actions":[{"moduleId":"locomotion","intent":"jump"}],"action":{"moduleId":"locomotion","intent":"jump"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"jump"}}],"children":[]},{"id":"rule-mvuyukiqe8r","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyukiq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-i3csb0"}],"condition":{"type":"tagPressed","param":"tag-kbm-i3csb0"},"actions":[{"moduleId":"melee","intent":"punch"}],"action":{"moduleId":"melee","intent":"punch"},"body":[{"type":"action","action":{"moduleId":"melee","intent":"punch"}}],"children":[]},{"id":"rule-mvuyutgqxj8","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-mxj04b"}],"condition":{"type":"tagHeld","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},{"moduleId":"laser","intent":"aimLaser"}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}}},{"type":"action","action":{"moduleId":"laser","intent":"aimLaser"}}],"children":[]},{"id":"rule-mvuz1v84zsz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-mxj04b"},{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyy7gta43","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-5ftccu"}],"condition":{"type":"tagHeld","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvuyzn14ezj","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-5ftccu"},{"type":"stagedActionIs","param":"throw","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuz2yjunae","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz2yju","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-6o3l7h"}],"condition":{"type":"tagHeld","param":"tag-kbm-6o3l7h"},"actions":[{"moduleId":"locomotion","intent":"holdSprint"}],"action":{"moduleId":"locomotion","intent":"holdSprint"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"holdSprint"}}],"children":[]},{"id":"rule-mvuz5lavrjc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz5lav","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"emptyHanded"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]},{"id":"rule-mvuz7b3sp8t","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz7b3s","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"holdingObject"},{"type":"targetInReach"},{"type":"stagedActionIs","stageGroup":"interact","param":"none"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"swap"},{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}],"action":{"moduleId":"pickup","intent":"swap"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"swap"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}}],"children":[]},{"id":"rule-mvuz63kzy0m","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz63kz","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-5j0zp9"}],"condition":{"type":"tagPressed","param":"tag-kbm-5j0zp9"},"actions":[{"moduleId":"pickup","intent":"dropItem"}],"action":{"moduleId":"pickup","intent":"dropItem"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"dropItem"}}],"children":[]},{"id":"rule-mvv00aqr8yr","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvv00aqr","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-tn6irx"}],"condition":{"type":"tagReleased","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}}],"children":[]}],"tags":[{"id":"tag-kbm-ffc1ts","name":"Action","trigger":{"device":"mouse","code":"MouseRight","mode":"hold"}},{"id":"tag-kbm-5j0zp9","name":"Drop Item","trigger":{"device":"keyboard","code":"KeyQ","mode":"press"}},{"id":"tag-kbm-5ftccu","name":" Throw Mode","trigger":{"device":"keyboard","code":"KeyA","mode":"hold"}},{"id":"tag-kbm-tn6irx","name":"Interact","trigger":{"device":"keyboard","code":"KeyF","mode":"press"}},{"id":"tag-kbm-scjxrr","name":"Jump","trigger":{"device":"keyboard","code":"Space","mode":"press"}},{"id":"tag-kbm-6o3l7h","name":"Sprint","trigger":{"device":"keyboard","code":"ShiftLeft","mode":"press"}},{"id":"tag-kbm-i3csb0","name":"Melee","trigger":{"device":"keyboard","code":"KeyD","mode":"press"}},{"id":"tag-kbm-mxj04b","name":"Laser","trigger":{"device":"keyboard","code":"KeyS","mode":"press"}}],"channels":{"locomotion":{"mode":"forwardFacingDrive","upKeys":["KeyW","ArrowUp"],"downKeys":["KeyS","ArrowDown"],"leftKeys":["KeyA","ArrowLeft"],"rightKeys":["KeyD","ArrowRight"],"sprintKey":"ShiftLeft","sprintMode":"hold","jumpKey":"Space"},"aiming":{"mode":"faceMouseCursor","rawMouseDragEnabled":true},"interaction":{"enabled":true,"trigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"claimPolicy":"requireCleanPress","allowSwapWhenHolding":true},"throw":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"fireOnReleaseAim":false,"arcModulationSource":"mouseDragY","arcDragHoldThresholdMs":200,"claimPolicy":"requireCleanPress"},"consume":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyE","mode":"hold"},"claimPolicy":"requireCleanPress"},"melee":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyF","mode":"press"},"claimPolicy":"requireCleanPress"},"laser":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","chordModifiers":["AltLeft"],"mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"},"powerModulationSource":"mouseWheel"}},"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}],"blocks":[{"type":"locomotion","id":"block-locomotion","name":"Locomotion","enabled":true,"moveKeys":{"upKey":"KeyW","downKey":"KeyS","leftKey":"KeyA","rightKey":"MouseLeft"},"jump":{"code":"Space"},"sprint":{"code":"ShiftLeft","mode":"hold"},"mode":"walkToMouse","forwardTrigger":{"code":"MouseLeft"},"reverseKey":null,"strafeLeftKey":null,"strafeRightKey":null},{"type":"itemInteraction","id":"block-items","name":"Item Interaction","enabled":true,"pickup":{"code":null},"drop":{"code":"KeyQ"},"swap":{"code":"KeyF"},"consume":{"code":"KeyE","requireCleanPress":true},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"MouseRight","gateButtons":[]}},{"type":"throw","id":"block-throw","name":"Throwing & Ballistics","enabled":true,"mode":"chargeAndRelease","chargeTrigger":{"code":"MouseRight"},"aimTrigger":{"code":"MouseRight"},"fireTrigger":{"code":"MouseLeft"},"quickTrigger":{"code":"MouseLeft"},"arcModulation":{"source":"mouseDeltaY","autoCursorLock":true,"sensitivity":0.005}},{"type":"melee","id":"block-melee","name":"Melee Combat","enabled":true,"punch":{"code":"KeyS"}},{"type":"laser","id":"block-laser","name":"Laser Beam","enabled":true,"aimTrigger":{"code":"KeyD","gateButtons":[]},"aimMode":"mouseWorldPos","fireTrigger":{"code":"MouseRight","autoFireWhenAiming":false},"powerLevel":{"source":"mouseWheel","sensitivity":1}},{"type":"facing","id":"block-facing","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"gamepad":{"leftStick":{"primaryMode":"directLocomotion","dynamicOverride":{"triggerCondition":"whenLtHeld","overrideMode":"cursorSteer"},"cursorSteerSpeed":14,"cursorClampRadius":7.5},"rightStick":{"mode":"twinStickAim"},"rules":[{"id":"pad-laser-aim-lt","name":"Aim Laser (LT)","enabled":true,"priority":105,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"aimLaser"},"tagId":"tag-pad-qq9kph"},{"id":"pad-laser-fire","name":"Fire Laser (RT)","enabled":true,"priority":100,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"fireLaser"},"tagId":"tag-pad-yg4ita"},{"id":"pad-throw-aim-lt","name":"Aim Throw Trajectory (LT)","enabled":true,"priority":95,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"aimThrow"},"tagId":"tag-pad-qq9kph"},{"id":"pad-throw-release","name":"Throw Held Item (RT)","enabled":true,"priority":90,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"release"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"releaseThrow"},"tagId":"tag-pad-yg4ita"},{"id":"pad-pickup-rt","name":"Pick Up Object (RT)","enabled":true,"priority":80,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"press"},"condition":{"type":"targetInReach"},"action":{"moduleId":"throwPickup","intent":"pickupReach"},"tagId":"tag-pad-yg4ita"},{"id":"pad-melee-b","name":"Melee Punch (B)","enabled":true,"priority":75,"trigger":{"device":"gamepad","code":"GamepadB","mode":"press"},"condition":{"type":"emptyHanded"},"action":{"moduleId":"melee","intent":"punch"},"tagId":"tag-pad-wbxscb"},{"id":"pad-jump","name":"Jump (A)","enabled":true,"priority":70,"trigger":{"device":"gamepad","code":"GamepadA","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"jump"},"tagId":"tag-pad-i8r8qh"},{"id":"pad-sprint-toggle","name":"Toggle Sprint (LS)","enabled":true,"priority":60,"trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"toggleSprint"},"tagId":"tag-pad-r7p78d"},{"id":"pad-drop","name":"Drop Item (X)","enabled":true,"priority":50,"trigger":{"device":"gamepad","code":"GamepadX","mode":"press"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"dropItem"},"tagId":"tag-pad-1wlz43"}],"tags":[{"id":"tag-pad-qq9kph","name":"Aim Laser","trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"}},{"id":"tag-pad-yg4ita","name":"Fire Laser","trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"}},{"id":"tag-pad-wbxscb","name":"Melee Punch","trigger":{"device":"gamepad","code":"GamepadB","mode":"press"}},{"id":"tag-pad-i8r8qh","name":"Jump","trigger":{"device":"gamepad","code":"GamepadA","mode":"press"}},{"id":"tag-pad-r7p78d","name":"Toggle Sprint","trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"}},{"id":"tag-pad-1wlz43","name":"Drop Item","trigger":{"device":"gamepad","code":"GamepadX","mode":"press"}}]},"touch":{"widgets":[{"id":"touch-move-stick","type":"joystick","label":"Move","anchor":"bottomLeft","offset":{"x":90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[{"id":"deadzone","minDeflection":0,"maxDeflection":0.15,"signalId":"idle"},{"id":"walk","minDeflection":0.15,"maxDeflection":0.65,"signalId":"walk"},{"id":"sprint","minDeflection":0.65,"maxDeflection":1,"signalId":"sprint"}]},{"id":"touch-aim-stick","type":"joystick","label":"Aim","anchor":"bottomRight","offset":{"x":-90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[]},{"id":"touch-jump-btn","type":"actionButton","label":"JUMP","anchor":"bottomRight","offset":{"x":-80,"y":190},"radius":35,"centering":"fixed","snapBackOnRelease":true,"rings":[],"tapAction":"jump"}],"rules":[],"tags":[]},"stages":["none","laser","throw","itemAbility","grab"],"stageGroups":[{"name":"action","stages":["none","laser","throw","itemAbility","grab"]},{"name":"interact","stages":["none","dirty"]}],"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}]},"strength":1,"hasPickup":true,"pickupModule":{"pickupReach":1.3,"maxPower":250,"consumesEnergy":false,"allowPartialPower":false},"hasClimbing":false,"wallEdgeAssistModule":{"hangDistance":0.1,"preventWalkOff":false},"hasDamageSolverModule":true}');
+const player = /* @__PURE__ */ JSON.parse('{"name":"Player 1","prefabId":"prefab_player","color":"#f59e0b","mass":1.2,"colliderRadius":0.44,"hasWalking":true,"walkingModule":{"walkInAir":true,"canSprint":true,"maxWalkForce":35,"maxWalkSpeed":5.2,"sprintSpeed":8.06,"walkPowerCapacity":400,"sprintPowerCapacity":1200,"airFriction":1,"walkConsumesEnergy":false,"walkAllowPartialPower":false,"sprintConsumesEnergy":true,"sprintAllowPartialPower":true,"maxWalkPower":400,"maxSprintPower":1200},"hasJump":true,"jumpModule":{"jumpImpulse":16.5,"maxInitialSpeed":8.8,"jumpPowerCapacity":1200,"jumpConsumesEnergy":true,"jumpAllowPartialPower":true},"hasThrow":true,"throwModule":{"throwPowerCapacity":1200,"maxPower":1200,"maxThrowSpeed":69,"throwForce":69,"maxThrowHeight":5,"consumesEnergy":true},"hasHealth":true,"healthModule":{"maxHp":100,"naturalHealRate":2,"joulesPerHp":80,"maxPower":500,"currentHp":100,"hpPerJoule":80,"consumesEnergy":true,"allowPartialPower":true},"hasEnergyPool":true,"energyPool":{"staminaCapacity":5000,"staminaRegenRate":500,"energyPoolCapacity":10000,"currentStamina":5000,"currentEnergy":10000,"muscleEfficiency":0.25,"infiniteEnergy":false,"debugAutoRefillOnEmpty":false},"hasMelee":true,"meleeModule":{"impactForce":350,"maxPower":500,"allowPartialPower":true,"punchFrequency":4,"reach":1.2,"width":0.8},"hasLaser":true,"laserModule":{"maxPower":2000,"maxRange":15,"damageRate":50,"thickness":0.35,"allowPartialPower":true},"damageSolverModule":{"selfImpactWeight":0,"minShockThreshold":0,"enabled":true,"impactSusceptibility":1},"id":"obj-a0git3s","controlSchema":{"id":"default","name":"Default (Action Context)","description":"Standard twin-stick and WASD setup with smart contextual action triggers.","activeDevice":"keyboardMouse","keyboardMouse":{"aiming":{"mode":"faceMouseCursor"},"locomotion":{"mode":"forwardFacingDrive","forwardTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"}},"rules":[{"id":"rule-mvutadk33p6","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutadk3","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingPlainObject"}],"condition":{"type":"holdingPlainObject"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvutfwetv21","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"throw","stageGroup":"action"},{"type":"tagPressed","param":"tag-kbm-ffc1ts"}],"condition":{"type":"stagedActionIs","param":"throw","stageGroup":"action"},"actions":[{"moduleId":"throw","intent":"releaseThrow"}],"action":{"moduleId":"throw","intent":"releaseThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"releaseThrow"}}],"children":[]},{"id":"rule-mvutbcys4cb","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagHeld","param":"tag-kbm-ffc1ts"},"actions":[],"body":[{"type":"nestedThread","threadId":"subthread-mvutc9vqisq","rules":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"stagedActionIs","param":"laser","stageGroup":"action"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"itemAbility","stageGroup":"action"}]}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"},{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"grab","stageGroup":"action"}]}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"},{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}}],"children":[]}]}],"children":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser"}],"condition":{"type":"stagedActionIs","param":"laser"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]}]},{"id":"rule-mvuxjb3jumc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuxjb3j","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagReleased","param":"tag-kbm-ffc1ts"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyuaktqyz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyuakt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-scjxrr"}],"condition":{"type":"tagHeld","param":"tag-kbm-scjxrr"},"actions":[{"moduleId":"locomotion","intent":"jump"}],"action":{"moduleId":"locomotion","intent":"jump"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"jump"}}],"children":[]},{"id":"rule-mvuyukiqe8r","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyukiq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-i3csb0"}],"condition":{"type":"tagPressed","param":"tag-kbm-i3csb0"},"actions":[{"moduleId":"melee","intent":"punch"}],"action":{"moduleId":"melee","intent":"punch"},"body":[{"type":"action","action":{"moduleId":"melee","intent":"punch"}}],"children":[]},{"id":"rule-mvuyutgqxj8","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-mxj04b"}],"condition":{"type":"tagHeld","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},{"moduleId":"laser","intent":"aimLaser"}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}}},{"type":"action","action":{"moduleId":"laser","intent":"aimLaser"}}],"children":[]},{"id":"rule-mvuz1v84zsz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-mxj04b"},{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyy7gta43","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-5ftccu"}],"condition":{"type":"tagHeld","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvuyzn14ezj","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-5ftccu"},{"type":"stagedActionIs","param":"throw","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuz2yjunae","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz2yju","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-6o3l7h"}],"condition":{"type":"tagHeld","param":"tag-kbm-6o3l7h"},"actions":[{"moduleId":"locomotion","intent":"holdSprint"}],"action":{"moduleId":"locomotion","intent":"holdSprint"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"holdSprint"}}],"children":[]},{"id":"rule-mvuz5lavrjc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz5lav","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"emptyHanded"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]},{"id":"rule-mvuz7b3sp8t","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz7b3s","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"holdingObject"},{"type":"targetInReach"},{"type":"stagedActionIs","stageGroup":"interact","param":"none"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"swap"},{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}],"action":{"moduleId":"pickup","intent":"swap"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"swap"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}}],"children":[]},{"id":"rule-mvuz63kzy0m","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz63kz","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-5j0zp9"}],"condition":{"type":"tagPressed","param":"tag-kbm-5j0zp9"},"actions":[{"moduleId":"pickup","intent":"dropItem"}],"action":{"moduleId":"pickup","intent":"dropItem"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"dropItem"}}],"children":[]},{"id":"rule-mvv00aqr8yr","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvv00aqr","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-tn6irx"}],"condition":{"type":"tagReleased","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}}],"children":[]}],"tags":[{"id":"tag-kbm-ffc1ts","name":"Action","trigger":{"device":"mouse","code":"MouseRight","mode":"hold"}},{"id":"tag-kbm-5j0zp9","name":"Drop Item","trigger":{"device":"keyboard","code":"KeyQ","mode":"press"}},{"id":"tag-kbm-5ftccu","name":" Throw Mode","trigger":{"device":"keyboard","code":"KeyA","mode":"hold"}},{"id":"tag-kbm-tn6irx","name":"Interact","trigger":{"device":"keyboard","code":"KeyF","mode":"press"}},{"id":"tag-kbm-scjxrr","name":"Jump","trigger":{"device":"keyboard","code":"Space","mode":"press"}},{"id":"tag-kbm-6o3l7h","name":"Sprint","trigger":{"device":"keyboard","code":"ShiftLeft","mode":"press"}},{"id":"tag-kbm-i3csb0","name":"Melee","trigger":{"device":"keyboard","code":"KeyD","mode":"press"}},{"id":"tag-kbm-mxj04b","name":"Laser","trigger":{"device":"keyboard","code":"KeyS","mode":"press"}}],"channels":{"locomotion":{"mode":"forwardFacingDrive","upKeys":["KeyW","ArrowUp"],"downKeys":["KeyS","ArrowDown"],"leftKeys":["KeyA","ArrowLeft"],"rightKeys":["KeyD","ArrowRight"],"sprintKey":"ShiftLeft","sprintMode":"hold","jumpKey":"Space"},"aiming":{"mode":"faceMouseCursor","rawMouseDragEnabled":true},"interaction":{"enabled":true,"trigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"claimPolicy":"requireCleanPress","allowSwapWhenHolding":true},"throw":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"fireOnReleaseAim":false,"arcModulationSource":"mouseDragY","arcDragHoldThresholdMs":200,"claimPolicy":"requireCleanPress"},"consume":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyE","mode":"hold"},"claimPolicy":"requireCleanPress"},"melee":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyF","mode":"press"},"claimPolicy":"requireCleanPress"},"laser":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","chordModifiers":["AltLeft"],"mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"},"powerModulationSource":"mouseWheel"}},"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}],"blocks":[{"type":"locomotion","id":"block-locomotion","name":"Locomotion","enabled":true,"moveKeys":{"upKey":"KeyW","downKey":"KeyS","leftKey":"KeyA","rightKey":"MouseLeft"},"jump":{"code":"Space"},"sprint":{"code":"ShiftLeft","mode":"hold"},"mode":"walkToMouse","forwardTrigger":{"code":"MouseLeft"},"reverseKey":null,"strafeLeftKey":null,"strafeRightKey":null},{"type":"itemInteraction","id":"block-items","name":"Item Interaction","enabled":true,"pickup":{"code":null},"drop":{"code":"KeyQ"},"swap":{"code":"KeyF"},"consume":{"code":"KeyE","requireCleanPress":true},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"MouseRight","gateButtons":[]}},{"type":"throw","id":"block-throw","name":"Throwing & Ballistics","enabled":true,"mode":"quickWallClear","chargeTrigger":{"code":"MouseRight","requireCleanPress":false},"aimTrigger":{"code":"MouseRight","requireCleanPress":false},"fireTrigger":{"code":"MouseLeft","requireCleanPress":true},"quickTrigger":{"code":"MouseRight"},"arcModulation":{"source":"mouseDeltaY","autoCursorLock":true,"sensitivity":0.005}},{"type":"melee","id":"block-melee","name":"Melee Combat","enabled":true,"punch":{"code":"KeyS"}},{"type":"laser","id":"block-laser","name":"Laser Beam","enabled":true,"aimTrigger":{"code":"KeyD","gateButtons":[]},"aimMode":"mouseWorldPos","fireTrigger":{"code":"MouseRight","autoFireWhenAiming":false},"powerLevel":{"source":"mouseWheel","sensitivity":1}},{"type":"facing","id":"block-facing","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"gamepad":{"leftStick":{"primaryMode":"directLocomotion","dynamicOverride":{"triggerCondition":"whenLtHeld","overrideMode":"cursorSteer"},"cursorSteerSpeed":14,"cursorClampRadius":7.5},"rightStick":{"mode":"twinStickAim"},"rules":[{"id":"pad-laser-aim-lt","name":"Aim Laser (LT)","enabled":true,"priority":105,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"aimLaser"},"tagId":"tag-pad-qq9kph"},{"id":"pad-laser-fire","name":"Fire Laser (RT)","enabled":true,"priority":100,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"fireLaser"},"tagId":"tag-pad-yg4ita"},{"id":"pad-throw-aim-lt","name":"Aim Throw Trajectory (LT)","enabled":true,"priority":95,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"aimThrow"},"tagId":"tag-pad-qq9kph"},{"id":"pad-throw-release","name":"Throw Held Item (RT)","enabled":true,"priority":90,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"release"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"releaseThrow"},"tagId":"tag-pad-yg4ita"},{"id":"pad-pickup-rt","name":"Pick Up Object (RT)","enabled":true,"priority":80,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"press"},"condition":{"type":"targetInReach"},"action":{"moduleId":"throwPickup","intent":"pickupReach"},"tagId":"tag-pad-yg4ita"},{"id":"pad-melee-b","name":"Melee Punch (B)","enabled":true,"priority":75,"trigger":{"device":"gamepad","code":"GamepadB","mode":"press"},"condition":{"type":"emptyHanded"},"action":{"moduleId":"melee","intent":"punch"},"tagId":"tag-pad-wbxscb"},{"id":"pad-jump","name":"Jump (A)","enabled":true,"priority":70,"trigger":{"device":"gamepad","code":"GamepadA","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"jump"},"tagId":"tag-pad-i8r8qh"},{"id":"pad-sprint-toggle","name":"Toggle Sprint (LS)","enabled":true,"priority":60,"trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"toggleSprint"},"tagId":"tag-pad-r7p78d"},{"id":"pad-drop","name":"Drop Item (X)","enabled":true,"priority":50,"trigger":{"device":"gamepad","code":"GamepadX","mode":"press"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"dropItem"},"tagId":"tag-pad-1wlz43"}],"tags":[{"id":"tag-pad-qq9kph","name":"Aim Laser","trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"}},{"id":"tag-pad-yg4ita","name":"Fire Laser","trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"}},{"id":"tag-pad-wbxscb","name":"Melee Punch","trigger":{"device":"gamepad","code":"GamepadB","mode":"press"}},{"id":"tag-pad-i8r8qh","name":"Jump","trigger":{"device":"gamepad","code":"GamepadA","mode":"press"}},{"id":"tag-pad-r7p78d","name":"Toggle Sprint","trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"}},{"id":"tag-pad-1wlz43","name":"Drop Item","trigger":{"device":"gamepad","code":"GamepadX","mode":"press"}}]},"touch":{"widgets":[{"id":"touch-move-stick","type":"joystick","label":"Move","anchor":"bottomLeft","offset":{"x":90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[{"id":"deadzone","minDeflection":0,"maxDeflection":0.15,"signalId":"idle"},{"id":"walk","minDeflection":0.15,"maxDeflection":0.65,"signalId":"walk"},{"id":"sprint","minDeflection":0.65,"maxDeflection":1,"signalId":"sprint"}]},{"id":"touch-aim-stick","type":"joystick","label":"Aim","anchor":"bottomRight","offset":{"x":-90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[]},{"id":"touch-jump-btn","type":"actionButton","label":"JUMP","anchor":"bottomRight","offset":{"x":-80,"y":190},"radius":35,"centering":"fixed","snapBackOnRelease":true,"rings":[],"tapAction":"jump"}],"rules":[],"tags":[]},"stages":["none","laser","throw","itemAbility","grab"],"stageGroups":[{"name":"action","stages":["none","laser","throw","itemAbility","grab"]},{"name":"interact","stages":["none","dirty"]}],"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}]},"strength":1,"hasPickup":true,"pickupModule":{"pickupReach":1.3,"maxPower":250,"consumesEnergy":false,"allowPartialPower":false},"hasClimbing":false,"wallEdgeAssistModule":{"hangDistance":0.1,"preventWalkOff":false},"hasDamageSolverModule":true}');
 const objects = /* @__PURE__ */ JSON.parse('[{"id":"stone-ground-1","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":4.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":101}},{"id":"stone-ground-2","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":4.8,"y":8.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0.45},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":102}},{"id":"stone-ground-3","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":8.2,"y":4.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":103}},{"id":"stone-ground-4","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":11.8,"y":9.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":104}},{"id":"stone-ground-5","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":15.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":105}},{"id":"stone-ground-6","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":15.8,"y":8.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":106}},{"id":"stone-elevated-1","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":6.5,"y":2.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":107}},{"id":"stone-elevated-2","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":13.5,"y":11.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":108}},{"id":"obj-u5fhrng","name":"Apple","prefabId":"prefab_apple","position":{"x":10,"y":2.2,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"super-apple-center","name":"Super Apple","prefabId":"prefab_super_apple","position":{"x":10,"y":7,"z":0},"color":"#ff1493","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.45,"colliderRadius":0.3,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.45,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.3},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","unlimited":true,"totalEnergyJoules":10000,"remainingEnergyJoules":10000,"consumeRateWatts":2000,"healRate":0,"minScaleFloor":1,"minRadiusFloor":0.3}},{"id":"obj-zblid1b","name":"Apple","prefabId":"prefab_apple","position":{"x":3.5,"y":7,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-3veyg9h","name":"Apple","prefabId":"prefab_apple","position":{"x":16.5,"y":7,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-mcnn4yg","name":"Apple","prefabId":"prefab_apple","position":{"x":10,"y":11.8,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}}]');
-const prefabs = /* @__PURE__ */ JSON.parse('[{"id":"prefab_apple","name":"Apple","icon":"🍏","archetype":{"id":"archetype_apple","name":"Apple","position":{"x":0,"y":0,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}}},{"id":"prefab_super_apple","name":"Super Apple","icon":"💖","archetype":{"id":"archetype_super_apple","name":"Super Apple","position":{"x":0,"y":0,"z":0},"color":"#ff1493","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.45,"colliderRadius":0.3,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.45,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.3},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","unlimited":true,"totalEnergyJoules":10000,"remainingEnergyJoules":10000,"consumeRateWatts":2000,"healRate":0,"minScaleFloor":1,"minRadiusFloor":0.3}}},{"id":"prefab_stone","name":"Stone","icon":"🪨","archetype":{"id":"archetype_stone","name":"Stone","position":{"x":0,"y":0,"z":0},"color":"#78716c","visualShape":"circle","mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":100}}},{"id":"prefab_player","name":"Player","icon":"🧙","archetype":{"id":"archetype_player","name":"Player","position":{"x":5,"y":7,"z":0},"color":"#f59e0b","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasHealthModule":true,"hasDamageAuraModule":false,"hasDamageSolverModule":true,"mass":1.2,"colliderRadius":0.44,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":2,"dynamicGroundFrictionMod":2,"rigidbodyModule":{"enabled":true,"mass":1.2,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.44},"frictionModule":{"enabled":true,"staticFrictionMod":2,"dynamicFrictionMod":2},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"healthModule":{"enabled":true,"maxHp":100,"currentHp":100,"naturalHealRate":5},"damageSolverModule":{"enabled":true,"impactSusceptibility":1,"minShockThreshold":5,"selfImpactWeight":0}},"controlSchema":{"id":"default","name":"Default (Action Context)","description":"Standard twin-stick and WASD setup with smart contextual action triggers.","activeDevice":"keyboardMouse","keyboardMouse":{"aiming":{"mode":"faceMouseCursor"},"locomotion":{"mode":"forwardFacingDrive","forwardTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"}},"rules":[{"id":"rule-mvutadk33p6","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutadk3","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingPlainObject"}],"condition":{"type":"holdingPlainObject"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvutfwetv21","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"throw","stageGroup":"action"},{"type":"tagPressed","param":"tag-kbm-ffc1ts"}],"condition":{"type":"stagedActionIs","param":"throw","stageGroup":"action"},"actions":[{"moduleId":"throw","intent":"releaseThrow"}],"action":{"moduleId":"throw","intent":"releaseThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"releaseThrow"}}],"children":[]},{"id":"rule-mvutbcys4cb","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagHeld","param":"tag-kbm-ffc1ts"},"actions":[],"body":[{"type":"nestedThread","threadId":"subthread-mvutc9vqisq","rules":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"stagedActionIs","param":"laser","stageGroup":"action"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"itemAbility","stageGroup":"action"}]}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"},{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"grab","stageGroup":"action"}]}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"},{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}}],"children":[]}]}],"children":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser"}],"condition":{"type":"stagedActionIs","param":"laser"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]}]},{"id":"rule-mvuxjb3jumc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuxjb3j","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagReleased","param":"tag-kbm-ffc1ts"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyuaktqyz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyuakt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-scjxrr"}],"condition":{"type":"tagHeld","param":"tag-kbm-scjxrr"},"actions":[{"moduleId":"locomotion","intent":"jump"}],"action":{"moduleId":"locomotion","intent":"jump"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"jump"}}],"children":[]},{"id":"rule-mvuyukiqe8r","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyukiq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-i3csb0"}],"condition":{"type":"tagPressed","param":"tag-kbm-i3csb0"},"actions":[{"moduleId":"melee","intent":"punch"}],"action":{"moduleId":"melee","intent":"punch"},"body":[{"type":"action","action":{"moduleId":"melee","intent":"punch"}}],"children":[]},{"id":"rule-mvuyutgqxj8","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-mxj04b"}],"condition":{"type":"tagHeld","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},{"moduleId":"laser","intent":"aimLaser"}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}}},{"type":"action","action":{"moduleId":"laser","intent":"aimLaser"}}],"children":[]},{"id":"rule-mvuz1v84zsz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-mxj04b"},{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyy7gta43","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-5ftccu"}],"condition":{"type":"tagHeld","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvuyzn14ezj","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-5ftccu"},{"type":"stagedActionIs","param":"throw","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuz2yjunae","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz2yju","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-6o3l7h"}],"condition":{"type":"tagHeld","param":"tag-kbm-6o3l7h"},"actions":[{"moduleId":"locomotion","intent":"holdSprint"}],"action":{"moduleId":"locomotion","intent":"holdSprint"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"holdSprint"}}],"children":[]},{"id":"rule-mvuz5lavrjc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz5lav","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"emptyHanded"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]},{"id":"rule-mvuz7b3sp8t","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz7b3s","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"holdingObject"},{"type":"targetInReach"},{"type":"stagedActionIs","stageGroup":"interact","param":"none"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"swap"},{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}],"action":{"moduleId":"pickup","intent":"swap"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"swap"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}}],"children":[]},{"id":"rule-mvuz63kzy0m","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz63kz","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-5j0zp9"}],"condition":{"type":"tagPressed","param":"tag-kbm-5j0zp9"},"actions":[{"moduleId":"pickup","intent":"dropItem"}],"action":{"moduleId":"pickup","intent":"dropItem"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"dropItem"}}],"children":[]},{"id":"rule-mvv00aqr8yr","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvv00aqr","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-tn6irx"}],"condition":{"type":"tagReleased","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}}],"children":[]}],"tags":[{"id":"tag-kbm-ffc1ts","name":"Action","trigger":{"device":"mouse","code":"MouseRight","mode":"hold"}},{"id":"tag-kbm-5j0zp9","name":"Drop Item","trigger":{"device":"keyboard","code":"KeyQ","mode":"press"}},{"id":"tag-kbm-5ftccu","name":" Throw Mode","trigger":{"device":"keyboard","code":"KeyA","mode":"hold"}},{"id":"tag-kbm-tn6irx","name":"Interact","trigger":{"device":"keyboard","code":"KeyF","mode":"press"}},{"id":"tag-kbm-scjxrr","name":"Jump","trigger":{"device":"keyboard","code":"Space","mode":"press"}},{"id":"tag-kbm-6o3l7h","name":"Sprint","trigger":{"device":"keyboard","code":"ShiftLeft","mode":"press"}},{"id":"tag-kbm-i3csb0","name":"Melee","trigger":{"device":"keyboard","code":"KeyD","mode":"press"}},{"id":"tag-kbm-mxj04b","name":"Laser","trigger":{"device":"keyboard","code":"KeyS","mode":"press"}}],"channels":{"locomotion":{"mode":"forwardFacingDrive","upKeys":["KeyW","ArrowUp"],"downKeys":["KeyS","ArrowDown"],"leftKeys":["KeyA","ArrowLeft"],"rightKeys":["KeyD","ArrowRight"],"sprintKey":"ShiftLeft","sprintMode":"hold","jumpKey":"Space"},"aiming":{"mode":"faceMouseCursor","rawMouseDragEnabled":true},"interaction":{"enabled":true,"trigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"claimPolicy":"requireCleanPress","allowSwapWhenHolding":true},"throw":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"fireOnReleaseAim":false,"arcModulationSource":"mouseDragY","arcDragHoldThresholdMs":200,"claimPolicy":"requireCleanPress"},"consume":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyE","mode":"hold"},"claimPolicy":"requireCleanPress"},"melee":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyF","mode":"press"},"claimPolicy":"requireCleanPress"},"laser":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","chordModifiers":["AltLeft"],"mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"},"powerModulationSource":"mouseWheel"}},"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}],"blocks":[{"type":"locomotion","id":"block-locomotion","name":"Locomotion","enabled":true,"moveKeys":{"upKey":"KeyW","downKey":"KeyS","leftKey":"KeyA","rightKey":"MouseLeft"},"jump":{"code":"Space"},"sprint":{"code":"ShiftLeft","mode":"hold"},"mode":"walkToMouse","forwardTrigger":{"code":"MouseLeft"},"reverseKey":null,"strafeLeftKey":null,"strafeRightKey":null},{"type":"itemInteraction","id":"block-items","name":"Item Interaction","enabled":true,"pickup":{"code":null},"drop":{"code":"KeyQ"},"swap":{"code":"KeyF"},"consume":{"code":"KeyE","requireCleanPress":true},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"MouseRight","gateButtons":[]}},{"type":"throw","id":"block-throw","name":"Throwing & Ballistics","enabled":true,"mode":"chargeAndRelease","chargeTrigger":{"code":"MouseRight"},"aimTrigger":{"code":"MouseRight"},"fireTrigger":{"code":"MouseLeft"},"quickTrigger":{"code":"MouseLeft"},"arcModulation":{"source":"mouseDeltaY","autoCursorLock":true,"sensitivity":0.005}},{"type":"melee","id":"block-melee","name":"Melee Combat","enabled":true,"punch":{"code":"KeyS"}},{"type":"laser","id":"block-laser","name":"Laser Beam","enabled":true,"aimTrigger":{"code":"KeyD","gateButtons":[]},"aimMode":"mouseWorldPos","fireTrigger":{"code":"MouseRight","autoFireWhenAiming":false},"powerLevel":{"source":"mouseWheel","sensitivity":1}},{"type":"facing","id":"block-facing","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"gamepad":{"leftStick":{"primaryMode":"directLocomotion","dynamicOverride":{"triggerCondition":"whenLtHeld","overrideMode":"cursorSteer"},"cursorSteerSpeed":14,"cursorClampRadius":7.5},"rightStick":{"mode":"twinStickAim"},"rules":[{"id":"pad-laser-aim-lt","name":"Aim Laser (LT)","enabled":true,"priority":105,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"aimLaser"},"tagId":"tag-pad-qq9kph"},{"id":"pad-laser-fire","name":"Fire Laser (RT)","enabled":true,"priority":100,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"fireLaser"},"tagId":"tag-pad-yg4ita"},{"id":"pad-throw-aim-lt","name":"Aim Throw Trajectory (LT)","enabled":true,"priority":95,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"aimThrow"},"tagId":"tag-pad-qq9kph"},{"id":"pad-throw-release","name":"Throw Held Item (RT)","enabled":true,"priority":90,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"release"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"releaseThrow"},"tagId":"tag-pad-yg4ita"},{"id":"pad-pickup-rt","name":"Pick Up Object (RT)","enabled":true,"priority":80,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"press"},"condition":{"type":"targetInReach"},"action":{"moduleId":"throwPickup","intent":"pickupReach"},"tagId":"tag-pad-yg4ita"},{"id":"pad-melee-b","name":"Melee Punch (B)","enabled":true,"priority":75,"trigger":{"device":"gamepad","code":"GamepadB","mode":"press"},"condition":{"type":"emptyHanded"},"action":{"moduleId":"melee","intent":"punch"},"tagId":"tag-pad-wbxscb"},{"id":"pad-jump","name":"Jump (A)","enabled":true,"priority":70,"trigger":{"device":"gamepad","code":"GamepadA","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"jump"},"tagId":"tag-pad-i8r8qh"},{"id":"pad-sprint-toggle","name":"Toggle Sprint (LS)","enabled":true,"priority":60,"trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"toggleSprint"},"tagId":"tag-pad-r7p78d"},{"id":"pad-drop","name":"Drop Item (X)","enabled":true,"priority":50,"trigger":{"device":"gamepad","code":"GamepadX","mode":"press"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"dropItem"},"tagId":"tag-pad-1wlz43"}],"tags":[{"id":"tag-pad-qq9kph","name":"Aim Laser","trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"}},{"id":"tag-pad-yg4ita","name":"Fire Laser","trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"}},{"id":"tag-pad-wbxscb","name":"Melee Punch","trigger":{"device":"gamepad","code":"GamepadB","mode":"press"}},{"id":"tag-pad-i8r8qh","name":"Jump","trigger":{"device":"gamepad","code":"GamepadA","mode":"press"}},{"id":"tag-pad-r7p78d","name":"Toggle Sprint","trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"}},{"id":"tag-pad-1wlz43","name":"Drop Item","trigger":{"device":"gamepad","code":"GamepadX","mode":"press"}}]},"touch":{"widgets":[{"id":"touch-move-stick","type":"joystick","label":"Move","anchor":"bottomLeft","offset":{"x":90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[{"id":"deadzone","minDeflection":0,"maxDeflection":0.15,"signalId":"idle"},{"id":"walk","minDeflection":0.15,"maxDeflection":0.65,"signalId":"walk"},{"id":"sprint","minDeflection":0.65,"maxDeflection":1,"signalId":"sprint"}]},{"id":"touch-aim-stick","type":"joystick","label":"Aim","anchor":"bottomRight","offset":{"x":-90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[]},{"id":"touch-jump-btn","type":"actionButton","label":"JUMP","anchor":"bottomRight","offset":{"x":-80,"y":190},"radius":35,"centering":"fixed","snapBackOnRelease":true,"rings":[],"tapAction":"jump"}],"rules":[],"tags":[]},"stages":["none","laser","throw","itemAbility","grab"],"stageGroups":[{"name":"action","stages":["none","laser","throw","itemAbility","grab"]},{"name":"interact","stages":["none","dirty"]}],"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}]}}]');
+const prefabs = /* @__PURE__ */ JSON.parse('[{"id":"prefab_apple","name":"Apple","icon":"🍏","archetype":{"id":"archetype_apple","name":"Apple","position":{"x":0,"y":0,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}}},{"id":"prefab_super_apple","name":"Super Apple","icon":"💖","archetype":{"id":"archetype_super_apple","name":"Super Apple","position":{"x":0,"y":0,"z":0},"color":"#ff1493","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.45,"colliderRadius":0.3,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.45,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.3},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","unlimited":true,"totalEnergyJoules":10000,"remainingEnergyJoules":10000,"consumeRateWatts":2000,"healRate":0,"minScaleFloor":1,"minRadiusFloor":0.3}}},{"id":"prefab_stone","name":"Stone","icon":"🪨","archetype":{"id":"archetype_stone","name":"Stone","position":{"x":0,"y":0,"z":0},"color":"#78716c","visualShape":"circle","mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":100}}},{"id":"prefab_player","name":"Player","icon":"🧙","archetype":{"id":"archetype_player","name":"Player","position":{"x":5,"y":7,"z":0},"color":"#f59e0b","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasHealthModule":true,"hasDamageAuraModule":false,"hasDamageSolverModule":true,"mass":1.2,"colliderRadius":0.44,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":2,"dynamicGroundFrictionMod":2,"rigidbodyModule":{"enabled":true,"mass":1.2,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.44},"frictionModule":{"enabled":true,"staticFrictionMod":2,"dynamicFrictionMod":2},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"healthModule":{"enabled":true,"maxHp":100,"currentHp":100,"naturalHealRate":5},"damageSolverModule":{"enabled":true,"impactSusceptibility":1,"minShockThreshold":5,"selfImpactWeight":0}},"controlSchema":{"id":"default","name":"Default (Action Context)","description":"Standard twin-stick and WASD setup with smart contextual action triggers.","activeDevice":"keyboardMouse","keyboardMouse":{"aiming":{"mode":"faceMouseCursor"},"locomotion":{"mode":"forwardFacingDrive","forwardTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"}},"rules":[{"id":"rule-mvutadk33p6","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutadk3","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingPlainObject"}],"condition":{"type":"holdingPlainObject"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvutfwetv21","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"throw","stageGroup":"action"},{"type":"tagPressed","param":"tag-kbm-ffc1ts"}],"condition":{"type":"stagedActionIs","param":"throw","stageGroup":"action"},"actions":[{"moduleId":"throw","intent":"releaseThrow"}],"action":{"moduleId":"throw","intent":"releaseThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"releaseThrow"}}],"children":[]},{"id":"rule-mvutbcys4cb","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagHeld","param":"tag-kbm-ffc1ts"},"actions":[],"body":[{"type":"nestedThread","threadId":"subthread-mvutc9vqisq","rules":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"stagedActionIs","param":"laser","stageGroup":"action"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"itemAbility","stageGroup":"action"}]}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"},{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"grab","stageGroup":"action"}]}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"},{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}}],"children":[]}]}],"children":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser"}],"condition":{"type":"stagedActionIs","param":"laser"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]}]},{"id":"rule-mvuxjb3jumc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuxjb3j","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagReleased","param":"tag-kbm-ffc1ts"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyuaktqyz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyuakt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-scjxrr"}],"condition":{"type":"tagHeld","param":"tag-kbm-scjxrr"},"actions":[{"moduleId":"locomotion","intent":"jump"}],"action":{"moduleId":"locomotion","intent":"jump"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"jump"}}],"children":[]},{"id":"rule-mvuyukiqe8r","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyukiq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-i3csb0"}],"condition":{"type":"tagPressed","param":"tag-kbm-i3csb0"},"actions":[{"moduleId":"melee","intent":"punch"}],"action":{"moduleId":"melee","intent":"punch"},"body":[{"type":"action","action":{"moduleId":"melee","intent":"punch"}}],"children":[]},{"id":"rule-mvuyutgqxj8","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-mxj04b"}],"condition":{"type":"tagHeld","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},{"moduleId":"laser","intent":"aimLaser"}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}}},{"type":"action","action":{"moduleId":"laser","intent":"aimLaser"}}],"children":[]},{"id":"rule-mvuz1v84zsz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-mxj04b"},{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyy7gta43","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-5ftccu"}],"condition":{"type":"tagHeld","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvuyzn14ezj","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-5ftccu"},{"type":"stagedActionIs","param":"throw","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuz2yjunae","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz2yju","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-6o3l7h"}],"condition":{"type":"tagHeld","param":"tag-kbm-6o3l7h"},"actions":[{"moduleId":"locomotion","intent":"holdSprint"}],"action":{"moduleId":"locomotion","intent":"holdSprint"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"holdSprint"}}],"children":[]},{"id":"rule-mvuz5lavrjc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz5lav","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"emptyHanded"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]},{"id":"rule-mvuz7b3sp8t","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz7b3s","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"holdingObject"},{"type":"targetInReach"},{"type":"stagedActionIs","stageGroup":"interact","param":"none"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"swap"},{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}],"action":{"moduleId":"pickup","intent":"swap"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"swap"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}}],"children":[]},{"id":"rule-mvuz63kzy0m","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz63kz","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-5j0zp9"}],"condition":{"type":"tagPressed","param":"tag-kbm-5j0zp9"},"actions":[{"moduleId":"pickup","intent":"dropItem"}],"action":{"moduleId":"pickup","intent":"dropItem"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"dropItem"}}],"children":[]},{"id":"rule-mvv00aqr8yr","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvv00aqr","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-tn6irx"}],"condition":{"type":"tagReleased","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}}],"children":[]}],"tags":[{"id":"tag-kbm-ffc1ts","name":"Action","trigger":{"device":"mouse","code":"MouseRight","mode":"hold"}},{"id":"tag-kbm-5j0zp9","name":"Drop Item","trigger":{"device":"keyboard","code":"KeyQ","mode":"press"}},{"id":"tag-kbm-5ftccu","name":" Throw Mode","trigger":{"device":"keyboard","code":"KeyA","mode":"hold"}},{"id":"tag-kbm-tn6irx","name":"Interact","trigger":{"device":"keyboard","code":"KeyF","mode":"press"}},{"id":"tag-kbm-scjxrr","name":"Jump","trigger":{"device":"keyboard","code":"Space","mode":"press"}},{"id":"tag-kbm-6o3l7h","name":"Sprint","trigger":{"device":"keyboard","code":"ShiftLeft","mode":"press"}},{"id":"tag-kbm-i3csb0","name":"Melee","trigger":{"device":"keyboard","code":"KeyD","mode":"press"}},{"id":"tag-kbm-mxj04b","name":"Laser","trigger":{"device":"keyboard","code":"KeyS","mode":"press"}}],"channels":{"locomotion":{"mode":"forwardFacingDrive","upKeys":["KeyW","ArrowUp"],"downKeys":["KeyS","ArrowDown"],"leftKeys":["KeyA","ArrowLeft"],"rightKeys":["KeyD","ArrowRight"],"sprintKey":"ShiftLeft","sprintMode":"hold","jumpKey":"Space"},"aiming":{"mode":"faceMouseCursor","rawMouseDragEnabled":true},"interaction":{"enabled":true,"trigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"claimPolicy":"requireCleanPress","allowSwapWhenHolding":true},"throw":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"fireOnReleaseAim":false,"arcModulationSource":"mouseDragY","arcDragHoldThresholdMs":200,"claimPolicy":"requireCleanPress"},"consume":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyE","mode":"hold"},"claimPolicy":"requireCleanPress"},"melee":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyF","mode":"press"},"claimPolicy":"requireCleanPress"},"laser":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","chordModifiers":["AltLeft"],"mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"},"powerModulationSource":"mouseWheel"}},"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}],"blocks":[{"type":"locomotion","id":"block-locomotion","name":"Locomotion","enabled":true,"moveKeys":{"upKey":"KeyW","downKey":"KeyS","leftKey":"KeyA","rightKey":"MouseLeft"},"jump":{"code":"Space"},"sprint":{"code":"ShiftLeft","mode":"hold"},"mode":"walkToMouse","forwardTrigger":{"code":"MouseLeft"},"reverseKey":null,"strafeLeftKey":null,"strafeRightKey":null},{"type":"itemInteraction","id":"block-items","name":"Item Interaction","enabled":true,"pickup":{"code":null},"drop":{"code":"KeyQ"},"swap":{"code":"KeyF"},"consume":{"code":"KeyE","requireCleanPress":true},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"MouseRight","gateButtons":[]}},{"type":"throw","id":"block-throw","name":"Throwing & Ballistics","enabled":true,"mode":"quickWallClear","chargeTrigger":{"code":"MouseRight","requireCleanPress":false},"aimTrigger":{"code":"MouseRight","requireCleanPress":false},"fireTrigger":{"code":"MouseLeft","requireCleanPress":true},"quickTrigger":{"code":"MouseRight"},"arcModulation":{"source":"mouseDeltaY","autoCursorLock":true,"sensitivity":0.005}},{"type":"melee","id":"block-melee","name":"Melee Combat","enabled":true,"punch":{"code":"KeyS"}},{"type":"laser","id":"block-laser","name":"Laser Beam","enabled":true,"aimTrigger":{"code":"KeyD","gateButtons":[]},"aimMode":"mouseWorldPos","fireTrigger":{"code":"MouseRight","autoFireWhenAiming":false},"powerLevel":{"source":"mouseWheel","sensitivity":1}},{"type":"facing","id":"block-facing","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"gamepad":{"leftStick":{"primaryMode":"directLocomotion","dynamicOverride":{"triggerCondition":"whenLtHeld","overrideMode":"cursorSteer"},"cursorSteerSpeed":14,"cursorClampRadius":7.5},"rightStick":{"mode":"twinStickAim"},"rules":[{"id":"pad-laser-aim-lt","name":"Aim Laser (LT)","enabled":true,"priority":105,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"aimLaser"},"tagId":"tag-pad-qq9kph"},{"id":"pad-laser-fire","name":"Fire Laser (RT)","enabled":true,"priority":100,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"fireLaser"},"tagId":"tag-pad-yg4ita"},{"id":"pad-throw-aim-lt","name":"Aim Throw Trajectory (LT)","enabled":true,"priority":95,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"aimThrow"},"tagId":"tag-pad-qq9kph"},{"id":"pad-throw-release","name":"Throw Held Item (RT)","enabled":true,"priority":90,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"release"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"releaseThrow"},"tagId":"tag-pad-yg4ita"},{"id":"pad-pickup-rt","name":"Pick Up Object (RT)","enabled":true,"priority":80,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"press"},"condition":{"type":"targetInReach"},"action":{"moduleId":"throwPickup","intent":"pickupReach"},"tagId":"tag-pad-yg4ita"},{"id":"pad-melee-b","name":"Melee Punch (B)","enabled":true,"priority":75,"trigger":{"device":"gamepad","code":"GamepadB","mode":"press"},"condition":{"type":"emptyHanded"},"action":{"moduleId":"melee","intent":"punch"},"tagId":"tag-pad-wbxscb"},{"id":"pad-jump","name":"Jump (A)","enabled":true,"priority":70,"trigger":{"device":"gamepad","code":"GamepadA","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"jump"},"tagId":"tag-pad-i8r8qh"},{"id":"pad-sprint-toggle","name":"Toggle Sprint (LS)","enabled":true,"priority":60,"trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"toggleSprint"},"tagId":"tag-pad-r7p78d"},{"id":"pad-drop","name":"Drop Item (X)","enabled":true,"priority":50,"trigger":{"device":"gamepad","code":"GamepadX","mode":"press"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"dropItem"},"tagId":"tag-pad-1wlz43"}],"tags":[{"id":"tag-pad-qq9kph","name":"Aim Laser","trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"}},{"id":"tag-pad-yg4ita","name":"Fire Laser","trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"}},{"id":"tag-pad-wbxscb","name":"Melee Punch","trigger":{"device":"gamepad","code":"GamepadB","mode":"press"}},{"id":"tag-pad-i8r8qh","name":"Jump","trigger":{"device":"gamepad","code":"GamepadA","mode":"press"}},{"id":"tag-pad-r7p78d","name":"Toggle Sprint","trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"}},{"id":"tag-pad-1wlz43","name":"Drop Item","trigger":{"device":"gamepad","code":"GamepadX","mode":"press"}}]},"touch":{"widgets":[{"id":"touch-move-stick","type":"joystick","label":"Move","anchor":"bottomLeft","offset":{"x":90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[{"id":"deadzone","minDeflection":0,"maxDeflection":0.15,"signalId":"idle"},{"id":"walk","minDeflection":0.15,"maxDeflection":0.65,"signalId":"walk"},{"id":"sprint","minDeflection":0.65,"maxDeflection":1,"signalId":"sprint"}]},{"id":"touch-aim-stick","type":"joystick","label":"Aim","anchor":"bottomRight","offset":{"x":-90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[]},{"id":"touch-jump-btn","type":"actionButton","label":"JUMP","anchor":"bottomRight","offset":{"x":-80,"y":190},"radius":35,"centering":"fixed","snapBackOnRelease":true,"rings":[],"tapAction":"jump"}],"rules":[],"tags":[]},"stages":["none","laser","throw","itemAbility","grab"],"stageGroups":[{"name":"action","stages":["none","laser","throw","itemAbility","grab"]},{"name":"interact","stages":["none","dirty"]}],"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}]}}]');
 const spawners = [{ "id": "spawner_apple_default", "name": "Apple Spawner", "enabled": true, "prefabId": "prefab_apple", "intervalMinutes": 0.1, "maxCount": 10, "designatedSpawnPoints": [{ "x": 10, "y": 2.2, "z": 0 }, { "x": 10, "y": 11.8, "z": 0 }, { "x": 3.5, "y": 7, "z": 0 }, { "x": 16.5, "y": 7, "z": 0 }, { "x": 10, "y": 7, "z": 0 }] }];
 const initialWorldConfig = {
   version,

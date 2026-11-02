@@ -20,6 +20,7 @@ import initialWorldConfig from "./config/worldConfig.json";
 import { deserializeGameObject, applyCharacterConfig } from "./config/WorldConfig.js";
 import { prefabManager } from "./engine/prefab/PrefabManager.js";
 import { sceneSpawnerManager } from "./engine/spawner/SceneSpawnerManager.js";
+import { ControlsInspector } from "./ui/devpanel/inspectors/ControlsInspector.js";
 
 // Prevent Vite from triggering full browser reloads when worldConfig.json is updated on disk
 if ((import.meta as any).hot) {
@@ -415,6 +416,11 @@ async function bootstrap(): Promise<void> {
   devPanel.getRenderer = () => renderer;
 
   (window as any).character = character;
+  (window as any).devPanel = devPanel;
+  (window as any).ControlsInspector = ControlsInspector;
+
+  // Restore or reconnect Controls Schema popout window if it was previously open before reload
+  ControlsInspector.restorePopoutIfPreviouslyOpen(devPanel, character);
 
   // 6b. Initialize Players & Controllers Panel
   const playersPanel = new PlayersPanel(gameLoop, inputManager);

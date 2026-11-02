@@ -44,7 +44,9 @@ import { DevConfigPersistence } from "../DevConfigPersistence.js";
 export class ControlsInspector {
   private static modalChar: Character | null = null;
   private static modalPanel: DevPanel | null = null;
-  private static popoutWindow: Window | null = null;
+  public static popoutWindow: Window | null = null;
+  public static isParentReloading: boolean = false;
+  private static lastRebindTime: number = 0;
   private static modalOverlay: HTMLElement | null = null;
   private static workingSchema: ControlSchema | null = null;
   private static activeTab: DeviceChannel = "keyboardMouse";
@@ -341,6 +343,10 @@ export class ControlsInspector {
 
   // --- Window / Modal Open & Lifecycle ---
 
+  public static getWindowName(char?: Character | null): string {
+    return "ControlsSchemaWindow_" + (char?.playerId || "keyboard");
+  }
+
   public static openModal(panel: DevPanel, char: Character): void {
     this.openWindow(panel, char);
   }
@@ -365,6 +371,10 @@ export class ControlsInspector {
       } catch {}
     }
 
+    try {
+      localStorage.setItem("pcg_controls_popout_open", "true");
+    } catch {}
+
     // If popout window is already open, focus it and update content
     if (this.popoutWindow && !this.popoutWindow.closed) {
       try {
@@ -386,20 +396,32 @@ export class ControlsInspector {
 
     let popout: Window | null = null;
     try {
-      popout = window.open("", `ControlsSchemaWindow_${char.id}`, windowFeatures);
+      popout = window.open("", this.getWindowName(char), windowFeatures);
     } catch {
       popout = null;
     }
 
     if (popout && !popout.closed) {
-      this.popoutWindow = popout;
+      this.setupPopoutWindow(popout, char);
+      return;
+    }
 
-      // Close any fallback in-page modal
-      if (this.modalOverlay) {
-        this.modalOverlay.remove();
-        this.modalOverlay = null;
-      }
+    // Fallback: If browser blocked popups, open in-canvas modal dialog
+    this.openInCanvasModal(panel, char);
+  }
 
+  public static setupPopoutWindow(popout: Window, char: Character): void {
+    this.popoutWindow = popout;
+    this.isParentReloading = false;
+    this.lastRebindTime = Date.now();
+
+    // Close any fallback in-page modal
+    if (this.modalOverlay) {
+      this.modalOverlay.remove();
+      this.modalOverlay = null;
+    }
+
+    try {
       popout.document.open();
       popout.document.write(`<!DOCTYPE html>
 <html lang="en">
@@ -455,6 +477,33 @@ export class ControlsInspector {
 </head>
 <body>
   <div id="controls-window-root" style="flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden;"></div>
+  <script>
+    (function() {
+      function tryRebind() {
+        try {
+          if (window.opener && window.opener.ControlsInspector && typeof window.opener.ControlsInspector.rebindPopoutWindow === "function") {
+            window.opener.ControlsInspector.rebindPopoutWindow(window);
+            return true;
+          }
+        } catch(e) {}
+        return false;
+      }
+
+      window.addEventListener("DOMContentLoaded", function() {
+        setTimeout(tryRebind, 50);
+      });
+
+      setInterval(function() {
+        try {
+          if (!window.opener || window.opener.closed) return;
+          if (window.__needsRebind && window.opener.ControlsInspector) {
+            window.__needsRebind = false;
+            tryRebind();
+          }
+        } catch(e) {}
+      }, 250);
+    })();
+  </script>
 </body>
 </html>`);
       popout.document.close();
@@ -468,15 +517,65 @@ export class ControlsInspector {
 
       // Cleanup when user closes popout window
       popout.addEventListener("unload", () => {
-        this.popoutWindow = null;
+        if (!ControlsInspector.isParentReloading) {
+          try {
+            localStorage.removeItem("pcg_controls_popout_open");
+          } catch {}
+          ControlsInspector.popoutWindow = null;
+        }
       });
-
-      this.renderActiveView();
-      return;
+    } catch (e) {
+      console.warn("Could not setup popout document:", e);
     }
 
-    // Fallback: If browser blocked popups, open in-canvas modal dialog
-    this.openInCanvasModal(panel, char);
+    this.renderActiveView();
+  }
+
+  public static restorePopoutIfPreviouslyOpen(panel: DevPanel, char: Character): void {
+    let wasOpen = false;
+    try {
+      wasOpen = localStorage.getItem("pcg_controls_popout_open") === "true";
+    } catch {}
+    if (!wasOpen) return;
+
+    this.modalChar = char;
+    this.modalPanel = panel;
+    const windowName = this.getWindowName(char);
+    let popout: Window | null = null;
+    try {
+      popout = window.open("", windowName);
+    } catch {
+      popout = null;
+    }
+
+    if (popout && !popout.closed) {
+      const schema = this.getActiveSchema(char);
+      this.ensureChannels(schema);
+      this.workingSchema = JSON.parse(JSON.stringify(schema));
+      this.setupPopoutWindow(popout, char);
+    }
+  }
+
+  public static rebindPopoutWindow(popout: Window): void {
+    if (!popout || popout.closed) return;
+    if (Date.now() - this.lastRebindTime < 350) return;
+    this.lastRebindTime = Date.now();
+    this.popoutWindow = popout;
+    this.isParentReloading = false;
+
+    if (!this.modalChar && (window as any).character) {
+      this.modalChar = (window as any).character;
+    }
+    if (!this.modalPanel && (window as any).devPanel) {
+      this.modalPanel = (window as any).devPanel;
+    }
+
+    if (this.modalChar) {
+      const schema = this.getActiveSchema(this.modalChar);
+      this.ensureChannels(schema);
+      this.workingSchema = JSON.parse(JSON.stringify(schema));
+      this.setupPopoutWindow(popout, this.modalChar);
+    }
   }
 
   private static openInCanvasModal(_panel: DevPanel, _char: Character): void {
@@ -529,6 +628,9 @@ export class ControlsInspector {
   }
 
   public static closeModal(): void {
+    try {
+      localStorage.removeItem("pcg_controls_popout_open");
+    } catch {}
     if (this.recorderCleanup) {
       this.recorderCleanup();
       this.recorderCleanup = null;
@@ -5000,3 +5102,28 @@ export class ControlsInspector {
     setTimeout(() => activeDoc.addEventListener("click", onDocClick), 10);
   }
 }
+
+// Expose on window for popout cross-window communication & register beforeunload hook
+if (typeof window !== "undefined") {
+  (window as any).ControlsInspector = ControlsInspector;
+
+  window.addEventListener("beforeunload", () => {
+    ControlsInspector.isParentReloading = true;
+    if (ControlsInspector.popoutWindow && !ControlsInspector.popoutWindow.closed) {
+      try {
+        (ControlsInspector.popoutWindow as any).__needsRebind = true;
+        const root = ControlsInspector.popoutWindow.document.getElementById("controls-window-root");
+        if (root) {
+          root.innerHTML = `
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; font-family:sans-serif; color:#94a3b8; background:#090d16;">
+              <div style="font-size:2rem; animation: pulse 1s infinite;">🔄</div>
+              <div style="margin-top:12px; font-size:1rem; font-weight:600; color:#ffffff;">Reloading with Game...</div>
+              <div style="margin-top:4px; font-size:0.75rem;">Reconnecting controls schema to refreshed game instance</div>
+            </div>
+          `;
+        }
+      } catch {}
+    }
+  });
+}
+
