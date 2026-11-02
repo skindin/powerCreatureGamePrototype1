@@ -1,6 +1,6 @@
 {
-  "version": 205,
-  "lastSaved": "2026-11-02T06:45:34.624Z",
+  "version": 207,
+  "lastSaved": "2026-11-02T07:04:29.568Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1947,16 +1947,17 @@
             "name": "Item Interaction",
             "enabled": true,
             "pickup": {
-              "code": "MouseLeft"
+              "code": null
             },
             "drop": {
-              "code": "MouseLeft"
+              "code": "KeyQ"
             },
             "swap": {
               "code": "KeyF"
             },
             "consume": {
-              "code": "KeyE"
+              "code": "KeyE",
+              "requireCleanPress": true
             },
             "swapRequiresHolding": false,
             "triggerPickupWhenEmptyHanded": true,
@@ -5279,16 +5280,17 @@
               "name": "Item Interaction",
               "enabled": true,
               "pickup": {
-                "code": "MouseLeft"
+                "code": null
               },
               "drop": {
-                "code": "MouseLeft"
+                "code": "KeyQ"
               },
               "swap": {
                 "code": "KeyF"
               },
               "consume": {
-                "code": "KeyE"
+                "code": "KeyE",
+                "requireCleanPress": true
               },
               "swapRequiresHolding": false,
               "triggerPickupWhenEmptyHanded": true,

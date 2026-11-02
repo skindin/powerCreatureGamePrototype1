@@ -1393,6 +1393,9 @@ export class PlayerManager {
             }
             char.isUsingItem = false;
             char.eatRateWatts = 0;
+            char.isChargingThrow = false;
+            char.isAimingWallClear = false;
+            char.activeTrajectory = null;
           }
           // Direct pickup fallback: if spawner itself was grabbed directly by external code,
           // spawn a clone for hands and restore spawner to its resting position.
@@ -1467,6 +1470,9 @@ export class PlayerManager {
             grabState.bGrabSuppressed = true;
             char.isUsingItem = false;
             char.eatRateWatts = 0;
+            char.isChargingThrow = false;
+            char.isAimingWallClear = false;
+            char.activeTrajectory = null;
             if (char.heldObject === heldItem) {
               char.heldObject = null;
             }
@@ -1609,6 +1615,9 @@ export class PlayerManager {
             this.lastHeldObjectIds.set(char.id, held.id);
             char.isUsingItem = false;
             char.eatRateWatts = 0;
+            char.isChargingThrow = false;
+            char.isAimingWallClear = false;
+            char.activeTrajectory = null;
             const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
             ClientActionDispatcher.dispatchPickup(
               this.onReliableActionDispatched,

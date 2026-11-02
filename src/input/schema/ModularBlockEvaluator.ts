@@ -89,13 +89,18 @@ export class ModularBlockEvaluator {
         ? slot.requireCleanPress
         : defaultRequireClean;
 
+      // If the button press was consumed by another module (e.g. pickup claimed LMB),
+      // no other block can hold or trigger on it until physically released!
+      if (tokens.isConsumed(slot.code)) {
+        if (!tokens.isClaimedBy(slot.code, blockId) || requireClean) {
+          return false;
+        }
+      }
+
       if (triggerMode === "hold") {
-        if (!tokens.isDown(slot.code)) return false;
-        if (requireClean && tokens.isConsumed(slot.code)) return false;
-        return true;
+        return tokens.isDown(slot.code);
       } else if (triggerMode === "down") {
         if (!tokens.isDown(slot.code)) return false;
-        if (requireClean && tokens.isConsumed(slot.code)) return false;
         if (requireClean) {
           return tokens.canExecute(slot.code, "requireCleanPress", blockId, intent);
         }
@@ -289,11 +294,32 @@ export class ModularBlockEvaluator {
 
         case "throw": {
           const b = block as ThrowControlBlock;
-          if (!execCtx.isHoldingItem) break;
+          if (!execCtx.isHoldingItem) {
+            char.isChargingThrow = false;
+            char.isAimingWallClear = false;
+            char.activeTrajectory = null;
+            (char as any)._pickupPressCode = null;
+            break;
+          }
+
+          // If the button pressed to pick up or swap this item is STILL held down,
+          // throw charging/aiming is strictly locked out until that button is fully released!
+          const pickupCode = (char as any)._pickupPressCode;
+          if (pickupCode) {
+            if (tokens.isDown(pickupCode)) {
+              char.isChargingThrow = false;
+              char.isAimingWallClear = false;
+              char.activeTrajectory = null;
+              break;
+            } else {
+              // Physical release detected: clear the pickup lockout
+              (char as any)._pickupPressCode = null;
+            }
+          }
 
           switch (b.mode) {
             case "chargeAndRelease": {
-              if (isSlotActive(b.chargeTrigger, "hold", false, b.id, "throw.chargeBow")) {
+              if (isSlotActive(b.chargeTrigger, "hold", true, b.id, "throw.chargeBow")) {
                 isAimingTrajectory = true;
                 char.isChargingThrow = true;
                 if (!char.throwChargeStartTime) {
@@ -317,11 +343,16 @@ export class ModularBlockEvaluator {
                   char.activeTrajectory = null;
                   char.isThrowCancelZone = false;
                   claimSlot(b.chargeTrigger, b.id, "throw.cancel", false);
-                } else {
+                } else if (tokens.canExecuteRelease(b.chargeTrigger?.code || "", "requireCleanPress", b.id, "throw.fire")) {
                   isThrow = true;
                   char.isChargingThrow = false;
                   char.throwChargeStartTime = null;
                   claimSlot(b.chargeTrigger, b.id, "throw.fire", true);
+                } else {
+                  char.isChargingThrow = false;
+                  char.throwChargeStartTime = null;
+                  char.throwChargeProgress = 0;
+                  char.activeTrajectory = null;
                 }
               }
               break;
@@ -408,7 +439,7 @@ export class ModularBlockEvaluator {
             }
 
             case "aimWallClear": {
-              if (isSlotActive(b.aimTrigger, "hold", false, b.id, "throw.aimWallClear")) {
+              if (isSlotActive(b.aimTrigger, "hold", true, b.id, "throw.aimWallClear")) {
                 isAimingTrajectory = true;
                 char.isAimingWallClear = true;
                 claimSlot(b.aimTrigger, b.id, "throw.aimWallClear", false);
@@ -426,10 +457,13 @@ export class ModularBlockEvaluator {
                   char.activeTrajectory = null;
                   char.isThrowCancelZone = false;
                   claimSlot(b.aimTrigger, b.id, "throw.cancel", false);
-                } else {
+                } else if (tokens.canExecuteRelease(b.aimTrigger?.code || "", "requireCleanPress", b.id, "throw.fire")) {
                   isThrow = true;
                   char.isAimingWallClear = false;
                   claimSlot(b.aimTrigger, b.id, "throw.fire", true);
+                } else {
+                  char.isAimingWallClear = false;
+                  char.activeTrajectory = null;
                 }
               }
               break;
@@ -445,6 +479,7 @@ export class ModularBlockEvaluator {
           if (isSlotActive(b.pickup, "down", true, b.id, "pickup.grab")) {
             if (!execCtx.isHoldingItem && grabTargetObjectId) {
               isGrabHeld = true;
+              if (b.pickup?.code) (char as any)._pickupPressCode = b.pickup.code;
               claimSlot(b.pickup, b.id, "pickup.grab", true);
             }
           }
@@ -453,6 +488,7 @@ export class ModularBlockEvaluator {
           if (b.additionalPickup && isSlotActive(b.additionalPickup, "down", true, b.id, "pickup.grab")) {
             if (!execCtx.isHoldingItem && grabTargetObjectId) {
               isGrabHeld = true;
+              if (b.additionalPickup?.code) (char as any)._pickupPressCode = b.additionalPickup.code;
               claimSlot(b.additionalPickup, b.id, "pickup.grab", true);
             }
           }
@@ -460,6 +496,7 @@ export class ModularBlockEvaluator {
           // Drop
           if (execCtx.isHoldingItem && isSlotActive(b.drop, "down", true, b.id, "pickup.drop")) {
             isDrop = true;
+            (char as any)._pickupPressCode = null;
             claimSlot(b.drop, b.id, "pickup.drop", true);
           }
 
@@ -469,10 +506,12 @@ export class ModularBlockEvaluator {
               // Denied: user configured swap to require holding an item
             } else if (execCtx.isHoldingItem) {
               isSwap = true;
+              if (b.swap?.code) (char as any)._pickupPressCode = b.swap.code;
               claimSlot(b.swap, b.id, "pickup.swap", true);
             } else if (b.triggerPickupWhenEmptyHanded && grabTargetObjectId) {
               isSwap = true;
               isGrabHeld = true;
+              if (b.swap?.code) (char as any)._pickupPressCode = b.swap.code;
               claimSlot(b.swap, b.id, "pickup.swap", true);
             }
           }
