@@ -15,11 +15,20 @@ import type {
   ActionInvocation,
   ActionStatement,
   NestedThreadStatement,
+  ControlBlock,
+  BlockInputSlot,
+  LocomotionControlBlock,
+  MeleeControlBlock,
+  LaserControlBlock,
+  ThrowControlBlock,
+  ItemInteractionControlBlock,
+  FacingControlBlock,
 } from "../../../input/schema/ControlSchemaTypes.js";
 import {
   DefaultControlSchema,
   DefaultPrebuiltChannels,
   DefaultPipelineBindings,
+  DefaultControlBlocks,
   BuiltinControlSchemas,
 } from "../../../input/schema/presets/DefaultControlSchemas.js";
 import { ControlActionCatalog } from "../../../input/schema/ControlActionCatalog.js";
@@ -39,7 +48,13 @@ export class ControlsInspector {
   private static modalOverlay: HTMLElement | null = null;
   private static workingSchema: ControlSchema | null = null;
   private static activeTab: DeviceChannel = "keyboardMouse";
-  private static viewMode: "pipeline" | "legacyBlocks" = "pipeline";
+  private static viewMode: "blocks" | "pipeline" = "blocks";
+  private static listeningBlockTarget: {
+    blockId: string;
+    slotName: string;
+    gateIdx?: number;
+    isMoveKey?: "upKey" | "downKey" | "leftKey" | "rightKey";
+  } | null = null;
   private static showJsonEditor: boolean = false;
   private static jsonErrorMessage: string | null = null;
   private static collapsedRuleIds: Set<string> = new Set<string>();
@@ -63,6 +78,9 @@ export class ControlsInspector {
 
   public static ensureChannels(schema: ControlSchema): void {
     if (!schema) return;
+    if (!schema.keyboardMouse.blocks) {
+      schema.keyboardMouse.blocks = JSON.parse(JSON.stringify(DefaultControlBlocks));
+    }
     if (!schema.keyboardMouse.pipeline) {
       schema.keyboardMouse.pipeline = JSON.parse(JSON.stringify(DefaultPipelineBindings));
     }
@@ -339,6 +357,7 @@ export class ControlsInspector {
     this.listeningForwardTrigger = false;
     this.listeningLocoKey = null;
     this.listeningPipelineTarget = null;
+    this.listeningBlockTarget = null;
 
     if (typeof document !== "undefined" && document.pointerLockElement) {
       try {
@@ -536,6 +555,7 @@ export class ControlsInspector {
     this.listeningForwardTrigger = false;
     this.listeningLocoKey = null;
     this.listeningPipelineTarget = null;
+    this.listeningBlockTarget = null;
   }
 
   private static async saveAndCommit(): Promise<void> {
@@ -792,82 +812,19 @@ export class ControlsInspector {
             <!-- Mode Switcher Pill -->
             <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 8px; padding: 8px 14px;">
               <div style="display: flex; gap: 8px; align-items: center;">
-                <button id="btn-mode-pipeline" class="btn-secondary-action" type="button" style="font-size: 0.76rem; padding: 6px 14px; font-weight: 700; border-radius: 5px; ${this.viewMode === "pipeline" ? "background: #38bdf8; color: #020617; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56,189,248,0.35);" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}">
-                  🔀 Modular Input Pipeline (Left-to-Right)
+                <button id="btn-mode-blocks" class="btn-secondary-action" type="button" style="font-size: 0.76rem; padding: 6px 14px; font-weight: 700; border-radius: 5px; ${this.viewMode === "blocks" ? "background: #38bdf8; color: #020617; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56,189,248,0.35);" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}">
+                  🧱 Modular Control Blocks (Prebuilt)
                 </button>
-                <button id="btn-mode-legacy" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 6px 14px; font-weight: 600; border-radius: 5px; ${this.viewMode === "legacyBlocks" ? "background: rgba(255, 255, 255, 0.15); color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.4);" : "background: transparent; color: #64748b; border: 1px solid rgba(148, 163, 184, 0.15);"}">
-                  🔧 Visual Block Builder (Legacy)
+                <button id="btn-mode-pipeline" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 6px 14px; font-weight: 600; border-radius: 5px; ${this.viewMode === "pipeline" ? "background: #38bdf8; color: #020617; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56,189,248,0.35);" : "background: transparent; color: #64748b; border: 1px solid rgba(148, 163, 184, 0.15);"}">
+                  🔀 Signal Pipeline (Advanced)
                 </button>
               </div>
               <span style="font-size: 0.70rem; color: #94a3b8;">
-                ${this.viewMode === "pipeline" ? "✨ Left-to-Right signal flow: Raw Hardware Input ➔ Processor & Cleaning ➔ Module Socket" : "Raw statement cascades & condition dropdowns"}
+                ${this.viewMode === "blocks" ? "✨ Prebuilt module blocks: self-contained logic, intuitive options, and ✕ buttons to disable" : "Left-to-Right raw wire signal flow"}
               </span>
             </div>
 
-            ${this.viewMode === "pipeline" ? this.renderPipelineHtml(schema) : `
-              <!-- Locomotion & Aiming Mode (Always Open & Prominent) -->
-              <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-                  <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
-                    🎮 Locomotion & Aiming (WASD vs Mouse Movement)
-                  </span>
-                  <span style="font-size: 0.68rem; color: #94a3b8;">Choose movement mode and directional keys</span>
-                </div>
-                <div id="controls-paradigms-container">
-                  ${this.renderParadigmsHtml(schema)}
-                </div>
-              </div>
-
-              <!-- Layer 1: Keybind Tags Section -->
-              <div id="section-tags" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff;">🏷️ Layer 1: Action Name Keybinds (${this.getActiveDeviceTags(schema).length})</span>
-                    <span style="font-size: 0.68rem; color: #94a3b8;">Action names mapped to physical keys & buttons</span>
-                  </div>
-                  <button id="btn-jump-to-rules" class="btn-secondary-action" type="button" style="font-size: 0.70rem; padding: 2px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;" title="Jump down to Layer 2 Action Threads">
-                    ↓ Jump to Threads
-                  </button>
-                </div>
-                <div id="controls-tags-container">
-                  ${this.renderTagsSectionHtml(schema)}
-                </div>
-              </div>
-
-              <!-- Section: Stages -->
-              <div id="section-stages" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff;">🎭 Stages (${this.getActiveStages(schema).length})</span>
-                    <span style="font-size: 0.68rem; color: #94a3b8;">User-defined modal states for branching conditions</span>
-                  </div>
-                </div>
-                <div id="controls-stages-container">
-                  ${this.renderStagesSectionHtml(schema)}
-                </div>
-              </div>
-
-              <!-- Rules Matrix Header (Layer 2) -->
-              <div id="section-rules-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(148, 163, 184, 0.15);">
-                <span style="font-size: 0.80rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
-                  ⚡ Layer 2: Action Threads (${activeRulesCount} branches)
-                  <span style="font-size: 0.70rem; font-weight: 400; color: #94a3b8;">— Cascading IF / ELSE IF / ELSE per action tag</span>
-                </span>
-                <div style="display: flex; gap: 6px; align-items: center;">
-                  <button id="btn-jump-to-tags" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 3px 8px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.25); background: transparent;" title="Scroll up to Layer 1 Keybinds">
-                    ↑ Keybinds
-                  </button>
-                  <button id="btn-add-control-rule" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 4px 12px; color: #ffffff; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.08); font-weight: 600;">
-                    + Add Rule
-                  </button>
-                </div>
-              </div>
-
-              <!-- Rules List Container -->
-              <div id="rules-list-container" style="display: flex; flex-direction: column; gap: 8px;">
-                ${this.renderRulesListHtml(char, schema)}
-              </div>
-            `}
+            ${this.viewMode === "blocks" ? this.renderBlocksHtml(schema) : this.renderPipelineHtml(schema)}
           ` : `
             <!-- Gamepad / Touch Locomotion Paradigm Section -->
             <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
@@ -958,7 +915,7 @@ export class ControlsInspector {
 
   // --- Sub-Section HTML Builders ---
 
-  private static renderTagsSectionHtml(schema: ControlSchema): string {
+  public static renderTagsSectionHtml(schema: ControlSchema): string {
     const tags = this.getActiveDeviceTags(schema);
     if (tags.length === 0) {
       return `
@@ -1201,7 +1158,7 @@ export class ControlsInspector {
     return { list: currentList, group: currentGroup };
   }
 
-  private static renderStagesSectionHtml(schema: ControlSchema): string {
+  public static renderStagesSectionHtml(schema: ControlSchema): string {
     const stageGroups = this.getActiveStageGroups(schema);
     return `
       <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -1306,6 +1263,538 @@ export class ControlsInspector {
       return `${mods.join(" + ")} + ${base}`;
     }
     return base;
+  }
+
+  private static renderInputSlot(
+    blockId: string,
+    slotName: string,
+    slot?: BlockInputSlot | null,
+    labelPrefix: string = ""
+  ): string {
+    const isListeningPrimary =
+      this.listeningBlockTarget &&
+      this.listeningBlockTarget.blockId === blockId &&
+      this.listeningBlockTarget.slotName === slotName &&
+      this.listeningBlockTarget.gateIdx === undefined &&
+      !this.listeningBlockTarget.isMoveKey;
+
+    const code = slot?.code;
+    const label = code ? this.formatChannelKeyLabel(code) : "None (Unassigned)";
+    const gateButtons = slot?.gateButtons || [];
+
+    return `
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        ${labelPrefix ? `<span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">${labelPrefix}</span>` : ""}
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px;">
+          <!-- Primary Input Slot Badge -->
+          <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; padding: 1px 4px;">
+            <button class="btn-block-slot-bind btn-secondary-action" data-block-id="${blockId}" data-slot-name="${slotName}" type="button" style="
+              font-size: 0.72rem;
+              padding: 2px 6px;
+              font-weight: 600;
+              border: none;
+              background: transparent;
+              ${isListeningPrimary ? "color: #ef4444; font-weight: 700; animation: pulse 1s infinite;" : (code ? "color: #fff;" : "color: #64748b; font-style: italic;")}
+            " title="Click to bind key or mouse button">
+              ${isListeningPrimary ? "🔴 Press key..." : (code ? (code.startsWith("Mouse") ? `🖱️ ${label}` : `⌨️ ${label}`) : "🚫 None (Unassigned)")}
+            </button>
+            ${code ? `
+              <button class="btn-block-slot-clear" data-block-id="${blockId}" data-slot-name="${slotName}" type="button" style="
+                font-size: 0.64rem;
+                color: #ef4444;
+                background: transparent;
+                border: none;
+                cursor: pointer;
+                padding: 0 3px;
+                line-height: 1;
+              " title="Clear this input (disable completely)">✕</button>
+            ` : ""}
+          </div>
+
+          <!-- Gate Hold Keys Badges -->
+          ${gateButtons.map((gCode, gIdx) => {
+            const isListeningGate =
+              this.listeningBlockTarget &&
+              this.listeningBlockTarget.blockId === blockId &&
+              this.listeningBlockTarget.slotName === slotName &&
+              this.listeningBlockTarget.gateIdx === gIdx;
+            const gLabel = this.formatChannelKeyLabel(gCode);
+            return `
+              <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 1px 4px;">
+                <span style="font-size: 0.62rem; color: #38bdf8; font-weight: 700;">+</span>
+                <button class="btn-block-slot-gate-bind btn-secondary-action" data-block-id="${blockId}" data-slot-name="${slotName}" data-gate-idx="${gIdx}" type="button" style="
+                  font-size: 0.68rem;
+                  padding: 1px 4px;
+                  font-weight: 600;
+                  border: none;
+                  background: transparent;
+                  color: #fff;
+                  ${isListeningGate ? "color: #ef4444; font-weight: 700;" : ""}
+                " title="Click to rebind held gate button">
+                  ${isListeningGate ? "🔴 Press..." : gLabel}
+                </button>
+                <button class="btn-block-slot-gate-remove" data-block-id="${blockId}" data-slot-name="${slotName}" data-gate-idx="${gIdx}" type="button" style="
+                  font-size: 0.62rem;
+                  color: #ef4444;
+                  background: transparent;
+                  border: none;
+                  cursor: pointer;
+                  padding: 0 2px;
+                  line-height: 1;
+                " title="Remove this held button requirement">✕</button>
+              </div>
+            `;
+          }).join("")}
+
+          <!-- Add Gate Button Button -->
+          <button class="btn-block-slot-add-gate btn-secondary-action" data-block-id="${blockId}" data-slot-name="${slotName}" type="button" style="
+            font-size: 0.60rem;
+            font-weight: 600;
+            padding: 2px 5px;
+            background: rgba(56, 189, 248, 0.08);
+            border: 1px dashed rgba(56, 189, 248, 0.4);
+            color: #38bdf8;
+            border-radius: 3px;
+            cursor: pointer;
+          " title="Require an additional held button for this action">+ Key</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private static renderBlockBodyHtml(block: ControlBlock): string {
+    switch (block.type) {
+      case "locomotion": {
+        const b = block as LocomotionControlBlock;
+        b.moveKeys = b.moveKeys || { upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" };
+        b.jump = b.jump || { code: "Space" };
+        b.sprint = b.sprint || { code: "ShiftLeft", mode: "hold" };
+
+        const renderMoveKey = (dir: string, keyName: "upKey" | "downKey" | "leftKey" | "rightKey") => {
+          const isListening = this.listeningBlockTarget?.blockId === b.id && this.listeningBlockTarget?.isMoveKey === keyName;
+          const code = b.moveKeys![keyName];
+          const lbl = code ? this.formatChannelKeyLabel(code) : "None";
+          return `
+            <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; padding: 1px 4px;">
+              <span style="font-size: 0.64rem; color: #94a3b8; font-weight: 700;">${dir}</span>
+              <button class="btn-block-move-key btn-secondary-action" data-block-id="${b.id}" data-move-key="${keyName}" type="button" style="
+                font-size: 0.68rem; padding: 2px 6px; font-weight: 600; border: none; background: transparent; ${isListening ? "color: #ef4444; font-weight: 700;" : (code ? "color: #fff;" : "color: #64748b; font-style: italic;")}
+              ">${isListening ? "🔴 Press..." : lbl}</button>
+              ${code ? `<button class="btn-block-move-key-clear" data-block-id="${b.id}" data-move-key="${keyName}" type="button" style="font-size: 0.62rem; color: #ef4444; background: transparent; border: none; cursor: pointer; padding: 0 2px;">✕</button>` : ""}
+            </div>
+          `;
+        };
+
+        return `
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
+            <div>
+              <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Directional Movement (WASD)</span>
+              <div style="display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap;">
+                ${renderMoveKey("↑", "upKey")}
+                ${renderMoveKey("↓", "downKey")}
+                ${renderMoveKey("←", "leftKey")}
+                ${renderMoveKey("→", "rightKey")}
+              </div>
+            </div>
+            <div>
+              ${this.renderInputSlot(b.id, "jump", b.jump, "Jump / Vertical Hop")}
+            </div>
+            <div>
+              ${this.renderInputSlot(b.id, "sprint", b.sprint, "Sprint")}
+              <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 0.62rem; color: #94a3b8;">Sprint Mode:</span>
+                <select class="block-sprint-mode dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                  <option value="hold" ${b.sprint.mode !== "toggle" ? "selected" : ""}>Hold to Sprint</option>
+                  <option value="toggle" ${b.sprint.mode === "toggle" ? "selected" : ""}>Toggle Sprint</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      case "melee": {
+        const b = block as MeleeControlBlock;
+        b.punch = b.punch || { code: "KeyF" };
+        return `
+          <div style="display: flex; gap: 16px; align-items: start;">
+            <div>
+              ${this.renderInputSlot(b.id, "punch", b.punch, "Melee Punch / Attack")}
+            </div>
+            <div style="font-size: 0.68rem; color: #64748b; padding-top: 14px;">
+              Strikes in the direction of the aim cursor with physical punch force and cooldown.
+            </div>
+          </div>
+        `;
+      }
+
+      case "laser": {
+        const b = block as LaserControlBlock;
+        b.aimTrigger = b.aimTrigger || { code: "MouseRight", gateButtons: ["AltLeft"] };
+        b.fireTrigger = b.fireTrigger || { code: "MouseLeft" };
+        b.powerLevel = b.powerLevel || { source: "mouseWheel", sensitivity: 1.0 };
+        return `
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
+            <div>
+              ${this.renderInputSlot(b.id, "aimTrigger", b.aimTrigger, "Aim Feature Trigger")}
+              <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 0.62rem; color: #94a3b8;">Aim Method (2D Input):</span>
+                <select class="block-laser-aim-mode dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                  <option value="mouseWorldPos" ${b.aimMode !== "rawDirection" && b.aimMode !== "mouseScreenPos" ? "selected" : ""}>🌐 Game Cursor (Mouse World Pos)</option>
+                  <option value="mouseScreenPos" ${b.aimMode === "mouseScreenPos" ? "selected" : ""}>🖥️ Screen Coordinates</option>
+                  <option value="rawDirection" ${b.aimMode === "rawDirection" ? "selected" : ""}>🧭 Raw Direction Heading</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              ${this.renderInputSlot(b.id, "fireTrigger", b.fireTrigger, "Fire Laser Trigger")}
+              <div style="margin-top: 4px;">
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 0.64rem; color: #94a3b8; cursor: pointer;">
+                  <input type="checkbox" class="block-laser-autofire" data-block-id="${b.id}" ${b.fireTrigger.autoFireWhenAiming ? "checked" : ""} />
+                  <span>Auto-fire continuously while aiming</span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Power Level (1D Input)</span>
+              <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                <select class="block-laser-power-source dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                  <option value="mouseWheel" ${b.powerLevel.source === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
+                  <option value="mouseDeltaY" ${b.powerLevel.source === "mouseDeltaY" ? "selected" : ""}>🖱️ Mouse Delta Y (Vertical Drag)</option>
+                  <option value="none" ${b.powerLevel.source === "none" ? "selected" : ""}>🚫 None / Fixed Power</option>
+                </select>
+                ${b.powerLevel.source !== "none" ? `
+                  <button class="btn-block-laser-power-clear" data-block-id="${b.id}" type="button" style="font-size: 0.62rem; color: #ef4444; background: transparent; border: none; cursor: pointer; padding: 0 3px;" title="Disable power level modulation">✕</button>
+                ` : ""}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      case "throw": {
+        const b = block as ThrowControlBlock;
+        b.mode = b.mode || "chargeAndRelease";
+        b.chargeTrigger = b.chargeTrigger || { code: "MouseLeft" };
+        b.aimTrigger = b.aimTrigger || { code: "MouseRight" };
+        b.fireTrigger = b.fireTrigger || { code: "MouseLeft" };
+        b.quickTrigger = b.quickTrigger || { code: "MouseLeft" };
+        b.arcModulation = b.arcModulation || { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 };
+
+        let modeSpecificHtml = "";
+        if (b.mode === "chargeAndRelease") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "chargeTrigger", b.chargeTrigger, "Charge & Release Throw Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Hold to charge trajectory/power, release to throw. Aim near your feet to cancel without throwing.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "aimAndFire") {
+          modeSpecificHtml = `
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+              <div>
+                ${this.renderInputSlot(b.id, "aimTrigger", b.aimTrigger, "Aim Arc Preview Button")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "fireTrigger", b.fireTrigger, "Launch / Fire Throw Button")}
+              </div>
+              <div>
+                <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Arc Modulation (1D Input)</span>
+                <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                  <select class="block-throw-arc-source dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                    <option value="mouseDeltaY" ${b.arcModulation.source === "mouseDeltaY" ? "selected" : ""}>🖱️ Mouse Delta Y (Vertical Drag)</option>
+                    <option value="mouseWheel" ${b.arcModulation.source === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
+                    <option value="none" ${b.arcModulation.source === "none" ? "selected" : ""}>🚫 None / Fixed Arc</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "quickOptimal") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "quickTrigger", b.quickTrigger, "Instant Optimal Throw Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Throws the item immediately along the most efficient flattest ballistic arc on press.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "quickWallClear") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "quickTrigger", b.quickTrigger, "Instant Wall-Clear Throw Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Instantly calculates and fires the lowest energy trajectory that clears all intervening walls.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "aimWallClear") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "aimTrigger", b.aimTrigger, "Aim Wall-Clear Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Hold to preview lowest energy trajectory that clears intervening walls, release to fire.
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Trajectory Manipulation Style:</span>
+              <select class="block-throw-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
+                <option value="chargeAndRelease" ${b.mode === "chargeAndRelease" ? "selected" : ""}>🏹 Charge and Release (Bow style)</option>
+                <option value="aimAndFire" ${b.mode === "aimAndFire" ? "selected" : ""}>🎯 Aim & Fire (Preview button + Launch button)</option>
+                <option value="quickOptimal" ${b.mode === "quickOptimal" ? "selected" : ""}>⚡ Most Efficient (Quick Optimal Arc)</option>
+                <option value="quickWallClear" ${b.mode === "quickWallClear" ? "selected" : ""}>🧱 Quick Wall-Clear (Lowest Energy No Wall Collision)</option>
+                <option value="aimWallClear" ${b.mode === "aimWallClear" ? "selected" : ""}>🏹 Aim Wall-Clear (Aim Lowest Energy, Release to Fire)</option>
+              </select>
+            </div>
+            ${modeSpecificHtml}
+          </div>
+        `;
+      }
+
+      case "itemInteraction": {
+        const b = block as ItemInteractionControlBlock;
+        b.pickup = b.pickup || { code: "MouseLeft" };
+        b.drop = b.drop || { code: "KeyQ" };
+        b.swap = b.swap || { code: "KeyF" };
+        b.consume = b.consume || { code: "KeyE" };
+        b.swapRequiresHolding = Boolean(b.swapRequiresHolding);
+        b.triggerPickupWhenEmptyHanded = b.triggerPickupWhenEmptyHanded ?? true;
+
+        return `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: start;">
+              <div>
+                ${this.renderInputSlot(b.id, "pickup", b.pickup, "Pick Up Ground Item")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "drop", b.drop, "Drop Held Item")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "swap", b.swap, "Swap Ground/Held Item")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "consume", b.consume, "Consume / Bite Item")}
+              </div>
+            </div>
+            
+            <!-- Prebuilt Options -->
+            <div style="display: flex; flex-wrap: wrap; gap: 16px; padding-top: 8px; border-top: 1px dashed rgba(148,163,184,0.2); font-size: 0.68rem; color: #94a3b8;">
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" class="block-item-swap-requires-holding" data-block-id="${b.id}" ${b.swapRequiresHolding ? "checked" : ""} />
+                <span>Swap requires already holding an item (strict swap)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" class="block-item-trigger-pickup-empty" data-block-id="${b.id}" ${b.triggerPickupWhenEmptyHanded ? "checked" : ""} />
+                <span>Swap button triggers pickup when empty-handed</span>
+              </label>
+            </div>
+
+            <!-- Additional Pickup Slot -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="min-width: 200px;">
+                ${this.renderInputSlot(b.id, "additionalPickup", b.additionalPickup, "Additional Empty-Handed Pickup Button (Optional)")}
+              </div>
+              <span style="font-size: 0.62rem; color: #64748b; padding-top: 12px;">Extra dedicated button to pick up when empty-handed.</span>
+            </div>
+          </div>
+        `;
+      }
+
+      case "facing": {
+        const b = block as FacingControlBlock;
+        b.mode = b.mode || "mouseWorldPos";
+        return `
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 0.68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Heading / Facing Direction:</span>
+            <select class="block-facing-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 2px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px;">
+              <option value="mouseWorldPos" ${b.mode === "mouseWorldPos" ? "selected" : ""}>🎯 Face Mouse Cursor / Reticle</option>
+              <option value="fromMovement" ${b.mode === "fromMovement" ? "selected" : ""}>🏃 Face Movement Vector Direction</option>
+            </select>
+          </div>
+        `;
+      }
+    }
+    return "";
+  }
+
+  private static renderBlocksHtml(schema: ControlSchema): string {
+    if (!schema.keyboardMouse.blocks) {
+      schema.keyboardMouse.blocks = JSON.parse(JSON.stringify(DefaultControlBlocks));
+    }
+    const blocks = schema.keyboardMouse.blocks || [];
+
+    return `
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <!-- Header with Add Control Module dropdown -->
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 8px 14px;">
+          <div style="font-size: 0.74rem; color: #cbd5e1;">
+            <strong style="color: #38bdf8;">Modular Control System:</strong>
+            Each capability has its own self-contained block with prebuilt logic. Click any slot to rebind, or click <strong>✕</strong> to clear/disable.
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <select id="select-add-control-block" class="dev-select" style="font-size: 0.72rem; font-weight: 700; padding: 4px 8px; background: rgba(56,189,248,0.15); border: 1px solid #38bdf8; color: #38bdf8; border-radius: 4px;">
+              <option value="" disabled selected>+ Add Control Module...</option>
+              <option value="locomotion">+ Locomotion (Move, Jump, Sprint)</option>
+              <option value="itemInteraction">+ Item Interaction (Pickup, Drop, Swap, Eat)</option>
+              <option value="throw">+ Throwing & Ballistics</option>
+              <option value="melee">+ Melee Combat</option>
+              <option value="laser">+ Laser Beam</option>
+              <option value="facing">+ Heading / Facing Angle</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Blocks Container -->
+        <div id="control-blocks-container" style="display: flex; flex-direction: column; gap: 10px;">
+          ${blocks.length === 0 ? `
+            <div style="text-align: center; color: #64748b; font-size: 0.76rem; padding: 24px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px dashed rgba(148,163,184,0.2);">
+              No control blocks assigned. Select an option from "+ Add Control Module" to assign controls!
+            </div>
+          ` : blocks.map((b) => {
+            const typeIcons: Record<string, string> = {
+              locomotion: "🏃",
+              itemInteraction: "📦",
+              throw: "🏹",
+              melee: "🥊",
+              laser: "⚡",
+              facing: "🎯",
+            };
+            const icon = typeIcons[b.type] || "🎮";
+
+            return `
+              <div class="control-block-card" data-block-id="${b.id}" style="
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                background: rgba(15, 23, 42, 0.85);
+                border: 1px solid ${b.enabled ? "rgba(148, 163, 184, 0.25)" : "rgba(239, 68, 68, 0.25)"};
+                border-radius: 6px;
+                padding: 10px 14px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+                opacity: ${b.enabled ? "1" : "0.6"};
+              ">
+                <!-- Block Header -->
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 6px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.90rem;">${icon}</span>
+                    <span style="font-size: 0.78rem; font-weight: 700; color: #f8fafc;">${b.name || b.type.toUpperCase()}</span>
+                    <span style="font-size: 0.60rem; padding: 1px 5px; background: rgba(56,189,248,0.15); color: #38bdf8; border-radius: 3px; font-weight: 700; text-transform: uppercase;">${b.type}</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="display: flex; align-items: center; gap: 4px; font-size: 0.68rem; color: #94a3b8; cursor: pointer;">
+                      <input type="checkbox" class="block-toggle-enabled" data-block-id="${b.id}" ${b.enabled ? "checked" : ""} />
+                      <span>Enabled</span>
+                    </label>
+                    <button class="btn-block-delete btn-secondary-action" data-block-id="${b.id}" type="button" style="
+                      font-size: 0.66rem;
+                      color: #ef4444;
+                      padding: 2px 6px;
+                      border: 1px solid rgba(239, 68, 68, 0.3);
+                      background: rgba(239, 68, 68, 0.1);
+                      border-radius: 3px;
+                      cursor: pointer;
+                    " title="Remove this control module">🗑️ Remove</button>
+                  </div>
+                </div>
+
+                <!-- Block Body -->
+                <div class="control-block-body">
+                  ${this.renderBlockBodyHtml(b)}
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  private static startBlockKeyListening(
+    blockId: string,
+    slotName: string,
+    gateIdx?: number,
+    isMoveKey?: "upKey" | "downKey" | "leftKey" | "rightKey"
+  ): void {
+    if (this.recorderCleanup) {
+      this.recorderCleanup();
+      this.recorderCleanup = null;
+    }
+
+    this.listeningBlockTarget = { blockId, slotName, gateIdx, isMoveKey };
+    this.renderActiveView();
+
+    const commitTrigger = (code: string) => {
+      const schema = this.workingSchema;
+      if (!schema || !schema.keyboardMouse.blocks) return;
+      const block = schema.keyboardMouse.blocks.find((b) => b.id === blockId);
+      if (!block) return;
+
+      if (isMoveKey && block.type === "locomotion") {
+        const loco = block as LocomotionControlBlock;
+        loco.moveKeys = loco.moveKeys || {};
+        loco.moveKeys[isMoveKey] = code;
+      } else {
+        const slot = (block as any)[slotName] as BlockInputSlot | undefined;
+        if (gateIdx !== undefined) {
+          if (slot && slot.gateButtons) {
+            slot.gateButtons[gateIdx] = code;
+          }
+        } else {
+          if (slot) {
+            slot.code = code;
+          } else {
+            (block as any)[slotName] = { code };
+          }
+        }
+      }
+
+      cleanup();
+      this.listeningBlockTarget = null;
+      this.renderActiveView();
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === "Escape") {
+        cleanup();
+        this.listeningBlockTarget = null;
+        this.renderActiveView();
+        return;
+      }
+      commitTrigger(e.code);
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const buttonMap: Record<number, string> = {
+        0: "MouseLeft",
+        1: "MouseMiddle",
+        2: "MouseRight",
+        3: "MouseBack",
+        4: "MouseForward",
+      };
+      commitTrigger(buttonMap[e.button] || `MouseButton${e.button}`);
+    };
+
+    const root = this.getRootContainer() || window;
+    root.addEventListener("keydown", onKeyDown as any, { capture: true });
+    root.addEventListener("mousedown", onMouseDown as any, { capture: true });
+
+    const cleanup = () => {
+      root.removeEventListener("keydown", onKeyDown as any, { capture: true });
+      root.removeEventListener("mousedown", onMouseDown as any, { capture: true });
+      this.recorderCleanup = null;
+    };
+    this.recorderCleanup = cleanup;
   }
 
   private static renderPipelineHtml(schema: ControlSchema): string {
@@ -2346,15 +2835,338 @@ export class ControlsInspector {
       this.renderActiveView();
     });
 
-    // View Mode Switcher (Modular Pipeline vs Legacy Block Builder)
+    // View Mode Switcher (Modular Control Blocks vs Advanced Pipeline)
+    root.querySelector("#btn-mode-blocks")?.addEventListener("click", () => {
+      this.viewMode = "blocks";
+      this.renderActiveView();
+    });
     root.querySelector("#btn-mode-pipeline")?.addEventListener("click", () => {
       this.viewMode = "pipeline";
       this.renderActiveView();
     });
-    root.querySelector("#btn-mode-legacy")?.addEventListener("click", () => {
-      this.viewMode = "legacyBlocks";
-      this.renderActiveView();
-    });
+
+    // Modular Control Blocks Event Listeners
+    if (this.viewMode === "blocks" && schema.keyboardMouse.blocks) {
+      const blocks = schema.keyboardMouse.blocks || [];
+
+      // Add Control Block dropdown
+      const selectAddBlock = root.querySelector("#select-add-control-block") as HTMLSelectElement;
+      if (selectAddBlock) {
+        selectAddBlock.addEventListener("change", () => {
+          const type = selectAddBlock.value as any;
+          if (!type) return;
+          const newId = `block-${type}-${Date.now().toString(36)}`;
+          if (type === "locomotion") {
+            blocks.push({
+              type: "locomotion",
+              id: newId,
+              name: "Locomotion",
+              enabled: true,
+              moveKeys: { upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" },
+              jump: { code: "Space" },
+              sprint: { code: "ShiftLeft", mode: "hold" },
+            });
+          } else if (type === "itemInteraction") {
+            blocks.push({
+              type: "itemInteraction",
+              id: newId,
+              name: "Item Interaction",
+              enabled: true,
+              pickup: { code: "MouseLeft" },
+              drop: { code: "KeyQ" },
+              swap: { code: "KeyF" },
+              consume: { code: "KeyE" },
+              swapRequiresHolding: false,
+              triggerPickupWhenEmptyHanded: true,
+            });
+          } else if (type === "throw") {
+            blocks.push({
+              type: "throw",
+              id: newId,
+              name: "Throwing & Ballistics",
+              enabled: true,
+              mode: "chargeAndRelease",
+              chargeTrigger: { code: "MouseLeft" },
+              aimTrigger: { code: "MouseRight" },
+              fireTrigger: { code: "MouseLeft" },
+              quickTrigger: { code: "MouseLeft" },
+              arcModulation: { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 },
+            });
+          } else if (type === "melee") {
+            blocks.push({
+              type: "melee",
+              id: newId,
+              name: "Melee Combat",
+              enabled: true,
+              punch: { code: "KeyF" },
+            });
+          } else if (type === "laser") {
+            blocks.push({
+              type: "laser",
+              id: newId,
+              name: "Laser Beam",
+              enabled: true,
+              aimTrigger: { code: "MouseRight", gateButtons: ["AltLeft"] },
+              aimMode: "mouseWorldPos",
+              fireTrigger: { code: "MouseLeft", autoFireWhenAiming: false },
+              powerLevel: { source: "mouseWheel", sensitivity: 1.0 },
+            });
+          } else if (type === "facing") {
+            blocks.push({
+              type: "facing",
+              id: newId,
+              name: "Aim / Heading Facing",
+              enabled: true,
+              mode: "mouseWorldPos",
+            });
+          }
+          this.renderActiveView();
+        });
+      }
+
+      // Delete Block button
+      root.querySelectorAll(".btn-block-delete").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.blockId;
+          const idx = blocks.findIndex((b) => b.id === bId);
+          if (idx >= 0) {
+            blocks.splice(idx, 1);
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Toggle Block Enabled checkbox
+      root.querySelectorAll(".block-toggle-enabled").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.enabled = (e.target as HTMLInputElement).checked;
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Bind Primary Input Slot
+      root.querySelectorAll(".btn-block-slot-bind").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.blockId;
+          const slotName = (btn as HTMLElement).dataset.slotName;
+          if (bId && slotName) {
+            this.startBlockKeyListening(bId, slotName);
+          }
+        });
+      });
+
+      // Clear Primary Input Slot (X button)
+      root.querySelectorAll(".btn-block-slot-clear").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.blockId;
+          const slotName = (btn as HTMLElement).dataset.slotName;
+          const block = blocks.find((b) => b.id === bId);
+          if (block && slotName) {
+            const slot = (block as any)[slotName];
+            if (slot) {
+              slot.code = null;
+            }
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Bind Gate Key
+      root.querySelectorAll(".btn-block-slot-gate-bind").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.blockId;
+          const slotName = (btn as HTMLElement).dataset.slotName;
+          const gateIdx = parseInt((btn as HTMLElement).dataset.gateIdx || "-1", 10);
+          if (bId && slotName && gateIdx >= 0) {
+            this.startBlockKeyListening(bId, slotName, gateIdx);
+          }
+        });
+      });
+
+      // Remove Gate Key (X button)
+      root.querySelectorAll(".btn-block-slot-gate-remove").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.blockId;
+          const slotName = (btn as HTMLElement).dataset.slotName;
+          const gateIdx = parseInt((btn as HTMLElement).dataset.gateIdx || "-1", 10);
+          const block = blocks.find((b) => b.id === bId);
+          if (block && slotName && gateIdx >= 0) {
+            const slot = (block as any)[slotName];
+            if (slot && slot.gateButtons) {
+              slot.gateButtons.splice(gateIdx, 1);
+            }
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Add Gate Key
+      root.querySelectorAll(".btn-block-slot-add-gate").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.blockId;
+          const slotName = (btn as HTMLElement).dataset.slotName;
+          const block = blocks.find((b) => b.id === bId);
+          if (bId && block && slotName) {
+            let slot = (block as any)[slotName];
+            if (!slot) {
+              slot = { code: null, gateButtons: [] };
+              (block as any)[slotName] = slot;
+            }
+            slot.gateButtons = slot.gateButtons || [];
+            const newIdx = slot.gateButtons.length;
+            slot.gateButtons.push("KeyD");
+            this.startBlockKeyListening(bId, slotName, newIdx);
+          }
+        });
+      });
+
+      // Move Keys (WASD)
+      root.querySelectorAll(".btn-block-move-key").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.blockId;
+          const moveKey = (btn as HTMLElement).dataset.moveKey as "upKey" | "downKey" | "leftKey" | "rightKey" | undefined;
+          if (bId && moveKey) {
+            this.startBlockKeyListening(bId, "moveKeys", undefined, moveKey);
+          }
+        });
+      });
+
+      // Move Key Clear (X button)
+      root.querySelectorAll(".btn-block-move-key-clear").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.blockId;
+          const moveKey = (btn as HTMLElement).dataset.moveKey as "upKey" | "downKey" | "leftKey" | "rightKey" | undefined;
+          const block = blocks.find((b) => b.id === bId);
+          if (block && block.type === "locomotion" && moveKey) {
+            const loco = block as LocomotionControlBlock;
+            if (loco.moveKeys) {
+              loco.moveKeys[moveKey] = null;
+            }
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Sprint mode
+      root.querySelectorAll(".block-sprint-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
+          if (block && block.sprint) {
+            block.sprint.mode = (e.target as HTMLSelectElement).value as any;
+          }
+        });
+      });
+
+      // Laser aim mode
+      root.querySelectorAll(".block-laser-aim-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as LaserControlBlock;
+          if (block) {
+            block.aimMode = (e.target as HTMLSelectElement).value as any;
+          }
+        });
+      });
+
+      // Laser autofire
+      root.querySelectorAll(".block-laser-autofire").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as LaserControlBlock;
+          if (block && block.fireTrigger) {
+            block.fireTrigger.autoFireWhenAiming = (e.target as HTMLInputElement).checked;
+          }
+        });
+      });
+
+      // Laser power source
+      root.querySelectorAll(".block-laser-power-source").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as LaserControlBlock;
+          if (block) {
+            block.powerLevel = block.powerLevel || {};
+            block.powerLevel.source = (e.target as HTMLSelectElement).value as any;
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Laser power clear
+      root.querySelectorAll(".btn-block-laser-power-clear").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bId = (btn as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as LaserControlBlock;
+          if (block && block.powerLevel) {
+            block.powerLevel.source = "none";
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Throw mode
+      root.querySelectorAll(".block-throw-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock;
+          if (block) {
+            block.mode = (e.target as HTMLSelectElement).value as any;
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Throw arc source
+      root.querySelectorAll(".block-throw-arc-source").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock;
+          if (block) {
+            block.arcModulation = block.arcModulation || {};
+            block.arcModulation.source = (e.target as HTMLSelectElement).value as any;
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Item swap requires holding checkbox
+      root.querySelectorAll(".block-item-swap-requires-holding").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as ItemInteractionControlBlock;
+          if (block) {
+            block.swapRequiresHolding = (e.target as HTMLInputElement).checked;
+          }
+        });
+      });
+
+      // Item trigger pickup when empty-handed checkbox
+      root.querySelectorAll(".block-item-trigger-pickup-empty").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as ItemInteractionControlBlock;
+          if (block) {
+            block.triggerPickupWhenEmptyHanded = (e.target as HTMLInputElement).checked;
+          }
+        });
+      });
+
+      // Facing mode
+      root.querySelectorAll(".block-facing-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as FacingControlBlock;
+          if (block) {
+            block.mode = (e.target as HTMLSelectElement).value as any;
+          }
+        });
+      });
+    }
 
     // Modular Left-to-Right Pipeline Event Listeners
     if (this.viewMode === "pipeline" && schema.keyboardMouse.pipeline) {

@@ -286,8 +286,109 @@ export interface InputPipelineBinding {
   target: ModuleTargetSocket;
 }
 
+export interface BlockInputSlot {
+  code?: string | null;         // Primary button/key code (e.g. "KeyF", "MouseLeft"), or null/undefined if unassigned
+  gateButtons?: string[];       // Extra buttons that must be held down (chords / modifiers)
+}
+
+export interface LocomotionControlBlock {
+  type: "locomotion";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  moveKeys?: {
+    upKey?: string | null;
+    downKey?: string | null;
+    leftKey?: string | null;
+    rightKey?: string | null;
+  };
+  jump?: BlockInputSlot;
+  sprint?: BlockInputSlot & {
+    mode?: "hold" | "toggle";
+  };
+}
+
+export interface MeleeControlBlock {
+  type: "melee";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  punch?: BlockInputSlot;
+}
+
+export interface LaserControlBlock {
+  type: "laser";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  aimTrigger?: BlockInputSlot;
+  aimMode?: "mouseWorldPos" | "mouseScreenPos" | "rawDirection";
+  fireTrigger?: BlockInputSlot & {
+    autoFireWhenAiming?: boolean;
+  };
+  powerLevel?: {
+    source?: "mouseWheel" | "mouseDeltaY" | "none";
+    sensitivity?: number;
+  };
+}
+
+export type ThrowBlockMode =
+  | "chargeAndRelease" // Bow style: hold to build power/trajectory, release to throw
+  | "aimAndFire"       // Manual preview: aim button previews arc, fire button launches
+  | "quickOptimal"     // Flattest optimal trajectory on click
+  | "quickWallClear"   // Lowest energy wall-clearing trajectory on click
+  | "aimWallClear";    // Aim lowest energy wall-clearing trajectory, release to fire
+
+export interface ThrowControlBlock {
+  type: "throw";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  mode: ThrowBlockMode;
+  chargeTrigger?: BlockInputSlot; // For chargeAndRelease
+  aimTrigger?: BlockInputSlot;    // For aimAndFire and aimWallClear
+  fireTrigger?: BlockInputSlot;   // For aimAndFire
+  quickTrigger?: BlockInputSlot;  // For quickOptimal and quickWallClear
+  arcModulation?: {
+    source?: "mouseDeltaY" | "mouseWheel" | "none";
+    autoCursorLock?: boolean;
+    sensitivity?: number;
+  };
+}
+
+export interface ItemInteractionControlBlock {
+  type: "itemInteraction";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  pickup?: BlockInputSlot;
+  drop?: BlockInputSlot;
+  swap?: BlockInputSlot;
+  consume?: BlockInputSlot;
+  swapRequiresHolding?: boolean;             // Default false
+  triggerPickupWhenEmptyHanded?: boolean;    // Default false: if swap or secondary is pressed when empty-handed, triggers pickup
+  additionalPickup?: BlockInputSlot;         // Optional extra button that triggers pickup when emptyhanded
+}
+
+export interface FacingControlBlock {
+  type: "facing";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  mode: "mouseWorldPos" | "fromMovement";
+}
+
+export type ControlBlock =
+  | LocomotionControlBlock
+  | MeleeControlBlock
+  | LaserControlBlock
+  | ThrowControlBlock
+  | ItemInteractionControlBlock
+  | FacingControlBlock;
+
 export interface KeyboardMouseConfig {
   tags?: InputTagBinding[];
+  blocks?: ControlBlock[];
   aiming: {
     mode: AimingParadigm;
   };
@@ -356,6 +457,7 @@ export interface ControlSchema {
   activeDevice: DeviceChannel;
   stages?: string[];
   stageGroups?: StageGroup[];
+  blocks?: ControlBlock[];
   pipeline?: InputPipelineBinding[];
   keyboardMouse: KeyboardMouseConfig;
   gamepad: GamepadConfig;

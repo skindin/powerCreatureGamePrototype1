@@ -10,7 +10,8 @@ import { ClientActionDispatcher } from "../network/ClientActionDispatcher.js";
 import { ControlsInspector } from "../ui/devpanel/inspectors/ControlsInspector.js";
 import { ControlSchemaArbiter } from "../input/schema/ControlSchemaArbiter.js";
 import { ModularPipelineEvaluator } from "../input/schema/ModularPipelineEvaluator.js";
-import { DefaultPipelineBindings } from "../input/schema/presets/DefaultControlSchemas.js";
+import { ModularBlockEvaluator } from "../input/schema/ModularBlockEvaluator.js";
+import { DefaultControlBlocks } from "../input/schema/presets/DefaultControlSchemas.js";
 import type { ControlExecutionContext, ControlRule } from "../input/schema/ControlSchemaTypes.js";
 
 export interface PlayerEntry {
@@ -611,10 +612,16 @@ export class PlayerManager {
         mouseStates,
       };
 
-      if (!kSchema.keyboardMouse.pipeline) {
-        kSchema.keyboardMouse.pipeline = JSON.parse(JSON.stringify(DefaultPipelineBindings));
+      if (!kSchema.keyboardMouse.blocks) {
+        kSchema.keyboardMouse.blocks = JSON.parse(JSON.stringify(DefaultControlBlocks));
       }
-      if (kSchema.keyboardMouse.pipeline) {
+      if (kSchema.keyboardMouse.blocks && kSchema.keyboardMouse.blocks.length > 0) {
+        const packet = ModularBlockEvaluator.evaluateBlocks(kSchema.keyboardMouse.blocks, execCtx, input);
+        map.set("keyboard", packet);
+        input.aimLockRawDelta = 0;
+        input.aimLockRawDx = 0;
+        input.aimLockRawDy = 0;
+      } else if (kSchema.keyboardMouse.pipeline) {
         const packet = ModularPipelineEvaluator.evaluatePipeline(kSchema.keyboardMouse.pipeline, execCtx, input);
         map.set("keyboard", packet);
         input.aimLockRawDelta = 0;

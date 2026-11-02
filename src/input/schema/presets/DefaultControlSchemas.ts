@@ -1,4 +1,69 @@
-import type { ControlSchema, PrebuiltControlChannels, InputPipelineBinding } from "../ControlSchemaTypes.js";
+import type { ControlSchema, PrebuiltControlChannels, InputPipelineBinding, ControlBlock } from "../ControlSchemaTypes.js";
+
+export const DefaultControlBlocks: ControlBlock[] = [
+  {
+    type: "locomotion",
+    id: "block-locomotion",
+    name: "Locomotion",
+    enabled: true,
+    moveKeys: {
+      upKey: "KeyW",
+      downKey: "KeyS",
+      leftKey: "KeyA",
+      rightKey: "KeyD",
+    },
+    jump: { code: "Space" },
+    sprint: { code: "ShiftLeft", mode: "hold" },
+  },
+  {
+    type: "itemInteraction",
+    id: "block-items",
+    name: "Item Interaction",
+    enabled: true,
+    pickup: { code: "MouseLeft" },
+    drop: { code: "KeyQ" },
+    swap: { code: "KeyF" },
+    consume: { code: "KeyE" },
+    swapRequiresHolding: false,
+    triggerPickupWhenEmptyHanded: true,
+  },
+  {
+    type: "throw",
+    id: "block-throw",
+    name: "Throwing & Ballistics",
+    enabled: true,
+    mode: "chargeAndRelease",
+    chargeTrigger: { code: "MouseLeft" },
+    aimTrigger: { code: "MouseRight" },
+    fireTrigger: { code: "MouseLeft" },
+    quickTrigger: { code: "MouseLeft" },
+    arcModulation: { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 },
+  },
+  {
+    type: "melee",
+    id: "block-melee",
+    name: "Melee Combat",
+    enabled: true,
+    punch: { code: "KeyF" },
+  },
+  {
+    type: "laser",
+    id: "block-laser",
+    name: "Laser Beam",
+    enabled: true,
+    aimTrigger: { code: "MouseRight", gateButtons: ["AltLeft"] },
+    aimMode: "mouseWorldPos",
+    fireTrigger: { code: "MouseLeft", autoFireWhenAiming: false },
+    powerLevel: { source: "mouseWheel", sensitivity: 1.0 },
+  },
+  {
+    type: "facing",
+    id: "block-facing",
+    name: "Aim / Heading Facing",
+    enabled: true,
+    mode: "mouseWorldPos",
+  },
+];
 
 export const DefaultPipelineBindings: InputPipelineBinding[] = [
   {
