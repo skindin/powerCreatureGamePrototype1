@@ -13,6 +13,7 @@ import type { InputManager } from "../../ui/InputManager.js";
 import { InputPressTokenManager } from "./InputPressTokenManager.js";
 import type { PlayerInputPacket } from "../../engine/physics/StateHistoryBuffer.js";
 import { ThrowCapability } from "../../character/capabilities/ThrowCapability.js";
+import { ControlSchemaArbiter } from "./ControlSchemaArbiter.js";
 
 /**
  * ModularBlockEvaluator executes prebuilt, intuitive Control Blocks.
@@ -48,9 +49,33 @@ export class ModularBlockEvaluator {
     if (execCtx.isMouseButtonDown(0)) currentDownKeys.add("MouseLeft");
     if (execCtx.isMouseButtonDown(1)) currentDownKeys.add("MouseMiddle");
     if (execCtx.isMouseButtonDown(2)) currentDownKeys.add("MouseRight");
+
+    // Gamepad button edge registration
+    if (execCtx.gamepadStates) {
+      for (let b = 0; b <= 16; b++) {
+        if (execCtx.gamepadStates.isDown(b)) {
+          const gpCode = ControlSchemaArbiter.formatGamepadButtonIndex(b);
+          currentDownKeys.add(gpCode);
+        }
+      }
+    } else if (execCtx.isGamepadButtonDown) {
+      for (let b = 0; b <= 16; b++) {
+        if (execCtx.isGamepadButtonDown(0, b)) {
+          const gpCode = ControlSchemaArbiter.formatGamepadButtonIndex(b);
+          currentDownKeys.add(gpCode);
+        }
+      }
+    }
     tokens.update(currentDownKeys, now);
 
     const isCodeJustReleased = (c: string): boolean => {
+      if (c.startsWith("Gamepad")) {
+        const btn = ControlSchemaArbiter.parseGamepadButtonCode(c);
+        if (btn >= 0 && execCtx.gamepadStates) {
+          return execCtx.gamepadStates.justReleased(btn);
+        }
+        return false;
+      }
       if (c.startsWith("Mouse")) {
         const idx = c === "MouseLeft" ? 0 : c === "MouseMiddle" ? 1 : c === "MouseRight" ? 2 : -1;
         return idx >= 0 ? execCtx.mouseStates?.justReleased(idx) ?? false : false;
@@ -161,6 +186,9 @@ export class ModularBlockEvaluator {
     let isAimingTrajectory = false;
     let activeRawDragThisFrame = false;
 
+    // Reticle/Aim target position (works seamlessly for mouse and gamepad reticle)
+    const targetAimPos = execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos;
+
     // Scan for nearby grabbable objects for pickup and swap
     const grabTargetObjectId = execCtx.targetInReach ? execCtx.targetInReach.id : null;
 
@@ -172,9 +200,9 @@ export class ModularBlockEvaluator {
         case "locomotion": {
           const b = block as LocomotionControlBlock;
           if (b.mode === "walkToMouse") {
-            // Update facing angle toward mouse cursor
-            const aimDx = input.actualMousePos.x - char.position.x;
-            const aimDy = input.actualMousePos.y - char.position.y;
+            // Update facing angle toward aim cursor
+            const aimDx = targetAimPos.x - char.position.x;
+            const aimDy = targetAimPos.y - char.position.y;
             const mouseDist = Math.hypot(aimDx, aimDy);
             if (mouseDist > 0.05) {
               char.facingAngle = Math.atan2(aimDy, aimDx);
@@ -231,6 +259,13 @@ export class ModularBlockEvaluator {
               moveX += vx;
               moveY += vy;
             }
+          }
+
+          // Gamepad Left Stick movement:
+          const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
+          if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
+            moveX += gpLeftStick.x;
+            moveY += gpLeftStick.y;
           }
 
           // Jump
@@ -332,8 +367,8 @@ export class ModularBlockEvaluator {
 
               // Auto-release fire on button / gate release
               if (isSlotAnyJustReleased(b.chargeTrigger) && char.isChargingThrow) {
-                const aimDx = input.actualMousePos.x - char.position.x;
-                const aimDy = input.actualMousePos.y - char.position.y;
+                const aimDx = targetAimPos.x - char.position.x;
+                const aimDy = targetAimPos.y - char.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
                 const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
 
@@ -369,8 +404,8 @@ export class ModularBlockEvaluator {
               }
 
               if (isSlotAnyJustReleased(b.chargeTrigger) && char.isHoldingThrowRelease) {
-                const aimDx = input.actualMousePos.x - char.position.x;
-                const aimDy = input.actualMousePos.y - char.position.y;
+                const aimDx = targetAimPos.x - char.position.x;
+                const aimDy = targetAimPos.y - char.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
                 const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
 
@@ -457,8 +492,8 @@ export class ModularBlockEvaluator {
                 ThrowCapability.findLowestEnergyWallClearTrajectory(
                   char,
                   execCtx.arena,
-                  input.actualMousePos.x,
-                  input.actualMousePos.y,
+                  targetAimPos.x,
+                  targetAimPos.y,
                   execCtx.arena.entities,
                   false,
                   input.lockedAimPos,
@@ -478,8 +513,8 @@ export class ModularBlockEvaluator {
               }
 
               if (isSlotAnyJustReleased(b.aimTrigger) && char.isAimingWallClear) {
-                const aimDx = input.actualMousePos.x - char.position.x;
-                const aimDy = input.actualMousePos.y - char.position.y;
+                const aimDx = targetAimPos.x - char.position.x;
+                const aimDy = targetAimPos.y - char.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
                 const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
 
@@ -559,9 +594,12 @@ export class ModularBlockEvaluator {
 
         case "facing": {
           const b = block as FacingControlBlock;
-          if (b.mode === "mouseWorldPos") {
-            const aimDx = input.actualMousePos.x - char.position.x;
-            const aimDy = input.actualMousePos.y - char.position.y;
+          const gpRightStick = (execCtx.gamepadStates as any)?.rightStick ?? execCtx.getGamepadAxis(0, "RightStick");
+          if (gpRightStick && Math.hypot(gpRightStick.x, gpRightStick.y) > 0.15) {
+            char.facingAngle = Math.atan2(gpRightStick.y, gpRightStick.x);
+          } else if (b.mode === "mouseWorldPos") {
+            const aimDx = targetAimPos.x - char.position.x;
+            const aimDy = targetAimPos.y - char.position.y;
             if (Math.hypot(aimDx, aimDy) > 0.05) {
               char.facingAngle = Math.atan2(aimDy, aimDx);
             }
@@ -587,28 +625,44 @@ export class ModularBlockEvaluator {
     char.isLaserFiring = isLaserFiring;
     char.isMeleeRequested = isMeleeRequested;
 
-    // Face toward mouse if aiming trajectory, laser, or melee
+    // Face toward aim target if aiming trajectory, laser, or melee
     if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory) {
-      const aimDx = input.actualMousePos.x - char.position.x;
-      const aimDy = input.actualMousePos.y - char.position.y;
-      if (Math.hypot(aimDx, aimDy) > 0.05) {
-        char.facingAngle = Math.atan2(aimDy, aimDx);
+      const gpRightStick = (execCtx.gamepadStates as any)?.rightStick ?? execCtx.getGamepadAxis(0, "RightStick");
+      if (gpRightStick && Math.hypot(gpRightStick.x, gpRightStick.y) > 0.15) {
+        char.facingAngle = Math.atan2(gpRightStick.y, gpRightStick.x);
         if (isAimingTrajectory) {
           char.lastThrowAimAngle = char.facingAngle;
+        }
+      } else {
+        const aimDx = targetAimPos.x - char.position.x;
+        const aimDy = targetAimPos.y - char.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          char.facingAngle = Math.atan2(aimDy, aimDx);
+          if (isAimingTrajectory) {
+            char.lastThrowAimAngle = char.facingAngle;
+          }
         }
       }
     }
 
-    const isMouseAiming = !isEditMode && (isLaserAiming || isAimingTrajectory);
+    // Normalize movement vector if diagonal/stick exceeded 1.0
+    const moveLen = Math.hypot(moveX, moveY);
+    if (moveLen > 1.0) {
+      moveX /= moveLen;
+      moveY /= moveLen;
+    }
+
+    const isAiming = !isEditMode && (isLaserAiming || isAimingTrajectory);
     const kLaunchVel = isThrow && char.activeTrajectory?.launchVel ? char.activeTrajectory.launchVel : undefined;
     const kLaunchPos = isThrow && char.activeTrajectory?.launchPos ? char.activeTrajectory.launchPos : undefined;
 
-    const meleeDx = input.actualMousePos.x - char.position.x;
-    const meleeDy = input.actualMousePos.y - char.position.y;
+    const meleeDx = targetAimPos.x - char.position.x;
+    const meleeDy = targetAimPos.y - char.position.y;
     const meleeDist = Math.hypot(meleeDx, meleeDy) || 1;
 
     return {
-      playerId: "keyboard",
+      playerId: execCtx.gamepadStates ? `gamepad-${execCtx.gamepadStates.slotIndex}` : "keyboard",
+      playerName: char.name,
       moveX,
       moveY,
       isSprinting: isSprinting || Boolean(char.isSprinting),
@@ -621,16 +675,17 @@ export class ModularBlockEvaluator {
       isUsingItem,
       isLaserAiming,
       isLaserFiring,
-      laserAimX: input.actualMousePos.x,
-      laserAimY: input.actualMousePos.y,
+      laserAimX: targetAimPos.x,
+      laserAimY: targetAimPos.y,
+      laserPowerFraction: char.laserPowerFraction ?? 1.0,
       isMeleeRequested,
       meleeAimDirX: meleeDx / meleeDist,
       meleeAimDirY: meleeDy / meleeDist,
-      meleeAimX: input.actualMousePos.x,
-      meleeAimY: input.actualMousePos.y,
-      aimX: input.actualMousePos.x,
-      aimY: input.actualMousePos.y,
-      isAiming: isMouseAiming,
+      meleeAimX: targetAimPos.x,
+      meleeAimY: targetAimPos.y,
+      aimX: targetAimPos.x,
+      aimY: targetAimPos.y,
+      isAiming,
       isLockHeld: false,
       lockedAimPos: null,
       aimLockDelta: 0,

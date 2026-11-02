@@ -417,6 +417,7 @@ export interface KeyboardMouseConfig {
 
 export interface GamepadConfig {
   tags?: InputTagBinding[];
+  blocks?: ControlBlock[];
   leftStick: {
     primaryMode: "directLocomotion" | "cursorSteer";
     dynamicOverride?: {

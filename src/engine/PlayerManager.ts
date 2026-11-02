@@ -9,9 +9,8 @@ import { TrajectoryRenderer } from "./rendering/TrajectoryRenderer.js";
 import { ClientActionDispatcher } from "../network/ClientActionDispatcher.js";
 import { ControlsInspector } from "../ui/devpanel/inspectors/ControlsInspector.js";
 import { ControlSchemaArbiter } from "../input/schema/ControlSchemaArbiter.js";
-import { ModularPipelineEvaluator } from "../input/schema/ModularPipelineEvaluator.js";
 import { ModularBlockEvaluator } from "../input/schema/ModularBlockEvaluator.js";
-import { DefaultControlBlocks } from "../input/schema/presets/DefaultControlSchemas.js";
+import { DefaultControlBlocks, DefaultGamepadControlBlocks } from "../input/schema/presets/DefaultControlSchemas.js";
 import type { ControlExecutionContext, ControlRule } from "../input/schema/ControlSchemaTypes.js";
 
 export interface PlayerEntry {
@@ -621,12 +620,6 @@ export class PlayerManager {
         input.aimLockRawDelta = 0;
         input.aimLockRawDx = 0;
         input.aimLockRawDy = 0;
-      } else if (kSchema.keyboardMouse.pipeline) {
-        const packet = ModularPipelineEvaluator.evaluatePipeline(kSchema.keyboardMouse.pipeline, execCtx, input);
-        map.set("keyboard", packet);
-        input.aimLockRawDelta = 0;
-        input.aimLockRawDx = 0;
-        input.aimLockRawDy = 0;
       } else if (kSchema.keyboardMouse.channels) {
         const packet = ControlSchemaArbiter.evaluateChannels(kSchema.keyboardMouse.channels, execCtx, input);
         map.set("keyboard", packet);
@@ -969,6 +962,23 @@ export class PlayerManager {
         slot.aimPos.x = aimX;
         slot.aimPos.y = aimY;
         slot.hasMovedAimStick = true;
+      }
+
+      gpStates.leftStick = { x: gpMoveX, y: gpMoveY };
+      gpExecCtx.mouseAimPos = { x: aimX, y: aimY };
+      gpExecCtx.reticleAimPos = { x: aimX, y: aimY };
+
+      if (!gpSchema.gamepad.blocks) {
+        gpSchema.gamepad.blocks = JSON.parse(JSON.stringify(DefaultGamepadControlBlocks));
+      }
+      if (gpSchema.gamepad.blocks && gpSchema.gamepad.blocks.length > 0) {
+        const packet = ModularBlockEvaluator.evaluateBlocks(gpSchema.gamepad.blocks, gpExecCtx, input);
+        packet.playerId = entry.id;
+        packet.playerName = cChar.name;
+        (packet as any).isLockHeld = slot.isLockHeld ?? false;
+        (packet as any).lockedAimPos = slot.lockedAimPos ? { ...slot.lockedAimPos } : null;
+        map.set(entry.id, packet);
+        continue;
       }
 
       // 2. Schema Rules Evaluation for Gamepad

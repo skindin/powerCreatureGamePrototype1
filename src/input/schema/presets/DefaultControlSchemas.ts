@@ -73,6 +73,75 @@ export const DefaultControlBlocks: ControlBlock[] = [
   },
 ];
 
+export const DefaultGamepadControlBlocks: ControlBlock[] = [
+  {
+    type: "locomotion",
+    id: "block-locomotion-gp",
+    name: "Locomotion",
+    enabled: true,
+    mode: "wasd",
+    moveKeys: {
+      upKey: "GamepadDpadUp",
+      downKey: "GamepadDpadDown",
+      leftKey: "GamepadDpadLeft",
+      rightKey: "GamepadDpadRight",
+      requireCleanPress: false,
+    },
+    jump: { code: "GamepadA", requireCleanPress: true },
+    sprint: { code: "GamepadLS", mode: "hold", requireCleanPress: false },
+  },
+  {
+    type: "itemInteraction",
+    id: "block-items-gp",
+    name: "Item Interaction",
+    enabled: true,
+    pickup: { code: "GamepadX", requireCleanPress: true },
+    drop: { code: "GamepadY", requireCleanPress: true },
+    swap: { code: "GamepadB", requireCleanPress: true },
+    consume: { code: "GamepadLB", requireCleanPress: false },
+    swapRequiresHolding: false,
+    triggerPickupWhenEmptyHanded: true,
+  },
+  {
+    type: "throw",
+    id: "block-throw-gp",
+    name: "Throwing & Ballistics",
+    enabled: true,
+    mode: "chargeAndRelease",
+    chargeTrigger: { code: "GamepadRT", requireCleanPress: true },
+    aimTrigger: { code: "GamepadLT", requireCleanPress: false },
+    fireTrigger: { code: "GamepadRT", requireCleanPress: true },
+    quickTrigger: { code: "GamepadRT", requireCleanPress: true },
+    arcModulation: { source: "none", autoCursorLock: false, sensitivity: 0.005 },
+    enableProximityCancel: false,
+    cancelRadius: 1.5,
+  },
+  {
+    type: "melee",
+    id: "block-melee-gp",
+    name: "Melee Combat",
+    enabled: true,
+    punch: { code: "GamepadB", requireCleanPress: true },
+  },
+  {
+    type: "laser",
+    id: "block-laser-gp",
+    name: "Laser Beam",
+    enabled: true,
+    aimTrigger: { code: "GamepadLT", requireCleanPress: false },
+    aimMode: "mouseWorldPos",
+    fireTrigger: { code: "GamepadRT", autoFireWhenAiming: false, requireCleanPress: false },
+    powerLevel: { source: "none", sensitivity: 1.0 },
+  },
+  {
+    type: "facing",
+    id: "block-facing-gp",
+    name: "Aim / Heading Facing",
+    enabled: true,
+    mode: "mouseWorldPos",
+  },
+];
+
 export const DefaultPipelineBindings: InputPipelineBinding[] = [
   {
     id: "pipe-facing",
@@ -416,6 +485,7 @@ export const DefaultControlSchema: ControlSchema = {
     ],
   },
   gamepad: {
+    blocks: JSON.parse(JSON.stringify(DefaultGamepadControlBlocks)),
     leftStick: {
       primaryMode: "directLocomotion",
       dynamicOverride: {
@@ -675,6 +745,7 @@ export const GamepadHybridSchema: ControlSchema = {
   activeDevice: "gamepad",
   keyboardMouse: DefaultControlSchema.keyboardMouse,
   gamepad: {
+    blocks: JSON.parse(JSON.stringify(DefaultGamepadControlBlocks)),
     leftStick: {
       primaryMode: "directLocomotion",
       dynamicOverride: {

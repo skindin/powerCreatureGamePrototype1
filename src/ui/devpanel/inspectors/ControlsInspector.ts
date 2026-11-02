@@ -29,6 +29,7 @@ import {
   DefaultPrebuiltChannels,
   DefaultPipelineBindings,
   DefaultControlBlocks,
+  DefaultGamepadControlBlocks,
   BuiltinControlSchemas,
 } from "../../../input/schema/presets/DefaultControlSchemas.js";
 import { ControlActionCatalog } from "../../../input/schema/ControlActionCatalog.js";
@@ -50,7 +51,6 @@ export class ControlsInspector {
   private static modalOverlay: HTMLElement | null = null;
   private static workingSchema: ControlSchema | null = null;
   private static activeTab: DeviceChannel = "keyboardMouse";
-  private static viewMode: "blocks" | "pipeline" = "blocks";
   private static listeningBlockTarget: {
     blockId: string;
     slotName: string;
@@ -64,7 +64,6 @@ export class ControlsInspector {
   private static listeningRuleId: string | null = null;
   private static listeningForwardTrigger: boolean = false;
   private static listeningLocoKey: "moveForwardKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey" | null = null;
-  private static listeningPipelineTarget: { bindingId: string; subKey?: string } | null = null;
   private static recorderCleanup: (() => void) | null = null;
   private static keydownListener: ((e: KeyboardEvent) => void) | null = null;
 
@@ -82,6 +81,9 @@ export class ControlsInspector {
     if (!schema) return;
     if (!schema.keyboardMouse.blocks) {
       schema.keyboardMouse.blocks = JSON.parse(JSON.stringify(DefaultControlBlocks));
+    }
+    if (!schema.gamepad.blocks) {
+      schema.gamepad.blocks = JSON.parse(JSON.stringify(DefaultGamepadControlBlocks));
     }
     if (!schema.keyboardMouse.pipeline) {
       schema.keyboardMouse.pipeline = JSON.parse(JSON.stringify(DefaultPipelineBindings));
@@ -112,6 +114,19 @@ export class ControlsInspector {
     };
     if (schema.keyboardMouse.pipeline) migratePipeline(schema.keyboardMouse.pipeline);
     if (schema.pipeline) migratePipeline(schema.pipeline);
+  }
+
+  public static getActiveBlocks(schema: ControlSchema): ControlBlock[] {
+    if (this.activeTab === "gamepad") {
+      if (!schema.gamepad.blocks) {
+        schema.gamepad.blocks = JSON.parse(JSON.stringify(DefaultGamepadControlBlocks));
+      }
+      return schema.gamepad.blocks!;
+    }
+    if (!schema.keyboardMouse.blocks) {
+      schema.keyboardMouse.blocks = JSON.parse(JSON.stringify(DefaultControlBlocks));
+    }
+    return schema.keyboardMouse.blocks!;
   }
 
   public static ensureSchemaTags(schema: ControlSchema): void {
@@ -362,7 +377,6 @@ export class ControlsInspector {
     this.listeningRuleId = null;
     this.listeningForwardTrigger = false;
     this.listeningLocoKey = null;
-    this.listeningPipelineTarget = null;
     this.listeningBlockTarget = null;
 
     if (typeof document !== "undefined" && document.pointerLockElement) {
@@ -656,7 +670,6 @@ export class ControlsInspector {
     this.listeningRuleId = null;
     this.listeningForwardTrigger = false;
     this.listeningLocoKey = null;
-    this.listeningPipelineTarget = null;
     this.listeningBlockTarget = null;
   }
 
@@ -910,29 +923,14 @@ export class ControlsInspector {
         <!-- Scrollable Modal Body -->
         <div id="controls-scroll-body" style="flex: 1 1 0px; min-height: 0; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.4) rgba(15, 23, 42, 0.6); padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; background: #090d16;">
           
-          ${this.activeTab === "keyboardMouse" ? `
-            <!-- Mode Switcher Pill -->
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 8px; padding: 8px 14px;">
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <button id="btn-mode-blocks" class="btn-secondary-action" type="button" style="font-size: 0.76rem; padding: 6px 14px; font-weight: 700; border-radius: 5px; ${this.viewMode === "blocks" ? "background: #38bdf8; color: #020617; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56,189,248,0.35);" : "background: transparent; color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2);"}">
-                  🧱 Modular Control Blocks (Prebuilt)
-                </button>
-                <button id="btn-mode-pipeline" class="btn-secondary-action" type="button" style="font-size: 0.74rem; padding: 6px 14px; font-weight: 600; border-radius: 5px; ${this.viewMode === "pipeline" ? "background: #38bdf8; color: #020617; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56,189,248,0.35);" : "background: transparent; color: #64748b; border: 1px solid rgba(148, 163, 184, 0.15);"}">
-                  🔀 Signal Pipeline (Advanced)
-                </button>
-              </div>
-              <span style="font-size: 0.70rem; color: #94a3b8;">
-                ${this.viewMode === "blocks" ? "✨ Prebuilt module blocks: self-contained logic, intuitive options, and ✕ buttons to disable" : "Left-to-Right raw wire signal flow"}
-              </span>
-            </div>
-
-            ${this.viewMode === "blocks" ? this.renderBlocksHtml(schema) : this.renderPipelineHtml(schema)}
+          ${this.activeTab === "keyboardMouse" || this.activeTab === "gamepad" ? `
+            ${this.renderBlocksHtml(schema)}
           ` : `
-            <!-- Gamepad / Touch Locomotion Paradigm Section -->
+            <!-- Touch Locomotion Paradigm Section -->
             <div id="section-locomotion" style="background: rgba(15, 23, 42, 0.85); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
               <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(148, 163, 184, 0.15); padding-bottom: 8px;">
                 <span style="font-size: 0.84rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 6px;">
-                  🎮 Locomotion & Aiming
+                  📱 Touch Locomotion & Widgets
                 </span>
               </div>
               <div id="controls-paradigms-container">
@@ -1341,6 +1339,27 @@ export class ControlsInspector {
   public static formatChannelKeyLabel(code: string, chordModifiers?: string[]): string {
     if (!code) return "None";
     let base = code;
+    if (base.startsWith("Gamepad")) {
+      switch (base) {
+        case "GamepadA": return "A (South)";
+        case "GamepadB": return "B (East)";
+        case "GamepadX": return "X (West)";
+        case "GamepadY": return "Y (North)";
+        case "GamepadLB": return "LB";
+        case "GamepadRB": return "RB";
+        case "GamepadLT": return "LT";
+        case "GamepadRT": return "RT";
+        case "GamepadLS": return "LS (Click)";
+        case "GamepadRS": return "RS (Click)";
+        case "GamepadDpadUp": return "D-Pad Up";
+        case "GamepadDpadDown": return "D-Pad Down";
+        case "GamepadDpadLeft": return "D-Pad Left";
+        case "GamepadDpadRight": return "D-Pad Right";
+        case "GamepadStart": return "Start";
+        case "GamepadBack": return "Select / Back";
+        default: return base.replace("Gamepad", "Pad ");
+      }
+    }
     if (base.startsWith("Key")) base = base.substring(3);
     else if (base.startsWith("Digit")) base = base.substring(5);
     else if (base === "MouseLeft") base = "LMB";
@@ -1413,7 +1432,7 @@ export class ControlsInspector {
               background: transparent;
               ${isListeningPrimary ? "color: #ef4444; font-weight: 700; animation: pulse 1s infinite;" : (code ? "color: #fff;" : "color: #64748b; font-style: italic;")}
             " title="Click to bind key or mouse button">
-              ${isListeningPrimary ? "🔴 Press key..." : (code ? (code.startsWith("Mouse") ? `🖱️ ${label}` : `⌨️ ${label}`) : "🚫 None (Unassigned)")}
+              ${isListeningPrimary ? "🔴 Press button / key..." : (code ? (code.startsWith("Gamepad") ? `🎮 ${label}` : code.startsWith("Mouse") ? `🖱️ ${label}` : `⌨️ ${label}`) : "🚫 None (Unassigned)")}
             </button>
             ${code ? `
               <button class="btn-block-slot-clear" data-block-id="${blockId}" data-slot-name="${slotName}" type="button" style="
@@ -1448,7 +1467,7 @@ export class ControlsInspector {
                   color: #fff;
                   ${isListeningGate ? "color: #ef4444; font-weight: 700;" : ""}
                 " title="Click to rebind held gate button">
-                  ${isListeningGate ? "🔴 Press..." : gLabel}
+                  ${isListeningGate ? "🔴 Press..." : (gCode.startsWith("Gamepad") ? `🎮 ${gLabel}` : gCode.startsWith("Mouse") ? `🖱️ ${gLabel}` : `⌨️ ${gLabel}`)}
                 </button>
                 <button class="btn-block-slot-gate-remove" data-block-id="${blockId}" data-slot-name="${slotName}" data-gate-idx="${gIdx}" type="button" style="
                   font-size: 0.62rem;
@@ -1824,18 +1843,16 @@ export class ControlsInspector {
   }
 
   private static renderBlocksHtml(schema: ControlSchema): string {
-    if (!schema.keyboardMouse.blocks) {
-      schema.keyboardMouse.blocks = JSON.parse(JSON.stringify(DefaultControlBlocks));
-    }
-    const blocks = schema.keyboardMouse.blocks || [];
+    const blocks = this.getActiveBlocks(schema);
+    const isGamepad = this.activeTab === "gamepad";
 
     return `
       <div style="display: flex; flex-direction: column; gap: 10px;">
         <!-- Header with Add Control Module dropdown -->
         <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 8px 14px;">
           <div style="font-size: 0.74rem; color: #cbd5e1;">
-            <strong style="color: #38bdf8;">Modular Control System:</strong>
-            Each capability has its own self-contained block with prebuilt logic. Click any slot to rebind, or click <strong>✕</strong> to clear/disable.
+            <strong style="color: #38bdf8;">${isGamepad ? "🎮 Gamepad Modular Controls" : "🧱 Modular Control System"}:</strong>
+            ${isGamepad ? "Configure controller bindings with prebuilt capability modules. Click any slot to bind by pressing a controller button/trigger or key, or click <strong>✕</strong> to clear/disable." : "Each capability has its own self-contained block with prebuilt logic. Click any slot to rebind, or click <strong>✕</strong> to clear/disable."}
           </div>
           <div style="display: flex; gap: 6px; align-items: center;">
             <select id="select-add-control-block" class="dev-select" style="font-size: 0.72rem; font-weight: 700; padding: 4px 8px; background: rgba(56,189,248,0.15); border: 1px solid #38bdf8; color: #38bdf8; border-radius: 4px;">
@@ -1931,8 +1948,9 @@ export class ControlsInspector {
 
     const commitTrigger = (code: string) => {
       const schema = this.workingSchema;
-      if (!schema || !schema.keyboardMouse.blocks) return;
-      const block = schema.keyboardMouse.blocks.find((b) => b.id === blockId);
+      if (!schema) return;
+      const blocks = this.getActiveBlocks(schema);
+      const block = blocks.find((b) => b.id === blockId);
       if (!block) return;
 
       if (isMoveKey && block.type === "locomotion") {
@@ -1963,6 +1981,26 @@ export class ControlsInspector {
       this.renderActiveView();
     };
 
+    let isGamepadPolling = true;
+    let animId: number | null = null;
+    const pollGamepad = () => {
+      if (!isGamepadPolling) return;
+      const gamepads = typeof navigator.getGamepads === "function" ? navigator.getGamepads() : [];
+      for (let g = 0; g < gamepads.length; g++) {
+        const gp = gamepads[g];
+        if (!gp) continue;
+        for (let b = 0; b < gp.buttons.length; b++) {
+          if (gp.buttons[b].pressed || gp.buttons[b].value > 0.5) {
+            const code = ControlSchemaArbiter.formatGamepadButtonIndex(b);
+            commitTrigger(code);
+            return;
+          }
+        }
+      }
+      animId = requestAnimationFrame(pollGamepad);
+    };
+    animId = requestAnimationFrame(pollGamepad);
+
     const onKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
@@ -1989,489 +2027,8 @@ export class ControlsInspector {
     };
 
     const cleanup = () => {
-      window.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("mousedown", onMouseDown, true);
-      if (this.popoutWindow && !this.popoutWindow.closed) {
-        this.popoutWindow.removeEventListener("keydown", onKeyDown, true);
-        this.popoutWindow.removeEventListener("mousedown", onMouseDown, true);
-      }
-      this.recorderCleanup = null;
-    };
-
-    this.recorderCleanup = cleanup;
-    window.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("mousedown", onMouseDown, true);
-    if (this.popoutWindow && !this.popoutWindow.closed) {
-      this.popoutWindow.addEventListener("keydown", onKeyDown, true);
-      this.popoutWindow.addEventListener("mousedown", onMouseDown, true);
-    }
-  }
-
-  private static renderPipelineHtml(schema: ControlSchema): string {
-    this.ensureChannels(schema);
-    const pipeline = schema.keyboardMouse.pipeline || [];
-
-    const isListening = (bindingId: string, subKey?: string) => {
-      if (!this.listeningPipelineTarget) return false;
-      return (
-        this.listeningPipelineTarget.bindingId === bindingId &&
-        this.listeningPipelineTarget.subKey === subKey
-      );
-    };
-
-    return `
-      <div style="display: flex; flex-direction: column; gap: 10px;">
-        <!-- Header description -->
-        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 6px; padding: 8px 14px;">
-          <div style="font-size: 0.74rem; color: #cbd5e1;">
-            <strong style="color: #38bdf8;">Left-to-Right Modular Input Pipeline:</strong>
-            Raw Hardware Input ➔ Processor & Cleaning ➔ Character Module Socket. Every row is completely independent and deletable.
-          </div>
-          <button id="btn-add-pipeline-binding" class="btn-secondary-action" type="button" style="font-size: 0.74rem; font-weight: 700; padding: 4px 12px; background: rgba(56,189,248,0.15); border: 1px solid #38bdf8; color: #38bdf8; border-radius: 4px;">
-            + Add Input Binding
-          </button>
-        </div>
-
-        <!-- Table Column Headers -->
-        <div style="display: grid; grid-template-columns: 240px 24px 1fr 24px 220px 48px; gap: 8px; padding: 0 12px; font-size: 0.68rem; font-weight: 700; color: #94a3b8;">
-          <span>RAW INPUT (SOURCE)</span>
-          <span style="text-align: center;"></span>
-          <span>PROCESSOR & CLEANING (CENTER)</span>
-          <span style="text-align: center;"></span>
-          <span>SOCKET & CONDITION (RIGHT)</span>
-          <span style="text-align: center;">DELETE</span>
-        </div>
-
-        <!-- Pipeline Rows Container -->
-        <div id="pipeline-rows-container" style="display: flex; flex-direction: column; gap: 8px;">
-          ${pipeline.length === 0 ? `
-            <div style="text-align: center; color: #64748b; font-size: 0.76rem; padding: 24px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px dashed rgba(148,163,184,0.2);">
-              No input bindings defined. Click "+ Add Input Binding" to connect an input!
-            </div>
-          ` : pipeline.map((b) => {
-            const { source, processor: proc } = b;
-
-            // Ensure gateButtons array exists and migrate any legacy additionalCodes / gateButton
-            if (!b.gateButtons) {
-              b.gateButtons = [];
-              if (source.type === "button" && source.additionalCodes && source.additionalCodes.length > 0) {
-                b.gateButtons.push(...source.additionalCodes);
-                delete source.additionalCodes;
-              }
-            }
-            if (proc.type === "1d_scalar" && proc.gateButton?.code) {
-              if (!b.gateButtons.includes(proc.gateButton.code)) {
-                b.gateButtons.push(proc.gateButton.code);
-              }
-            }
-            const gateButtons = b.gateButtons;
-
-            const gateHtml = `
-              <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 5px; padding-top: 4px; border-top: 1px dashed rgba(148,163,184,0.2);">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span style="font-size: 0.60rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">While Holding:</span>
-                  <button class="btn-pipe-add-gate-key btn-secondary-action" data-binding-id="${b.id}" type="button" style="
-                    font-size: 0.58rem;
-                    font-weight: 600;
-                    padding: 1px 5px;
-                    background: rgba(56, 189, 248, 0.08);
-                    border: 1px dashed rgba(56, 189, 248, 0.4);
-                    color: #38bdf8;
-                    border-radius: 3px;
-                    cursor: pointer;
-                  " title="Add button that must be held down">+ Button</button>
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 3px; align-items: center;">
-                  ${gateButtons.length === 0 ? `
-                    <span style="font-size: 0.60rem; color: #64748b; font-style: italic;">No hold requirement</span>
-                  ` : gateButtons.map((gCode, gIdx) => {
-                    const isListeningGate = isListening(b.id, `gateKey_${gIdx}`);
-                    const gLabel = this.formatChannelKeyLabel(gCode);
-                    return `
-                      <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 1px 4px;">
-                        <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="gateKey_${gIdx}" type="button" style="
-                          font-size: 0.66rem;
-                          padding: 1px 4px;
-                          font-weight: 600;
-                          border: none;
-                          background: transparent;
-                          color: #fff;
-                          ${isListeningGate ? "color: #ef4444; font-weight: 700; animation: pulse 1s infinite;" : ""}
-                        " title="Click to rebind held gate button">
-                          ${isListeningGate ? "🔴 Press..." : `⌨️ ${gLabel}`}
-                        </button>
-                        <button class="btn-pipe-remove-gate-key" data-binding-id="${b.id}" data-gate-index="${gIdx}" type="button" style="
-                          font-size: 0.62rem;
-                          color: #ef4444;
-                          background: transparent;
-                          border: none;
-                          cursor: pointer;
-                          padding: 0 2px;
-                          line-height: 1;
-                        " title="Remove this held button requirement">✕</button>
-                      </div>
-                    `;
-                  }).join("")}
-                </div>
-              </div>
-            `;
-
-            // Render Source Column (Left)
-            let sourceHtml = "";
-            if (source.type === "button") {
-              const listening = isListening(b.id, "button");
-              const label = this.formatChannelKeyLabel(source.code);
-              sourceHtml = `
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">RAW BUTTON</span>
-                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
-                      <option value="button" selected>Button</option>
-                      <option value="composite_4key">4-Key WASD</option>
-                      <option value="1d_scalar">1D Scalar</option>
-                      <option value="2d_vector">2D Vector</option>
-                    </select>
-                  </div>
-                  <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; padding: 1px 4px; width: fit-content;">
-                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="button" type="button" style="
-                      font-size: 0.72rem;
-                      padding: 2px 6px;
-                      font-weight: 600;
-                      border: none;
-                      background: transparent;
-                      ${listening ? "color: #ef4444; font-weight: 700; animation: pulse 1s infinite;" : "color: #fff;"}
-                    " title="Click to bind primary key or mouse button">
-                      ${listening ? "🔴 Press key..." : `⌨️ ${label}`}
-                    </button>
-                  </div>
-                  ${gateHtml}
-                </div>
-              `;
-            } else if (source.type === "composite_4key") {
-              sourceHtml = `
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">4-KEY COMPOSITE</span>
-                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
-                      <option value="button">Button</option>
-                      <option value="composite_4key" selected>4-Key WASD</option>
-                      <option value="1d_scalar">1D Scalar</option>
-                      <option value="2d_vector">2D Vector</option>
-                    </select>
-                  </div>
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
-                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="upKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "upKey") ? "background: #ef4444; color: #fff;" : ""}">
-                      ↑ ${this.formatChannelKeyLabel(source.upKey)}
-                    </button>
-                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="downKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "downKey") ? "background: #ef4444; color: #fff;" : ""}">
-                      ↓ ${this.formatChannelKeyLabel(source.downKey)}
-                    </button>
-                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="leftKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "leftKey") ? "background: #ef4444; color: #fff;" : ""}">
-                      ← ${this.formatChannelKeyLabel(source.leftKey)}
-                    </button>
-                    <button class="btn-pipeline-bind btn-secondary-action" data-binding-id="${b.id}" data-subkey="rightKey" type="button" style="font-size: 0.68rem; padding: 2px 4px; ${isListening(b.id, "rightKey") ? "background: #ef4444; color: #fff;" : ""}">
-                      → ${this.formatChannelKeyLabel(source.rightKey)}
-                    </button>
-                  </div>
-                  ${gateHtml}
-                </div>
-              `;
-            } else if (source.type === "1d_scalar") {
-              sourceHtml = `
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">1D SCALAR INPUT</span>
-                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
-                      <option value="button">Button</option>
-                      <option value="composite_4key">4-Key WASD</option>
-                      <option value="1d_scalar" selected>1D Scalar</option>
-                      <option value="2d_vector">2D Vector</option>
-                    </select>
-                  </div>
-                  <select class="pipe-source-scalar dev-select" data-binding-id="${b.id}" style="font-size: 0.72rem; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); padding: 3px 6px; border-radius: 4px;">
-                    <option value="mouseDeltaY" ${source.source === "mouseDeltaY" ? "selected" : ""}>🖱️ Mouse Delta Y (Vertical)</option>
-                    <option value="mouseDeltaX" ${source.source === "mouseDeltaX" ? "selected" : ""}>🖱️ Mouse Delta X (Horizontal)</option>
-                    <option value="mouseWheel" ${source.source === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
-                  </select>
-                  ${gateHtml}
-                </div>
-              `;
-            } else if (source.type === "2d_vector") {
-              sourceHtml = `
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 0.64rem; font-weight: 700; color: #38bdf8;">2D VECTOR INPUT</span>
-                    <select class="pipe-switch-source-type dev-select" data-binding-id="${b.id}" style="font-size: 0.62rem; padding: 1px 3px; background: #0f172a; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2);">
-                      <option value="button">Button</option>
-                      <option value="composite_4key">4-Key WASD</option>
-                      <option value="1d_scalar">1D Scalar</option>
-                      <option value="2d_vector" selected>2D Vector</option>
-                    </select>
-                  </div>
-                  <select class="pipe-source-vector dev-select" data-binding-id="${b.id}" style="font-size: 0.72rem; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); padding: 3px 6px; border-radius: 4px;">
-                    <option value="mouseWorldPos" ${source.source === "mouseWorldPos" ? "selected" : ""}>🌐 Mouse World Position</option>
-                    <option value="mouseScreenPos" ${source.source === "mouseScreenPos" ? "selected" : ""}>🖥️ Mouse Screen Position</option>
-                  </select>
-                  ${gateHtml}
-                </div>
-              `;
-            }
-
-            // Render Center Column (Processor & Cleaning)
-            let centerHtml = "";
-            if (proc.type === "button") {
-              centerHtml = `
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">Button Processor:</span>
-                    <select class="pipe-proc-trigger-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
-                      <option value="down" ${proc.triggerMode === "down" ? "selected" : ""}>Down (Fresh Press)</option>
-                      <option value="hold" ${proc.triggerMode === "hold" ? "selected" : ""}>Hold (Sustained)</option>
-                      <option value="up" ${proc.triggerMode === "up" ? "selected" : ""}>Up (Release)</option>
-                      <option value="timedHold" ${proc.triggerMode === "timedHold" ? "selected" : ""}>Timed Hold (>200ms)</option>
-                    </select>
-                  </div>
-                  <div style="display: flex; gap: 12px; font-size: 0.68rem; color: #94a3b8;">
-                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Ignores key if already claimed by another active ability">
-                      <input type="checkbox" class="pipe-proc-clean" data-binding-id="${b.id}" ${proc.requireCleanPress ? "checked" : ""} />
-                      <span>Require Clean Press</span>
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Claims physical key so other abilities on this key won't fire during hold">
-                      <input type="checkbox" class="pipe-proc-claim" data-binding-id="${b.id}" ${proc.claimOnFire ? "checked" : ""} />
-                      <span>Claim On Fire</span>
-                    </label>
-                  </div>
-                </div>
-              `;
-            } else if (proc.type === "1d_scalar") {
-              centerHtml = `
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">1D Scalar Processor:</span>
-                    <select class="pipe-proc-scalar-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
-                      <option value="accumulator" ${proc.mode === "accumulator" ? "selected" : ""}>Accumulator (0.0 to 1.0)</option>
-                      <option value="delta" ${proc.mode === "delta" ? "selected" : ""}>Instant Delta</option>
-                    </select>
-                  </div>
-                  <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; color: #94a3b8;">
-                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Freezes game reticle in place and locks & hides real OS cursor while actively reading mouse input">
-                      <input type="checkbox" class="pipe-proc-cursor-lock" data-binding-id="${b.id}" ${proc.autoCursorLock ? "checked" : ""} />
-                      <span style="color: #38bdf8; font-weight: 600;">🔒 Auto Lock Game & Real Cursor</span>
-                    </label>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                      <span>Sens:</span>
-                      <input type="number" class="pipe-proc-sens dev-input" data-binding-id="${b.id}" value="${proc.sensitivity ?? 0.005}" step="0.001" style="width: 50px; font-size: 0.68rem; padding: 1px 4px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;" />
-                    </div>
-                  </div>
-                </div>
-              `;
-            } else if (proc.type === "2d_vector") {
-              centerHtml = `
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">2D Vector Processor:</span>
-                    <select class="pipe-proc-vector-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
-                      <option value="direct" ${proc.mode === "direct" ? "selected" : ""}>Direct Cartesian (WASD)</option>
-                      <option value="facingRelative" ${proc.mode === "facingRelative" ? "selected" : ""}>Facing-Relative Strafe</option>
-                    </select>
-                  </div>
-                  <div style="font-size: 0.64rem; color: #64748b;">Normalizes direction vector and filters inputs</div>
-                </div>
-              `;
-            } else if (proc.type === "facing") {
-              centerHtml = `
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <span style="font-size: 0.68rem; font-weight: 700; color: #cbd5e1;">Facing Angle Processor:</span>
-                    <select class="pipe-proc-facing-mode dev-select" data-binding-id="${b.id}" style="font-size: 0.70rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
-                      <option value="fromMousePos" ${proc.mode === "fromMousePos" ? "selected" : ""}>From Mouse World Pos</option>
-                      <option value="fromMovement" ${proc.mode === "fromMovement" ? "selected" : ""}>From Movement Direction</option>
-                    </select>
-                  </div>
-                  <div style="font-size: 0.64rem; color: #64748b;">Calculates heading angle independently from thrust</div>
-                </div>
-              `;
-            }
-
-            return `
-              <div class="pipeline-binding-row" data-binding-id="${b.id}" style="
-                display: grid;
-                grid-template-columns: 240px 24px 1fr 24px 220px 48px;
-                align-items: center;
-                gap: 8px;
-                background: rgba(15, 23, 42, 0.75);
-                border: 1px solid rgba(148, 163, 184, 0.2);
-                border-radius: 6px;
-                padding: 8px 12px;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-              ">
-                <!-- Column 1: Raw Input (Left) -->
-                <div>${sourceHtml}</div>
-
-                <!-- Column 2: Arrow 1 -->
-                <div style="display: flex; justify-content: center; align-items: center; color: #38bdf8; font-size: 0.95rem;">➔</div>
-
-                <!-- Column 3: Processor / Adapter (Center) -->
-                <div>${centerHtml}</div>
-
-                <!-- Column 4: Arrow 2 -->
-                <div style="display: flex; justify-content: center; align-items: center; color: #34d399; font-size: 0.95rem;">➔</div>
-
-                <!-- Column 5: Module Socket & Condition (Right) -->
-                <div style="display: flex; flex-direction: column; gap: 6px;">
-                  <div>
-                    <div style="font-size: 0.64rem; font-weight: 700; color: #34d399;">MODULE SOCKET</div>
-                    <select class="pipe-target-socket dev-select" data-binding-id="${b.id}" style="width: 100%; font-size: 0.70rem; padding: 2px 4px; background: #0f172a; color: #ffffff; border: 1px solid rgba(52,211,153,0.3); border-radius: 3px;">
-                      <optgroup label="Locomotion">
-                        <option value="locomotion.moveVector" ${b.target === "locomotion.moveVector" ? "selected" : ""}>🏃 Locomotion.Move Vector</option>
-                        <option value="locomotion.forwardThrust" ${b.target === "locomotion.forwardThrust" ? "selected" : ""}>🚀 Locomotion.Forward Thrust</option>
-                        <option value="locomotion.reverseThrust" ${b.target === "locomotion.reverseThrust" ? "selected" : ""}>🛑 Locomotion.Reverse Thrust</option>
-                        <option value="locomotion.strafeLeft" ${b.target === "locomotion.strafeLeft" ? "selected" : ""}>⬅️ Locomotion.Strafe Left</option>
-                        <option value="locomotion.strafeRight" ${b.target === "locomotion.strafeRight" ? "selected" : ""}>➡️ Locomotion.Strafe Right</option>
-                        <option value="locomotion.sprint" ${b.target === "locomotion.sprint" ? "selected" : ""}>⚡ Locomotion.Sprint</option>
-                        <option value="locomotion.jump" ${b.target === "locomotion.jump" ? "selected" : ""}>🦘 Locomotion.Jump</option>
-                      </optgroup>
-                      <optgroup label="Character Heading">
-                        <option value="character.facing" ${b.target === "character.facing" ? "selected" : ""}>🎯 Character.Facing Angle</option>
-                      </optgroup>
-                      <optgroup label="Throw & Ballistics">
-                        <option value="throw.chargeBow" ${b.target === "throw.chargeBow" ? "selected" : ""}>🏹 Throw.Charge Bow (Hold to Flatten/Loft, Release to Fire)</option>
-                        <option value="throw.quickOptimal" ${b.target === "throw.quickOptimal" ? "selected" : ""}>⚡ Throw.Quick Optimal (Most Efficient Trajectory)</option>
-                        <option value="throw.quickWallClear" ${b.target === "throw.quickWallClear" ? "selected" : ""}>⚡ Throw.Quick Wall-Clear (Lowest Energy No Wall Collision)</option>
-                        <option value="throw.aimWallClear" ${b.target === "throw.aimWallClear" ? "selected" : ""}>🏹 Throw.Aim Wall-Clear (Aim Lowest Energy No Wall Collision)</option>
-                        <option value="throw.chargeArc" ${b.target === "throw.chargeArc" ? "selected" : ""}>⏳ Throw.Charge Arc (Hold to Flatten/Loft)</option>
-                        <option value="throw.aim" ${b.target === "throw.aim" ? "selected" : ""}>🎯 Throw.Aim Arc (Manual)</option>
-                        <option value="throw.arcHeight" ${b.target === "throw.arcHeight" ? "selected" : ""}>📐 Throw.Arc Height Modulation</option>
-                        <option value="throw.fire" ${b.target === "throw.fire" ? "selected" : ""}>🔥 Throw.Fire Release</option>
-                      </optgroup>
-                      <optgroup label="Interaction & Consumables">
-                        <option value="pickup.grab" ${b.target === "pickup.grab" ? "selected" : ""}>📦 Pickup.Grab Ground Item</option>
-                        <option value="pickup.drop" ${b.target === "pickup.drop" ? "selected" : ""}>📤 Pickup.Drop Held Item</option>
-                        <option value="pickup.swap" ${b.target === "pickup.swap" ? "selected" : ""}>🔄 Pickup.Quick Swap</option>
-                        <option value="consume.bite" ${b.target === "consume.bite" ? "selected" : ""}>🍎 Consume.Bite / Eat</option>
-                      </optgroup>
-                      <optgroup label="Combat">
-                        <option value="melee.punch" ${b.target === "melee.punch" ? "selected" : ""}>🥊 Melee.Punch</option>
-                        <option value="laser.aim" ${b.target === "laser.aim" ? "selected" : ""}>⚡ Laser.Aim Chord</option>
-                        <option value="laser.fire" ${b.target === "laser.fire" ? "selected" : ""}>⚡ Laser.Fire</option>
-                        <option value="laser.power" ${b.target === "laser.power" ? "selected" : ""}>⚡ Laser.Power Level</option>
-                      </optgroup>
-                    </select>
-                  </div>
-                  <div>
-                    <div style="font-size: 0.64rem; font-weight: 700; color: #a78bfa;">CONDITION</div>
-                    <select class="pipe-binding-condition dev-select" data-binding-id="${b.id}" style="width: 100%; font-size: 0.68rem; padding: 2px 4px; background: #0f172a; color: #e2e8f0; border: 1px solid rgba(167,139,250,0.3); border-radius: 3px;">
-                      <option value="none" ${(!b.condition || b.condition === "none") ? "selected" : ""}>Always (No Condition)</option>
-                      <option value="emptyHanded" ${b.condition === "emptyHanded" ? "selected" : ""}>Empty Handed (No Item)</option>
-                      <option value="holdingItem" ${b.condition === "holdingItem" ? "selected" : ""}>Holding Any Item</option>
-                      <option value="holdingConsumable" ${b.condition === "holdingConsumable" ? "selected" : ""}>Holding Consumable / Ability</option>
-                      <option value="holdingThrowable" ${b.condition === "holdingThrowable" ? "selected" : ""}>Holding Throwable (Not Edible)</option>
-                      <option value="targetInReach" ${b.condition === "targetInReach" ? "selected" : ""}>Target Object In Reach</option>
-                      <option value="targetNotInReach" ${b.condition === "targetNotInReach" ? "selected" : ""}>No Target In Reach</option>
-                      <option value="isGrounded" ${b.condition === "isGrounded" ? "selected" : ""}>Grounded On Surface</option>
-                      <option value="isClimbing" ${b.condition === "isClimbing" ? "selected" : ""}>Climbing Wall</option>
-                    </select>
-                  </div>
-                </div>
-
-                <!-- Column 6: Delete -->
-                <div style="display: flex; align-items: center; justify-content: center;">
-                  <button class="btn-delete-pipeline-binding btn-icon" data-binding-id="${b.id}" type="button" style="padding: 3px 6px; font-size: 0.76rem; color: #ef4444; background: transparent; border: 1px solid rgba(239,68,68,0.25); border-radius: 4px; cursor: pointer;" title="Delete this input binding">
-                    🗑️
-                  </button>
-                </div>
-              </div>
-            `;
-          }).join("")}
-        </div>
-      </div>
-    `;
-  }
-
-  private static startPipelineKeyListening(bindingId: string, subKey?: string): void {
-    if (this.recorderCleanup) this.recorderCleanup();
-    this.listeningPipelineTarget = { bindingId, subKey: subKey === "button" ? undefined : subKey };
-    this.renderActiveView();
-
-    if (!this.workingSchema) return;
-    const schema = this.workingSchema;
-    this.ensureChannels(schema);
-    const pipeline = schema.keyboardMouse.pipeline || [];
-    const binding = pipeline.find((b) => b.id === bindingId);
-    if (!binding) return;
-
-    const commitTrigger = (device: "keyboard" | "mouse", code: string) => {
-      if (subKey === "gate") {
-        if (binding.processor.type === "1d_scalar") {
-          binding.processor.gateButton = {
-            device,
-            code,
-            mode: "hold",
-          };
-        }
-      } else if (subKey === "upKey" || subKey === "downKey" || subKey === "leftKey" || subKey === "rightKey") {
-        if (binding.source.type === "composite_4key") {
-          binding.source[subKey] = code;
-        }
-      } else if (subKey && subKey.startsWith("extraKey_")) {
-        const extraIdx = parseInt(subKey.split("_")[1], 10);
-        if (binding.source.type === "button") {
-          binding.source.additionalCodes = binding.source.additionalCodes || [];
-          binding.source.additionalCodes[extraIdx] = code;
-        }
-      } else if (subKey && subKey.startsWith("gateKey_")) {
-        const gateIdx = parseInt(subKey.split("_")[1], 10);
-        binding.gateButtons = binding.gateButtons || [];
-        binding.gateButtons[gateIdx] = code;
-      } else {
-        // Main button - strictly 1 key per slot, no chords in a single block
-        if (binding.source.type === "button") {
-          binding.source.device = device;
-          binding.source.code = code;
-          delete (binding.source as any).chordModifiers;
-        } else {
-          binding.source = {
-            type: "button",
-            device,
-            code,
-          };
-        }
-      }
-      cleanup();
-      this.listeningPipelineTarget = null;
-      this.renderActiveView();
-    };
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      if (e.code === "Escape") {
-        cleanup();
-        this.listeningPipelineTarget = null;
-        this.renderActiveView();
-        return;
-      }
-
-      commitTrigger("keyboard", e.code);
-    };
-
-    const onMouseDown = (e: MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const buttonMap: Record<number, string> = {
-        0: "MouseLeft",
-        1: "MouseMiddle",
-        2: "MouseRight",
-        3: "MouseBack",
-        4: "MouseForward",
-      };
-      const code = buttonMap[e.button] || `MouseButton${e.button}`;
-      commitTrigger("mouse", code);
-    };
-
-    const cleanup = () => {
+      isGamepadPolling = false;
+      if (animId !== null) cancelAnimationFrame(animId);
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("mousedown", onMouseDown, true);
       if (this.popoutWindow && !this.popoutWindow.closed) {
@@ -3045,19 +2602,10 @@ export class ControlsInspector {
       this.renderActiveView();
     });
 
-    // View Mode Switcher (Modular Control Blocks vs Advanced Pipeline)
-    root.querySelector("#btn-mode-blocks")?.addEventListener("click", () => {
-      this.viewMode = "blocks";
-      this.renderActiveView();
-    });
-    root.querySelector("#btn-mode-pipeline")?.addEventListener("click", () => {
-      this.viewMode = "pipeline";
-      this.renderActiveView();
-    });
-
     // Modular Control Blocks Event Listeners
-    if (this.viewMode === "blocks" && schema.keyboardMouse.blocks) {
-      const blocks = schema.keyboardMouse.blocks || [];
+    if (this.activeTab === "keyboardMouse" || this.activeTab === "gamepad") {
+      const blocks = this.getActiveBlocks(schema);
+      const isGamepad = this.activeTab === "gamepad";
 
       // Add Control Block dropdown
       const selectAddBlock = root.querySelector("#select-add-control-block") as HTMLSelectElement;
@@ -3067,17 +2615,38 @@ export class ControlsInspector {
           if (!type) return;
           const newId = `block-${type}-${Date.now().toString(36)}`;
           if (type === "locomotion") {
-            blocks.push({
+            blocks.push(isGamepad ? {
               type: "locomotion",
               id: newId,
               name: "Locomotion",
               enabled: true,
+              mode: "wasd",
+              moveKeys: { upKey: "GamepadDpadUp", downKey: "GamepadDpadDown", leftKey: "GamepadDpadLeft", rightKey: "GamepadDpadRight", requireCleanPress: false },
+              jump: { code: "GamepadA", requireCleanPress: true },
+              sprint: { code: "GamepadLS", mode: "hold", requireCleanPress: false },
+            } : {
+              type: "locomotion",
+              id: newId,
+              name: "Locomotion",
+              enabled: true,
+              mode: "wasd",
               moveKeys: { upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" },
               jump: { code: "Space" },
               sprint: { code: "ShiftLeft", mode: "hold" },
             });
           } else if (type === "itemInteraction") {
-            blocks.push({
+            blocks.push(isGamepad ? {
+              type: "itemInteraction",
+              id: newId,
+              name: "Item Interaction",
+              enabled: true,
+              pickup: { code: "GamepadX", requireCleanPress: true },
+              drop: { code: "GamepadY", requireCleanPress: true },
+              swap: { code: "GamepadB", requireCleanPress: true },
+              consume: { code: "GamepadLB", requireCleanPress: false },
+              swapRequiresHolding: false,
+              triggerPickupWhenEmptyHanded: true,
+            } : {
               type: "itemInteraction",
               id: newId,
               name: "Item Interaction",
@@ -3090,7 +2659,20 @@ export class ControlsInspector {
               triggerPickupWhenEmptyHanded: true,
             });
           } else if (type === "throw") {
-            blocks.push({
+            blocks.push(isGamepad ? {
+              type: "throw",
+              id: newId,
+              name: "Throwing & Ballistics",
+              enabled: true,
+              mode: "chargeAndRelease",
+              chargeTrigger: { code: "GamepadRT", requireCleanPress: true },
+              aimTrigger: { code: "GamepadLT", requireCleanPress: false },
+              fireTrigger: { code: "GamepadRT", requireCleanPress: true },
+              quickTrigger: { code: "GamepadRT", requireCleanPress: true },
+              arcModulation: { source: "none", autoCursorLock: false, sensitivity: 0.005 },
+              enableProximityCancel: false,
+              cancelRadius: 1.5,
+            } : {
               type: "throw",
               id: newId,
               name: "Throwing & Ballistics",
@@ -3101,9 +2683,17 @@ export class ControlsInspector {
               fireTrigger: { code: "MouseLeft" },
               quickTrigger: { code: "MouseLeft" },
               arcModulation: { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 },
+              enableProximityCancel: false,
+              cancelRadius: 1.5,
             });
           } else if (type === "melee") {
-            blocks.push({
+            blocks.push(isGamepad ? {
+              type: "melee",
+              id: newId,
+              name: "Melee Combat",
+              enabled: true,
+              punch: { code: "GamepadB", requireCleanPress: true },
+            } : {
               type: "melee",
               id: newId,
               name: "Melee Combat",
@@ -3111,7 +2701,16 @@ export class ControlsInspector {
               punch: { code: "KeyF" },
             });
           } else if (type === "laser") {
-            blocks.push({
+            blocks.push(isGamepad ? {
+              type: "laser",
+              id: newId,
+              name: "Laser Beam",
+              enabled: true,
+              aimTrigger: { code: "GamepadLT", requireCleanPress: false },
+              aimMode: "mouseWorldPos",
+              fireTrigger: { code: "GamepadRT", autoFireWhenAiming: false, requireCleanPress: false },
+              powerLevel: { source: "none", sensitivity: 1.0 },
+            } : {
               type: "laser",
               id: newId,
               name: "Laser Beam",
@@ -3446,274 +3045,6 @@ export class ControlsInspector {
           const block = blocks.find((b) => b.id === bId) as FacingControlBlock;
           if (block) {
             block.mode = (e.target as HTMLSelectElement).value as any;
-          }
-        });
-      });
-    }
-
-    // Modular Left-to-Right Pipeline Event Listeners
-    if (this.viewMode === "pipeline" && schema.keyboardMouse.pipeline) {
-      const pipeline = schema.keyboardMouse.pipeline;
-
-      // Add Binding Button
-      root.querySelector("#btn-add-pipeline-binding")?.addEventListener("click", () => {
-        pipeline.push({
-          id: "pipe-" + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
-          name: "New Binding",
-          enabled: true,
-          source: { type: "button", device: "keyboard", code: "KeyE" },
-          processor: { type: "button", triggerMode: "down", requireCleanPress: true, claimOnFire: true },
-          target: "pickup.grab",
-        });
-        schema.pipeline = pipeline;
-        this.renderActiveView();
-      });
-
-      // Delete Binding Button
-      root.querySelectorAll(".btn-delete-pipeline-binding").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const bId = (btn as HTMLElement).dataset.bindingId;
-          schema.keyboardMouse.pipeline = pipeline.filter((b) => b.id !== bId);
-          schema.pipeline = schema.keyboardMouse.pipeline;
-          this.renderActiveView();
-        });
-      });
-
-      // Pipeline Keybind Buttons
-      root.querySelectorAll(".btn-pipeline-bind").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const bId = (btn as HTMLElement).dataset.bindingId;
-          const subkey = (btn as HTMLElement).dataset.subkey as any;
-          if (bId) {
-            this.startPipelineKeyListening(bId, subkey);
-          }
-        });
-      });
-
-      // Switch Source Type (Button vs 4-Key WASD vs 1D Scalar vs 2D Vector)
-      root.querySelectorAll(".pipe-switch-source-type").forEach((sel) => {
-        sel.addEventListener("change", (e) => {
-          const bId = (sel as HTMLElement).dataset.bindingId;
-          const val = (e.target as HTMLSelectElement).value;
-          const b = pipeline.find((p) => p.id === bId);
-          if (!b) return;
-
-          if (val === "button") {
-            b.source = { type: "button", device: "keyboard", code: "KeyE" };
-            b.processor = { type: "button", triggerMode: "down", requireCleanPress: true, claimOnFire: true };
-          } else if (val === "composite_4key") {
-            b.source = { type: "composite_4key", upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" };
-            b.processor = { type: "2d_vector", mode: "direct" };
-            b.target = "locomotion.moveVector";
-          } else if (val === "1d_scalar") {
-            b.source = { type: "1d_scalar", source: "mouseDeltaY" };
-            b.processor = { type: "1d_scalar", mode: "accumulator", sensitivity: 0.005, clampMin: 0.0, clampMax: 1.0, initialValue: 0.5, autoCursorLock: true, gateButton: { device: "mouse", code: "MouseLeft", mode: "hold" } };
-            b.target = "throw.arcHeight";
-          } else if (val === "2d_vector") {
-            b.source = { type: "2d_vector", source: "mouseWorldPos" };
-            b.processor = { type: "facing", mode: "fromMousePos" };
-            b.target = "character.facing";
-          }
-          this.renderActiveView();
-        });
-      });
-
-      // 1D Scalar Source Dropdown
-      root.querySelectorAll(".pipe-source-scalar").forEach((sel) => {
-        sel.addEventListener("change", (e) => {
-          const bId = (sel as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.source.type === "1d_scalar") {
-            b.source.source = (e.target as HTMLSelectElement).value as any;
-          }
-        });
-      });
-
-      // 2D Vector Source Dropdown
-      root.querySelectorAll(".pipe-source-vector").forEach((sel) => {
-        sel.addEventListener("change", (e) => {
-          const bId = (sel as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.source.type === "2d_vector") {
-            b.source.source = (e.target as HTMLSelectElement).value as any;
-          }
-        });
-      });
-
-      // Trigger Mode Dropdown
-      root.querySelectorAll(".pipe-proc-trigger-mode").forEach((sel) => {
-        sel.addEventListener("change", (e) => {
-          const bId = (sel as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.processor.type === "button") {
-            b.processor.triggerMode = (e.target as HTMLSelectElement).value as any;
-          }
-        });
-      });
-
-      // Require Clean Press Checkbox
-      root.querySelectorAll(".pipe-proc-clean").forEach((chk) => {
-        chk.addEventListener("change", (e) => {
-          const bId = (chk as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.processor.type === "button") {
-            b.processor.requireCleanPress = (e.target as HTMLInputElement).checked;
-          }
-        });
-      });
-
-      // Claim On Fire Checkbox
-      root.querySelectorAll(".pipe-proc-claim").forEach((chk) => {
-        chk.addEventListener("change", (e) => {
-          const bId = (chk as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.processor.type === "button") {
-            b.processor.claimOnFire = (e.target as HTMLInputElement).checked;
-          }
-        });
-      });
-
-      // 1D Scalar Processor Mode (Accumulator vs Delta)
-      root.querySelectorAll(".pipe-proc-scalar-mode").forEach((sel) => {
-        sel.addEventListener("change", (e) => {
-          const bId = (sel as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.processor.type === "1d_scalar") {
-            b.processor.mode = (e.target as HTMLSelectElement).value as any;
-          }
-        });
-      });
-
-      // Auto Cursor Lock Checkbox
-      root.querySelectorAll(".pipe-proc-cursor-lock").forEach((chk) => {
-        chk.addEventListener("change", (e) => {
-          const bId = (chk as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.processor.type === "1d_scalar") {
-            b.processor.autoCursorLock = (e.target as HTMLInputElement).checked;
-          }
-        });
-      });
-
-      // Sensitivity Input
-      root.querySelectorAll(".pipe-proc-sens").forEach((inp) => {
-        inp.addEventListener("change", (e) => {
-          const bId = (inp as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.processor.type === "1d_scalar") {
-            b.processor.sensitivity = parseFloat((e.target as HTMLInputElement).value) || 0.005;
-          }
-        });
-      });
-
-      // 2D Vector Processor Mode (Direct vs FacingRelative)
-      root.querySelectorAll(".pipe-proc-vector-mode").forEach((sel) => {
-        sel.addEventListener("change", (e) => {
-          const bId = (sel as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.processor.type === "2d_vector") {
-            b.processor.mode = (e.target as HTMLSelectElement).value as any;
-          }
-        });
-      });
-
-      // Facing Processor Mode (FromMousePos vs FromMovement)
-      root.querySelectorAll(".pipe-proc-facing-mode").forEach((sel) => {
-        sel.addEventListener("change", (e) => {
-          const bId = (sel as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.processor.type === "facing") {
-            b.processor.mode = (e.target as HTMLSelectElement).value as any;
-          }
-        });
-      });
-
-      // Target Socket Dropdown
-      root.querySelectorAll(".pipe-target-socket").forEach((sel) => {
-        sel.addEventListener("change", (e) => {
-          const bId = (sel as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b) {
-            b.target = (e.target as HTMLSelectElement).value as any;
-          }
-        });
-      });
-
-      // Binding Condition Dropdown
-      root.querySelectorAll(".pipe-binding-condition").forEach((sel) => {
-        sel.addEventListener("change", (e) => {
-          const bId = (sel as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b) {
-            b.condition = (e.target as HTMLSelectElement).value as any;
-          }
-        });
-      });
-
-      // Add Extra Required Key to Multi-Button Chord
-      root.querySelectorAll(".btn-pipe-add-key").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const bId = (btn as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.source.type === "button") {
-            b.source.additionalCodes = b.source.additionalCodes || [];
-            const newIdx = b.source.additionalCodes.length;
-            b.source.additionalCodes.push("ShiftLeft");
-            this.startPipelineKeyListening(b.id, `extraKey_${newIdx}`);
-          }
-        });
-      });
-
-      // Remove Extra Required Key from Multi-Button Chord
-      root.querySelectorAll(".btn-pipe-remove-key").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const bId = (btn as HTMLElement).dataset.bindingId;
-          const keyIdx = parseInt((btn as HTMLElement).dataset.keyIndex || "-1", 10);
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.source.type === "button" && b.source.additionalCodes && keyIdx >= 0) {
-            b.source.additionalCodes.splice(keyIdx, 1);
-            this.renderActiveView();
-          }
-        });
-      });
-
-      // Remove Primary Key from Multi-Button Chord (promote first extra key to primary)
-      root.querySelectorAll(".btn-pipe-remove-primary-key").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const bId = (btn as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.source.type === "button" && b.source.additionalCodes && b.source.additionalCodes.length > 0) {
-            const nextCode = b.source.additionalCodes.shift()!;
-            b.source.code = nextCode;
-            b.source.device = nextCode.startsWith("Mouse") ? "mouse" : "keyboard";
-            this.renderActiveView();
-          }
-        });
-      });
-
-      // Add Gate Key (While Holding Button)
-      root.querySelectorAll(".btn-pipe-add-gate-key").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const bId = (btn as HTMLElement).dataset.bindingId;
-          const b = pipeline.find((p) => p.id === bId);
-          if (b) {
-            b.gateButtons = b.gateButtons || [];
-            const newIdx = b.gateButtons.length;
-            b.gateButtons.push("KeyD");
-            this.startPipelineKeyListening(b.id, `gateKey_${newIdx}`);
-          }
-        });
-      });
-
-      // Remove Gate Key
-      root.querySelectorAll(".btn-pipe-remove-gate-key").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const bId = (btn as HTMLElement).dataset.bindingId;
-          const gateIdx = parseInt((btn as HTMLElement).dataset.gateIndex || "-1", 10);
-          const b = pipeline.find((p) => p.id === bId);
-          if (b && b.gateButtons && gateIdx >= 0) {
-            b.gateButtons.splice(gateIdx, 1);
-            this.renderActiveView();
           }
         });
       });
