@@ -5602,11 +5602,11 @@ class ThrowCapability {
     }
   }
   static updateTrajectoryPreview(char, isAimingInput, aimTargetPos, canAimThrow, isLaserModeActive, arena2, entities, autoLock = false, lockedAimPos = null, aimLockDelta = 0) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f, _g;
     char.isAiming = isAimingInput;
     char.aimTarget = isAimingInput ? aimTargetPos : null;
     if (!isLaserModeActive && char.heldObject && canAimThrow && char.throwModule && char.throwModule.enabled && char.hasStrength && isAimingInput && aimTargetPos) {
-      const throwBlock = (_c = (_b = (_a = char.controlSchema) == null ? void 0 : _a.keyboardMouse) == null ? void 0 : _b.blocks) == null ? void 0 : _c.find(
+      const throwBlock = (_e = ((_b = (_a = char.controlSchema) == null ? void 0 : _a.gamepad) == null ? void 0 : _b.blocks) || ((_d = (_c = char.controlSchema) == null ? void 0 : _c.keyboardMouse) == null ? void 0 : _d.blocks)) == null ? void 0 : _e.find(
         (b) => b.type === "throw"
       );
       const shouldCheckCancel = Boolean(throwBlock == null ? void 0 : throwBlock.enableProximityCancel);
@@ -5634,7 +5634,7 @@ class ThrowCapability {
           aimLockDelta
         );
         const startRatio = char.savedArcRatio ?? char.throwModule.savedArcRatio ?? 0.5;
-        const flattestBlocked = Boolean((_d = clearTraj == null ? void 0 : clearTraj.flattestPoints) == null ? void 0 : _d.some((pt) => pt.collidesWall));
+        const flattestBlocked = Boolean((_f = clearTraj == null ? void 0 : clearTraj.flattestPoints) == null ? void 0 : _f.some((pt) => pt.collidesWall));
         const now = performance.now();
         const start = char.throwChargeStartTime ?? now;
         const holdMs = Math.max(0, now - start);
@@ -5711,6 +5711,52 @@ class ThrowCapability {
           lockedAimPos,
           aimLockDelta
         );
+      } else if (char.isTriggerPullThrowing) {
+        if (shouldCheckCancel) {
+          const aimDx = aimTargetPos.x - char.position.x;
+          const aimDy = aimTargetPos.y - char.position.y;
+          const distToAim = Math.hypot(aimDx, aimDy);
+          if (distToAim < cancelRadius) {
+            char.activeTrajectory = null;
+            char.isThrowCancelZone = true;
+            return;
+          }
+        }
+        char.isThrowCancelZone = false;
+        const clearTraj = ThrowCapability.findLowestEnergyWallClearTrajectory(
+          char,
+          arena2,
+          aimTargetPos.x,
+          aimTargetPos.y,
+          entities,
+          autoLock,
+          lockedAimPos,
+          aimLockDelta
+        );
+        const startRatio = char.savedArcRatio ?? char.throwModule.savedArcRatio ?? 0.5;
+        const flattestBlocked = Boolean((_g = clearTraj == null ? void 0 : clearTraj.flattestPoints) == null ? void 0 : _g.some((pt) => pt.collidesWall));
+        const targetRatio = flattestBlocked ? 1 : 0;
+        const f = char.triggerThrowPower ?? 0;
+        const scaledRatio = startRatio + (targetRatio - startRatio) * f;
+        char.throwChargingTowards = flattestBlocked ? "steepest" : "flattest";
+        char.throwModule.hasUserSetArcRatio = true;
+        char.throwModule.savedArcRatio = scaledRatio;
+        char.hasUserSetArcRatio = true;
+        char.savedArcRatio = scaledRatio;
+        char.activeTrajectory = f > 1e-3 ? char.throwModule.calculateTrajectory(
+          char,
+          aimTargetPos.x,
+          aimTargetPos.y,
+          arena2,
+          entities ?? arena2.entities,
+          arena2.visualAltitudeScale,
+          autoLock,
+          lockedAimPos,
+          aimLockDelta
+        ) : clearTraj;
+        if (char.activeTrajectory) {
+          char.activeTrajectory.chargingTowards = char.throwChargingTowards;
+        }
       } else {
         char.isThrowCancelZone = false;
         char.throwChargingTowards = void 0;
@@ -6076,6 +6122,8 @@ class Character extends GameObject {
     __publicField(this, "isThrowCancelZone", false);
     __publicField(this, "isAimingWallClear", false);
     __publicField(this, "isHoldingThrowRelease", false);
+    __publicField(this, "isTriggerPullThrowing", false);
+    __publicField(this, "triggerThrowPower", 0);
     __publicField(this, "hasDiedAwaitingNewPickup", false);
     __publicField(this, "_heldObject", null);
     __publicField(this, "isCharacter", true);
@@ -9454,7 +9502,10 @@ const DefaultGamepadControlBlocks = [
       requireCleanPress: false
     },
     jump: { code: "GamepadA", requireCleanPress: true },
-    sprint: { code: "GamepadLS", mode: "hold", requireCleanPress: false }
+    sprint: { code: "GamepadLS", mode: "hold", requireCleanPress: false },
+    forwardTrigger: { code: "GamepadRT" },
+    cursorSteerTrigger: { code: "GamepadLB" },
+    cursorSteerMode: "whenHoldingButton"
   },
   {
     type: "itemInteraction",
@@ -9478,6 +9529,7 @@ const DefaultGamepadControlBlocks = [
     aimTrigger: { code: "GamepadLT", requireCleanPress: false },
     fireTrigger: { code: "GamepadRT", requireCleanPress: true },
     quickTrigger: { code: "GamepadRT", requireCleanPress: true },
+    triggerMargin: 0.15,
     arcModulation: { source: "none", autoCursorLock: false, sensitivity: 5e-3 },
     enableProximityCancel: false,
     cancelRadius: 1.5
@@ -15806,6 +15858,8 @@ const _ControlsInspector = class _ControlsInspector {
         b.reverseKey = b.reverseKey !== void 0 ? b.reverseKey : "KeyS";
         b.strafeLeftKey = b.strafeLeftKey !== void 0 ? b.strafeLeftKey : "KeyA";
         b.strafeRightKey = b.strafeRightKey !== void 0 ? b.strafeRightKey : "KeyD";
+        b.cursorSteerTrigger = b.cursorSteerTrigger || { code: "GamepadLB" };
+        b.cursorSteerMode = b.cursorSteerMode || "whenHoldingButton";
         b.jump = b.jump || { code: "Space" };
         b.sprint = b.sprint || { code: "ShiftLeft", mode: "hold" };
         const renderMoveKey = (dir, keyName) => {
@@ -15828,13 +15882,36 @@ const _ControlsInspector = class _ControlsInspector {
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Locomotion Mode:</span>
               <select class="block-loco-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
-                <option value="wasd" ${b.mode === "wasd" ? "selected" : ""}>🏃 Direct 8-Way Movement (WASD)</option>
+                <option value="wasd" ${b.mode === "wasd" ? "selected" : ""}>🏃 Direct 8-Way Movement (WASD / Left Stick)</option>
                 <option value="walkToMouse" ${b.mode === "walkToMouse" ? "selected" : ""}>🖱️ Walk to Mouse (Forward Drive Toward Cursor)</option>
+                <option value="stickDirectionDriveButton" ${b.mode === "stickDirectionDriveButton" ? "selected" : ""}>🕹️ Stick Direction + Drive Button (Point stick to aim heading, hold button to walk)</option>
               </select>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
-              ${b.mode === "walkToMouse" ? `
+              ${b.mode === "stickDirectionDriveButton" ? `
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <div>
+                    ${this.renderInputSlot(b.id, "forwardTrigger", b.forwardTrigger, "Forward Drive Button / Trigger (e.g. GamepadRT)")}
+                    <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                      Point left stick in desired heading; hold this button to accelerate forward. Facing points with joystick.
+                    </div>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 2px;">
+                    <div>
+                      ${this.renderInputSlot(b.id, "cursorSteerTrigger", b.cursorSteerTrigger, "Cursor Steering Modifier Button (e.g. GamepadLB)")}
+                    </div>
+                    <div>
+                      <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Cursor Steer Mode</span>
+                      <select class="block-loco-cursor-mode dev-select" data-block-id="${b.id}" style="margin-top: 4px; font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px; width: 100%;">
+                        <option value="whenHoldingButton" ${b.cursorSteerMode === "whenHoldingButton" ? "selected" : ""}>Holding Modifier Button</option>
+                        <option value="whenAiming" ${b.cursorSteerMode === "whenAiming" ? "selected" : ""}>When Aiming / Throwing</option>
+                        <option value="never" ${b.cursorSteerMode === "never" ? "selected" : ""}>Never (Right Stick Only)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ` : b.mode === "walkToMouse" ? `
                 <div>
                   ${this.renderInputSlot(b.id, "forwardTrigger", b.forwardTrigger, "Forward Drive Button (Toward Cursor)")}
                   <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
@@ -15950,6 +16027,7 @@ const _ControlsInspector = class _ControlsInspector {
         b.arcModulation = b.arcModulation || { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 5e-3 };
         b.enableProximityCancel = Boolean(b.enableProximityCancel);
         b.cancelRadius = b.cancelRadius ?? 1.5;
+        b.triggerMargin = b.triggerMargin ?? 0.15;
         let modeSpecificHtml = "";
         if (b.mode === "chargeAndRelease") {
           modeSpecificHtml = `
@@ -15957,6 +16035,22 @@ const _ControlsInspector = class _ControlsInspector {
               ${this.renderInputSlot(b.id, "chargeTrigger", b.chargeTrigger, "Charge & Release Throw Button")}
               <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
                 Hold to charge trajectory/power, release to throw.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "triggerPullForce") {
+          modeSpecificHtml = `
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div>
+                ${this.renderInputSlot(b.id, "chargeTrigger", b.chargeTrigger, "Analog Throw Trigger (e.g. GamepadRT)")}
+                <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                  Pull trigger to scale throw force & trajectory height. Releasing the trigger fires the throw.
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <span style="font-size: 0.68rem; color: #94a3b8;">Trigger Deadzone Margin:</span>
+                <input type="number" step="0.05" min="0.0" max="0.5" class="block-throw-trigger-margin dev-input" data-block-id="${b.id}" value="${b.triggerMargin ?? 0.15}" style="width: 55px; font-size: 0.72rem; padding: 2px 4px; background: #0f172a; color: #fff; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; text-align: center;" />
+                <span style="font-size: 0.65rem; color: #64748b;">(0.0–0.5 threshold before force begins increasing)</span>
               </div>
             </div>
           `;
@@ -16018,7 +16112,7 @@ const _ControlsInspector = class _ControlsInspector {
             </div>
           `;
         }
-        const isHoldAndReleaseMode = b.mode === "chargeAndRelease" || b.mode === "aimWallClear" || b.mode === "holdAndRelease";
+        const isHoldAndReleaseMode = b.mode === "chargeAndRelease" || b.mode === "aimWallClear" || b.mode === "holdAndRelease" || b.mode === "triggerPullForce";
         const proximityCancelHtml = isHoldAndReleaseMode ? `
             <div style="margin-top: 6px; padding-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
               <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.72rem; color: #e2e8f0;">
@@ -16040,6 +16134,7 @@ const _ControlsInspector = class _ControlsInspector {
               <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Trajectory Manipulation Style:</span>
               <select class="block-throw-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
                 <option value="chargeAndRelease" ${b.mode === "chargeAndRelease" ? "selected" : ""}>🏹 Charge and Release (Bow style)</option>
+                <option value="triggerPullForce" ${b.mode === "triggerPullForce" ? "selected" : ""}>🎮 Analog Trigger Pull Force (Scale Force with Trigger, Release to Fire)</option>
                 <option value="holdAndRelease" ${b.mode === "holdAndRelease" ? "selected" : ""}>🏹 Hold & Release (Static Lowest Energy Arc)</option>
                 <option value="aimAndFire" ${b.mode === "aimAndFire" ? "selected" : ""}>🎯 Aim & Fire (Preview button + Launch button)</option>
                 <option value="quickOptimal" ${b.mode === "quickOptimal" ? "selected" : ""}>⚡ Most Efficient (Quick Optimal Arc)</option>
@@ -17137,6 +17232,27 @@ const _ControlsInspector = class _ControlsInspector {
           if (block) {
             const val = parseFloat(e.target.value);
             block.cancelRadius = isNaN(val) ? 1.5 : Math.max(0.1, val);
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".block-throw-trigger-margin").forEach((inp) => {
+        inp.addEventListener("change", (e) => {
+          const bId = inp.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            const val = parseFloat(e.target.value);
+            block.triggerMargin = isNaN(val) ? 0.15 : Math.max(0, Math.min(0.5, val));
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".block-loco-cursor-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.cursorSteerMode = e.target.value;
             this.renderActiveView();
           }
         });

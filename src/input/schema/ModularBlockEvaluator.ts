@@ -171,6 +171,28 @@ export class ModularBlockEvaluator {
       }
     };
 
+    const getSlotAnalogValue = (slot?: BlockInputSlot | null): number => {
+      if (!slot || !slot.code) return 0;
+      if (slot.code.startsWith("Gamepad")) {
+        const btn = ControlSchemaArbiter.parseGamepadButtonCode(slot.code);
+        if (btn >= 0) {
+          if (execCtx.gamepadStates?.getValue) {
+            return execCtx.gamepadStates.getValue(btn);
+          }
+          if (execCtx.getGamepadButtonValue) {
+            return execCtx.getGamepadButtonValue(execCtx.gamepadStates?.slotIndex ?? 0, btn);
+          }
+          return execCtx.gamepadStates?.isDown(btn) ? 1.0 : 0.0;
+        }
+        return 0;
+      }
+      if (slot.code.startsWith("Mouse")) {
+        const idx = slot.code === "MouseLeft" ? 0 : slot.code === "MouseMiddle" ? 1 : slot.code === "MouseRight" ? 2 : -1;
+        return (idx >= 0 && execCtx.mouseStates?.isDown(idx)) ? 1.0 : 0.0;
+      }
+      return tokens.isDown(slot.code) ? 1.0 : 0.0;
+    };
+
     let moveX = 0;
     let moveY = 0;
     let isSprinting = false;
@@ -199,7 +221,38 @@ export class ModularBlockEvaluator {
       switch (block.type) {
         case "locomotion": {
           const b = block as LocomotionControlBlock;
-          if (b.mode === "walkToMouse") {
+          const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
+
+          const isSteerCursorActive = (b.cursorSteerMode === "whenHoldingButton" && isSlotActive(b.cursorSteerTrigger, "hold", false, b.id, "locomotion.cursorSteer")) ||
+            (b.cursorSteerMode === "whenAiming" && isAimingTrajectory);
+
+          if (isSteerCursorActive && gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
+            claimSlot(b.cursorSteerTrigger, b.id, "locomotion.cursorSteer", false);
+            const cursorSpeed = 17.0;
+            targetAimPos.x += gpLeftStick.x * cursorSpeed * execCtx.dt;
+            targetAimPos.y += gpLeftStick.y * cursorSpeed * execCtx.dt;
+            if (execCtx.gamepadStates) {
+              const slot = input.gamepadSlots.get(execCtx.gamepadStates.slotIndex);
+              if (slot) {
+                slot.aimPos.x = targetAimPos.x;
+                slot.aimPos.y = targetAimPos.y;
+                slot.hasMovedAimStick = true;
+                slot.aimMovedWhileInRange = true;
+              }
+            }
+          } else if (b.mode === "stickDirectionDriveButton") {
+            const stickMag = gpLeftStick ? Math.hypot(gpLeftStick.x, gpLeftStick.y) : 0;
+            if (stickMag > 0.08) {
+              char.facingAngle = Math.atan2(gpLeftStick.y, gpLeftStick.x);
+            }
+            const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
+            if (fwdActive) {
+              const driveSpeed = stickMag > 0.08 ? Math.min(1.0, stickMag) : 1.0;
+              moveX += Math.cos(char.facingAngle) * driveSpeed;
+              moveY += Math.sin(char.facingAngle) * driveSpeed;
+              claimSlot(b.forwardTrigger, b.id, "locomotion.forwardDrive", false);
+            }
+          } else if (b.mode === "walkToMouse") {
             // Update facing angle toward aim cursor
             const aimDx = targetAimPos.x - char.position.x;
             const aimDy = targetAimPos.y - char.position.y;
@@ -261,11 +314,12 @@ export class ModularBlockEvaluator {
             }
           }
 
-          // Gamepad Left Stick movement:
-          const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
-          if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
-            moveX += gpLeftStick.x;
-            moveY += gpLeftStick.y;
+          if (b.mode !== "stickDirectionDriveButton" && !isSteerCursorActive) {
+            // Gamepad Left Stick movement:
+            if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
+              moveX += gpLeftStick.x;
+              moveY += gpLeftStick.y;
+            }
           }
 
           // Jump
@@ -333,6 +387,7 @@ export class ModularBlockEvaluator {
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
             char.isHoldingThrowRelease = false;
+            char.isTriggerPullThrowing = false;
             char.activeTrajectory = null;
             (char as any)._pickupPressCode = null;
             break;
@@ -346,6 +401,7 @@ export class ModularBlockEvaluator {
               char.isChargingThrow = false;
               char.isAimingWallClear = false;
               char.isHoldingThrowRelease = false;
+              char.isTriggerPullThrowing = false;
               char.activeTrajectory = null;
               break;
             } else {
@@ -529,6 +585,45 @@ export class ModularBlockEvaluator {
                   char.isAimingWallClear = false;
                   char.isThrowCancelZone = false;
                   claimSlot(b.aimTrigger, b.id, "throw.fire", true);
+                }
+              }
+              break;
+            }
+
+            case "triggerPullForce": {
+              const triggerVal = getSlotAnalogValue(b.chargeTrigger);
+              const margin = b.triggerMargin ?? 0.15;
+              const isTouchingTrigger = triggerVal > 0.05;
+
+              if (isTouchingTrigger) {
+                isAimingTrajectory = true;
+                char.isTriggerPullThrowing = true;
+                const forceFraction = triggerVal <= margin
+                  ? 0.0
+                  : Math.min(1.0, (triggerVal - margin) / (1.0 - margin));
+                char.triggerThrowPower = forceFraction;
+                claimSlot(b.chargeTrigger, b.id, "throw.triggerPull", false);
+              }
+
+              const isReleased = isSlotAnyJustReleased(b.chargeTrigger) || (!isTouchingTrigger && Boolean(char.isTriggerPullThrowing));
+              if (isReleased && char.isTriggerPullThrowing) {
+                const aimDx = targetAimPos.x - char.position.x;
+                const aimDy = targetAimPos.y - char.position.y;
+                const distToAim = Math.hypot(aimDx, aimDy);
+                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+                if (b.enableProximityCancel && distToAim < cancelDistance) {
+                  isThrow = false;
+                  char.isTriggerPullThrowing = false;
+                  char.triggerThrowPower = 0;
+                  char.activeTrajectory = null;
+                  char.isThrowCancelZone = false;
+                  claimSlot(b.chargeTrigger, b.id, "throw.cancel", false);
+                } else {
+                  isThrow = true;
+                  char.isTriggerPullThrowing = false;
+                  char.isThrowCancelZone = false;
+                  claimSlot(b.chargeTrigger, b.id, "throw.fire", true);
                 }
               }
               break;

@@ -96,7 +96,7 @@ export class ThrowCapability {
       isAimingInput &&
       aimTargetPos
     ) {
-      const throwBlock = char.controlSchema?.keyboardMouse?.blocks?.find(
+      const throwBlock = (char.controlSchema?.gamepad?.blocks || char.controlSchema?.keyboardMouse?.blocks)?.find(
         (b) => b.type === "throw"
       ) as ThrowControlBlock | undefined;
 
@@ -222,6 +222,60 @@ export class ThrowCapability {
           lockedAimPos,
           aimLockDelta
         );
+      } else if (char.isTriggerPullThrowing) {
+        if (shouldCheckCancel) {
+          const aimDx = aimTargetPos.x - char.position.x;
+          const aimDy = aimTargetPos.y - char.position.y;
+          const distToAim = Math.hypot(aimDx, aimDy);
+          if (distToAim < cancelRadius) {
+            char.activeTrajectory = null;
+            char.isThrowCancelZone = true;
+            return;
+          }
+        }
+        char.isThrowCancelZone = false;
+
+        // Baseline lowest energy wall clear trajectory:
+        const clearTraj = ThrowCapability.findLowestEnergyWallClearTrajectory(
+          char,
+          arena,
+          aimTargetPos.x,
+          aimTargetPos.y,
+          entities,
+          autoLock,
+          lockedAimPos,
+          aimLockDelta
+        );
+
+        const startRatio = char.savedArcRatio ?? char.throwModule.savedArcRatio ?? 0.5;
+        const flattestBlocked = Boolean(clearTraj?.flattestPoints?.some((pt) => pt.collidesWall));
+        const targetRatio = flattestBlocked ? 1.0 : 0.0;
+        const f = char.triggerThrowPower ?? 0;
+        const scaledRatio = startRatio + (targetRatio - startRatio) * f;
+
+        char.throwChargingTowards = flattestBlocked ? "steepest" : "flattest";
+        char.throwModule.hasUserSetArcRatio = true;
+        char.throwModule.savedArcRatio = scaledRatio;
+        char.hasUserSetArcRatio = true;
+        char.savedArcRatio = scaledRatio;
+
+        char.activeTrajectory = (f > 0.001)
+          ? char.throwModule.calculateTrajectory(
+              char,
+              aimTargetPos.x,
+              aimTargetPos.y,
+              arena,
+              entities ?? arena.entities,
+              arena.visualAltitudeScale,
+              autoLock,
+              lockedAimPos,
+              aimLockDelta
+            )
+          : clearTraj;
+
+        if (char.activeTrajectory) {
+          (char.activeTrajectory as any).chargingTowards = char.throwChargingTowards;
+        }
       } else {
         char.isThrowCancelZone = false;
         char.throwChargingTowards = undefined;

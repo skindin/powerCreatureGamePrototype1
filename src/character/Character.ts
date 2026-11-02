@@ -65,6 +65,8 @@ export class Character extends GameObject {
   public isThrowCancelZone: boolean = false;
   public isAimingWallClear: boolean = false;
   public isHoldingThrowRelease: boolean = false;
+  public isTriggerPullThrowing: boolean = false;
+  public triggerThrowPower: number = 0;
   public hasDiedAwaitingNewPickup: boolean = false;
   private _heldObject: GameObject | null = null;
   public get heldObject(): GameObject | null {

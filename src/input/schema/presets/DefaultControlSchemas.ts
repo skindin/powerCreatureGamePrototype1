@@ -89,6 +89,9 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
     },
     jump: { code: "GamepadA", requireCleanPress: true },
     sprint: { code: "GamepadLS", mode: "hold", requireCleanPress: false },
+    forwardTrigger: { code: "GamepadRT" },
+    cursorSteerTrigger: { code: "GamepadLB" },
+    cursorSteerMode: "whenHoldingButton",
   },
   {
     type: "itemInteraction",
@@ -112,6 +115,7 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
     aimTrigger: { code: "GamepadLT", requireCleanPress: false },
     fireTrigger: { code: "GamepadRT", requireCleanPress: true },
     quickTrigger: { code: "GamepadRT", requireCleanPress: true },
+    triggerMargin: 0.15,
     arcModulation: { source: "none", autoCursorLock: false, sensitivity: 0.005 },
     enableProximityCancel: false,
     cancelRadius: 1.5,

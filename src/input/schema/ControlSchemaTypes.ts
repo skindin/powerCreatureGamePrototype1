@@ -297,7 +297,7 @@ export interface LocomotionControlBlock {
   id: string;
   name?: string;
   enabled: boolean;
-  mode?: "wasd" | "walkToMouse"; // "wasd" (8-way WASD) or "walkToMouse" (drive toward mouse cursor)
+  mode?: "wasd" | "walkToMouse" | "stickDirectionDriveButton"; // "wasd" (8-way WASD), "walkToMouse" (drive toward cursor), or "stickDirectionDriveButton" (point joystick, hold button to drive)
   moveKeys?: {
     upKey?: string | null;
     downKey?: string | null;
@@ -305,10 +305,12 @@ export interface LocomotionControlBlock {
     rightKey?: string | null;
     requireCleanPress?: boolean;
   };
-  forwardTrigger?: BlockInputSlot; // for walkToMouse mode (e.g. MouseRight or KeyW)
+  forwardTrigger?: BlockInputSlot; // for walkToMouse or stickDirectionDriveButton mode (e.g. MouseRight, KeyW, GamepadRT)
   reverseKey?: string | null;      // optional reverse/back-pedal key in walkToMouse mode
   strafeLeftKey?: string | null;   // optional strafe left key in walkToMouse mode
   strafeRightKey?: string | null;  // optional strafe right key in walkToMouse mode
+  cursorSteerTrigger?: BlockInputSlot; // optional modifier button/trigger that redirects left stick to steer the aim cursor
+  cursorSteerMode?: "whenHoldingButton" | "whenAiming" | "never"; // how left-stick cursor steering is triggered
   jump?: BlockInputSlot;
   sprint?: BlockInputSlot & {
     mode?: "hold" | "toggle";
@@ -345,7 +347,8 @@ export type ThrowBlockMode =
   | "aimAndFire"       // Manual preview: aim button previews arc, fire button launches
   | "quickOptimal"     // Flattest optimal trajectory on click
   | "quickWallClear"   // Lowest energy wall-clearing trajectory on click
-  | "aimWallClear";    // Aim lowest energy wall-clearing trajectory, release to fire
+  | "aimWallClear"     // Aim lowest energy wall-clearing trajectory, release to fire
+  | "triggerPullForce"; // Analog trigger depth scales force/arc height, release fires
 
 export interface ThrowControlBlock {
   type: "throw";
@@ -353,10 +356,11 @@ export interface ThrowControlBlock {
   name?: string;
   enabled: boolean;
   mode: ThrowBlockMode;
-  chargeTrigger?: BlockInputSlot; // For chargeAndRelease and holdAndRelease
+  chargeTrigger?: BlockInputSlot; // For chargeAndRelease, holdAndRelease, and triggerPullForce
   aimTrigger?: BlockInputSlot;    // For aimAndFire and aimWallClear
   fireTrigger?: BlockInputSlot;   // For aimAndFire
   quickTrigger?: BlockInputSlot;  // For quickOptimal and quickWallClear
+  triggerMargin?: number;         // Deadzone margin (default 0.15) before analog trigger increases force
   arcModulation?: {
     source?: "mouseDeltaY" | "mouseWheel" | "none";
     autoCursorLock?: boolean;
@@ -500,6 +504,7 @@ export interface ControlExecutionContext {
   isKeyDown: (code: string) => boolean;
   isMouseButtonDown: (button: number) => boolean;
   isGamepadButtonDown: (slotIndex: number, btn: number) => boolean;
+  getGamepadButtonValue?: (slotIndex: number, btn: number) => number;
   getGamepadAxis: (slotIndex: number, axis: "LeftStick" | "RightStick") => Vector2D;
 
   schema?: ControlSchema;
@@ -518,5 +523,8 @@ export interface ControlExecutionContext {
     isDown: (btn: number) => boolean;
     justPressed: (btn: number) => boolean;
     justReleased: (btn: number) => boolean;
+    getValue?: (btn: number) => number;
+    leftStick?: Vector2D;
+    rightStick?: Vector2D;
   };
 }

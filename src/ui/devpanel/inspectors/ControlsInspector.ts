@@ -1514,6 +1514,8 @@ export class ControlsInspector {
         b.reverseKey = b.reverseKey !== undefined ? b.reverseKey : "KeyS";
         b.strafeLeftKey = b.strafeLeftKey !== undefined ? b.strafeLeftKey : "KeyA";
         b.strafeRightKey = b.strafeRightKey !== undefined ? b.strafeRightKey : "KeyD";
+        b.cursorSteerTrigger = b.cursorSteerTrigger || { code: "GamepadLB" };
+        b.cursorSteerMode = b.cursorSteerMode || "whenHoldingButton";
         b.jump = b.jump || { code: "Space" };
         b.sprint = b.sprint || { code: "ShiftLeft", mode: "hold" };
 
@@ -1539,13 +1541,36 @@ export class ControlsInspector {
             <div style="display: flex; align-items: center; gap: 8px;">
               <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Locomotion Mode:</span>
               <select class="block-loco-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
-                <option value="wasd" ${b.mode === "wasd" ? "selected" : ""}>🏃 Direct 8-Way Movement (WASD)</option>
+                <option value="wasd" ${b.mode === "wasd" ? "selected" : ""}>🏃 Direct 8-Way Movement (WASD / Left Stick)</option>
                 <option value="walkToMouse" ${b.mode === "walkToMouse" ? "selected" : ""}>🖱️ Walk to Mouse (Forward Drive Toward Cursor)</option>
+                <option value="stickDirectionDriveButton" ${b.mode === "stickDirectionDriveButton" ? "selected" : ""}>🕹️ Stick Direction + Drive Button (Point stick to aim heading, hold button to walk)</option>
               </select>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
-              ${b.mode === "walkToMouse" ? `
+              ${b.mode === "stickDirectionDriveButton" ? `
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <div>
+                    ${this.renderInputSlot(b.id, "forwardTrigger", b.forwardTrigger, "Forward Drive Button / Trigger (e.g. GamepadRT)")}
+                    <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                      Point left stick in desired heading; hold this button to accelerate forward. Facing points with joystick.
+                    </div>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 2px;">
+                    <div>
+                      ${this.renderInputSlot(b.id, "cursorSteerTrigger", b.cursorSteerTrigger, "Cursor Steering Modifier Button (e.g. GamepadLB)")}
+                    </div>
+                    <div>
+                      <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Cursor Steer Mode</span>
+                      <select class="block-loco-cursor-mode dev-select" data-block-id="${b.id}" style="margin-top: 4px; font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px; width: 100%;">
+                        <option value="whenHoldingButton" ${b.cursorSteerMode === "whenHoldingButton" ? "selected" : ""}>Holding Modifier Button</option>
+                        <option value="whenAiming" ${b.cursorSteerMode === "whenAiming" ? "selected" : ""}>When Aiming / Throwing</option>
+                        <option value="never" ${b.cursorSteerMode === "never" ? "selected" : ""}>Never (Right Stick Only)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ` : b.mode === "walkToMouse" ? `
                 <div>
                   ${this.renderInputSlot(b.id, "forwardTrigger", b.forwardTrigger, "Forward Drive Button (Toward Cursor)")}
                   <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
@@ -1664,6 +1689,7 @@ export class ControlsInspector {
         b.arcModulation = b.arcModulation || { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 };
         b.enableProximityCancel = Boolean(b.enableProximityCancel);
         b.cancelRadius = b.cancelRadius ?? 1.5;
+        b.triggerMargin = b.triggerMargin ?? 0.15;
 
         let modeSpecificHtml = "";
         if (b.mode === "chargeAndRelease") {
@@ -1672,6 +1698,22 @@ export class ControlsInspector {
               ${this.renderInputSlot(b.id, "chargeTrigger", b.chargeTrigger, "Charge & Release Throw Button")}
               <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
                 Hold to charge trajectory/power, release to throw.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "triggerPullForce") {
+          modeSpecificHtml = `
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div>
+                ${this.renderInputSlot(b.id, "chargeTrigger", b.chargeTrigger, "Analog Throw Trigger (e.g. GamepadRT)")}
+                <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                  Pull trigger to scale throw force & trajectory height. Releasing the trigger fires the throw.
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <span style="font-size: 0.68rem; color: #94a3b8;">Trigger Deadzone Margin:</span>
+                <input type="number" step="0.05" min="0.0" max="0.5" class="block-throw-trigger-margin dev-input" data-block-id="${b.id}" value="${b.triggerMargin ?? 0.15}" style="width: 55px; font-size: 0.72rem; padding: 2px 4px; background: #0f172a; color: #fff; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; text-align: center;" />
+                <span style="font-size: 0.65rem; color: #64748b;">(0.0–0.5 threshold before force begins increasing)</span>
               </div>
             </div>
           `;
@@ -1734,7 +1776,7 @@ export class ControlsInspector {
           `;
         }
 
-        const isHoldAndReleaseMode = b.mode === "chargeAndRelease" || b.mode === "aimWallClear" || b.mode === "holdAndRelease";
+        const isHoldAndReleaseMode = b.mode === "chargeAndRelease" || b.mode === "aimWallClear" || b.mode === "holdAndRelease" || b.mode === "triggerPullForce";
         const proximityCancelHtml = isHoldAndReleaseMode
           ? `
             <div style="margin-top: 6px; padding-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
@@ -1763,6 +1805,7 @@ export class ControlsInspector {
               <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Trajectory Manipulation Style:</span>
               <select class="block-throw-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
                 <option value="chargeAndRelease" ${b.mode === "chargeAndRelease" ? "selected" : ""}>🏹 Charge and Release (Bow style)</option>
+                <option value="triggerPullForce" ${b.mode === "triggerPullForce" ? "selected" : ""}>🎮 Analog Trigger Pull Force (Scale Force with Trigger, Release to Fire)</option>
                 <option value="holdAndRelease" ${b.mode === "holdAndRelease" ? "selected" : ""}>🏹 Hold & Release (Static Lowest Energy Arc)</option>
                 <option value="aimAndFire" ${b.mode === "aimAndFire" ? "selected" : ""}>🎯 Aim & Fire (Preview button + Launch button)</option>
                 <option value="quickOptimal" ${b.mode === "quickOptimal" ? "selected" : ""}>⚡ Most Efficient (Quick Optimal Arc)</option>
@@ -3011,6 +3054,31 @@ export class ControlsInspector {
           if (block) {
             const val = parseFloat((e.target as HTMLInputElement).value);
             block.cancelRadius = isNaN(val) ? 1.5 : Math.max(0.1, val);
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Throw trigger pull deadzone margin input
+      root.querySelectorAll(".block-throw-trigger-margin").forEach((inp) => {
+        inp.addEventListener("change", (e) => {
+          const bId = (inp as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock;
+          if (block) {
+            const val = parseFloat((e.target as HTMLInputElement).value);
+            block.triggerMargin = isNaN(val) ? 0.15 : Math.max(0.0, Math.min(0.5, val));
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Locomotion cursor steer mode select
+      root.querySelectorAll(".block-loco-cursor-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
+          if (block) {
+            block.cursorSteerMode = (e.target as HTMLSelectElement).value as any;
             this.renderActiveView();
           }
         });

@@ -902,6 +902,7 @@ export class PlayerManager {
         isDown: (btn: number) => Boolean(slot.buttons && slot.buttons[btn]),
         justPressed: (btn: number) => Boolean(slot.buttons && slot.buttons[btn] && !prevGpSet.has(btn)),
         justReleased: (btn: number) => Boolean(slot.buttons && !slot.buttons[btn] && prevGpSet.has(btn)),
+        getValue: (btn: number) => slot.buttonValues?.[btn] ?? (slot.buttons?.[btn] ? 1.0 : 0.0),
         leftStick: slot.movementVector,
         rightStick: slot.aimStickVector,
       };
@@ -926,6 +927,7 @@ export class PlayerManager {
         isKeyDown: () => false,
         isMouseButtonDown: () => false,
         isGamepadButtonDown: (_sIdx: number, btn: number) => Boolean(slot.buttons && slot.buttons[btn]),
+        getGamepadButtonValue: (_sIdx: number, btn: number) => slot.buttonValues?.[btn] ?? (slot.buttons?.[btn] ? 1.0 : 0.0),
         getGamepadAxis: (_sIdx: number, axis: "LeftStick" | "RightStick") =>
           axis === "LeftStick" ? slot.movementVector : (slot.aimStickVector || { x: 0, y: 0 }),
         gamepadStates: gpStates,
@@ -2076,19 +2078,26 @@ export class PlayerManager {
           }
         } else {
           // Empty-handed: around something to grab or roaming
+          // Gamepad aim cursor stays permanently visible for aim steering and throw targeting:
+          isCursorVisibleNow = true;
           if (!hasReachable) {
-            // Hide cursor once nothing is within range anymore
-            isCursorVisibleNow = false;
-            slot.aimMovedWhileInRange = false;
-            slot.aimPos.x = char.position.x;
-            slot.aimPos.y = char.position.y;
-            slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
-            slot.aimOffset.x = 0;
-            slot.aimOffset.y = 0;
+            if (!slot.hasMovedAimStick) {
+              const facing = char.facingAngle ?? 0;
+              const forwardDist = 3.0;
+              const clamped = calculateClampedForwardAimPos(char.position, Math.cos(facing), Math.sin(facing), forwardDist, this.arena.width, this.arena.height);
+              slot.aimPos.x = clamped.x;
+              slot.aimPos.y = clamped.y;
+              slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+              slot.aimOffset.x = clamped.x - char.position.x;
+              slot.aimOffset.y = clamped.y - char.position.y;
+            } else if (slot.aimPos) {
+              slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
+              slot.aimOffset.x = slot.aimPos.x - char.position.x;
+              slot.aimOffset.y = slot.aimPos.y - char.position.y;
+            }
           } else {
             // Has reachable items:
             if (!slot.aimMovedWhileInRange) {
-              // When around something to grab, cursor starts directly at character!
               slot.aimPos.x = char.position.x;
               slot.aimPos.y = char.position.y;
               slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
@@ -2098,12 +2107,6 @@ export class PlayerManager {
               slot.aimOffset = slot.aimOffset || { x: 0, y: 0 };
               slot.aimOffset.x = slot.aimPos.x - char.position.x;
               slot.aimOffset.y = slot.aimPos.y - char.position.y;
-            }
-
-            if (slot.aimMovedWhileInRange && slot.hasMovedAimStick) {
-              isCursorVisibleNow = true;
-            } else {
-              isCursorVisibleNow = false;
             }
           }
         }

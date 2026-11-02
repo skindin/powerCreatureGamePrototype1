@@ -12,6 +12,7 @@ export interface GamepadSlotState {
   movementVector: Vector2D;
   aimStickVector?: Vector2D;
   buttons?: boolean[];
+  buttonValues?: number[];
   aimPos: Vector2D;
   isClimbHeld: boolean;
   prevButtons: boolean[];
@@ -1267,6 +1268,7 @@ export class InputManager {
           this.onGamepadJoin?.(i);
         }
         slot.prevButtons = gp.buttons.map((b) => (typeof b === "object" ? b.pressed || b.value > 0.3 : (b as unknown as number) > 0.3));
+        slot.buttonValues = gp.buttons.map((b) => (typeof b === "object" ? (typeof b.value === "number" ? b.value : (b.pressed ? 1.0 : 0.0)) : (typeof b === "number" ? b : 0)));
         continue;
       }
 
@@ -1277,6 +1279,7 @@ export class InputManager {
       const ry = gp.axes[3] ?? 0;
       slot.prevButtons = slot.buttons ? [...slot.buttons] : [];
       slot.buttons = gp.buttons.map((b) => (typeof b === "object" ? b.pressed || b.value > 0.3 : (b as unknown as number) > 0.3));
+      slot.buttonValues = gp.buttons.map((b) => (typeof b === "object" ? (typeof b.value === "number" ? b.value : (b.pressed ? 1.0 : 0.0)) : (typeof b === "number" ? b : 0)));
       slot.aimStickVector = { x: rx, y: ry };
       const lMag = Math.hypot(lx, ly);
       const rMag = Math.hypot(rx, ry);
