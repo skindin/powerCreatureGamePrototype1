@@ -1565,11 +1565,19 @@ export class ControlsInspector {
                       <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Cursor Steer Mode</span>
                       <select class="block-loco-cursor-mode dev-select" data-block-id="${b.id}" style="margin-top: 4px; font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px; width: 100%;">
                         <option value="toggleButton" ${b.cursorSteerMode === "toggleButton" ? "selected" : ""}>🔄 Toggle Cursor Mode (Press button to toggle)</option>
+                        <option value="cursorWhenIdle" ${b.cursorSteerMode === "cursorWhenIdle" ? "selected" : ""}>🕹️ Cursor When Stopped / Raw When Walking (Forward switch switches mode)</option>
                         <option value="whenHoldingButton" ${b.cursorSteerMode === "whenHoldingButton" ? "selected" : ""}>✋ Hold Modifier Button (Hold to steer cursor)</option>
                         <option value="whenAiming" ${b.cursorSteerMode === "whenAiming" ? "selected" : ""}>🎯 When Aiming / Throwing (Auto-steer when aiming)</option>
                         <option value="never" ${b.cursorSteerMode === "never" ? "selected" : ""}>🚫 Never (Stick always controls direction)</option>
                       </select>
                     </div>
+                  </div>
+                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; margin-top: 6px;">
+                    <input type="checkbox" class="block-loco-raw-walking-toggle" data-block-id="${b.id}" ${b.rawDirectionWhileWalking ? "checked" : ""} style="cursor: pointer; width: 13px; height: 13px; accent-color: #38bdf8;" />
+                    <span style="font-size: 0.64rem; font-weight: 600; color: #e2e8f0;">🚶 Forward Switch Overrides to Raw Direction While Walking</span>
+                  </label>
+                  <div style="font-size: 0.58rem; color: #64748b; margin-top: 2px; line-height: 1.25;">
+                    When toggled on: releasing forward switch uses cursor mode; holding forward switch walks and attacks in raw stick direction.
                   </div>
                 </div>
               ` : b.mode === "stickDirectionDriveButton" ? `
@@ -1588,11 +1596,19 @@ export class ControlsInspector {
                       <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Cursor Steer Mode</span>
                       <select class="block-loco-cursor-mode dev-select" data-block-id="${b.id}" style="margin-top: 4px; font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px; width: 100%;">
                         <option value="toggleButton" ${b.cursorSteerMode === "toggleButton" ? "selected" : ""}>🔄 Toggle Cursor Mode (Press button to toggle)</option>
+                        <option value="cursorWhenIdle" ${b.cursorSteerMode === "cursorWhenIdle" ? "selected" : ""}>🕹️ Cursor When Stopped / Raw When Walking (Forward switch switches mode)</option>
                         <option value="whenHoldingButton" ${b.cursorSteerMode === "whenHoldingButton" ? "selected" : ""}>✋ Hold Modifier Button (Hold to steer cursor)</option>
                         <option value="whenAiming" ${b.cursorSteerMode === "whenAiming" ? "selected" : ""}>🎯 When Aiming / Throwing (Auto-steer when aiming)</option>
                         <option value="never" ${b.cursorSteerMode === "never" ? "selected" : ""}>🚫 Never (Stick always controls direction)</option>
                       </select>
                     </div>
+                  </div>
+                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; margin-top: 6px;">
+                    <input type="checkbox" class="block-loco-raw-walking-toggle" data-block-id="${b.id}" ${b.rawDirectionWhileWalking ? "checked" : ""} style="cursor: pointer; width: 13px; height: 13px; accent-color: #38bdf8;" />
+                    <span style="font-size: 0.64rem; font-weight: 600; color: #e2e8f0;">🚶 Forward Switch Overrides to Raw Direction While Walking</span>
+                  </label>
+                  <div style="font-size: 0.58rem; color: #64748b; margin-top: 2px; line-height: 1.25;">
+                    When toggled on: releasing forward switch uses cursor mode; holding forward switch walks and attacks in raw stick direction.
                   </div>
                 </div>
               ` : b.mode === "walkToMouse" ? `
@@ -3108,6 +3124,17 @@ export class ControlsInspector {
           if (block) {
             block.cursorSteerMode = (e.target as HTMLSelectElement).value as any;
             this.renderActiveView();
+          }
+        });
+      });
+
+      // Locomotion raw direction while walking toggle
+      root.querySelectorAll(".block-loco-raw-walking-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
+          if (block) {
+            block.rawDirectionWhileWalking = (e.target as HTMLInputElement).checked;
           }
         });
       });

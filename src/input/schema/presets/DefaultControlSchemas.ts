@@ -92,6 +92,7 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
     forwardTrigger: { code: "GamepadRT" },
     cursorSteerTrigger: { code: "GamepadLB" },
     cursorSteerMode: "toggleButton",
+    rawDirectionWhileWalking: true,
   },
   {
     type: "itemInteraction",

@@ -310,7 +310,8 @@ export interface LocomotionControlBlock {
   strafeLeftKey?: string | null;   // optional strafe left key in walkToMouse mode
   strafeRightKey?: string | null;  // optional strafe right key in walkToMouse mode
   cursorSteerTrigger?: BlockInputSlot; // optional modifier button/trigger that redirects left stick to steer the aim cursor
-  cursorSteerMode?: "whenHoldingButton" | "toggleButton" | "whenAiming" | "never"; // how left-stick cursor steering is triggered
+  cursorSteerMode?: "whenHoldingButton" | "toggleButton" | "cursorWhenIdle" | "whenAiming" | "never"; // how left-stick cursor steering is triggered
+  rawDirectionWhileWalking?: boolean; // When cursor mode is toggled on, holding forward switch switches to raw direction while walking; releasing returns to cursor
   jump?: BlockInputSlot;
   sprint?: BlockInputSlot & {
     mode?: "hold" | "toggle";

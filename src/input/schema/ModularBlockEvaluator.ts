@@ -212,6 +212,36 @@ export class ModularBlockEvaluator {
     // Reticle/Aim target position (works seamlessly for mouse and gamepad reticle)
     const targetAimPos = execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos;
 
+    // Pre-evaluate locomotion cursor mode states
+    const locoBlock = blocks.find((blk) => blk.enabled && blk.type === "locomotion") as LocomotionControlBlock | undefined;
+    if (locoBlock) {
+      const isToggleMode = locoBlock.cursorSteerMode === "toggleButton";
+      if (isToggleMode && locoBlock.cursorSteerTrigger) {
+        if (isSlotActive(locoBlock.cursorSteerTrigger, "down", true, locoBlock.id, "locomotion.cursorSteerToggle")) {
+          char.isCursorModeActive = !char.isCursorModeActive;
+          claimSlot(locoBlock.cursorSteerTrigger, locoBlock.id, "locomotion.cursorSteerToggle", true);
+        }
+      }
+
+      const isCursorArmed =
+        (locoBlock.cursorSteerMode === "cursorWhenIdle") ||
+        (locoBlock.cursorSteerMode === "toggleButton" && Boolean(char.isCursorModeActive)) ||
+        (locoBlock.cursorSteerMode === "whenHoldingButton" && isSlotActive(locoBlock.cursorSteerTrigger, "hold", false, locoBlock.id, "locomotion.cursorSteer")) ||
+        (locoBlock.cursorSteerMode === "whenAiming" && isAimingTrajectory);
+
+      const fwdActive = isSlotActive(locoBlock.forwardTrigger, "hold", false, locoBlock.id, "locomotion.forwardDrive");
+      const rawWhileWalking = Boolean(locoBlock.rawDirectionWhileWalking || locoBlock.cursorSteerMode === "cursorWhenIdle");
+
+      if (rawWhileWalking && fwdActive) {
+        // While walking: forward switch overrides to raw direction! Attacks and movement use stick heading
+        isSteerCursorActive = false;
+      } else {
+        isSteerCursorActive = isCursorArmed;
+      }
+
+      char.isSteeringCursor = isSteerCursorActive;
+    }
+
     // Helper to get effective aim position for abilities:
     // In Raw Direction Mode on Gamepad: abilities aim along the character's raw facing direction.
     // In Cursor Mode (or Mouse/Keyboard): abilities aim at targetAimPos (the cursor).
@@ -242,22 +272,7 @@ export class ModularBlockEvaluator {
         case "locomotion": {
           const b = block as LocomotionControlBlock;
           const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
-
-          // Cursor steer toggle handling
-          const isToggleMode = b.cursorSteerMode === "toggleButton";
-          if (isToggleMode && b.cursorSteerTrigger) {
-            if (isSlotActive(b.cursorSteerTrigger, "down", true, b.id, "locomotion.cursorSteerToggle")) {
-              char.isCursorModeActive = !char.isCursorModeActive;
-              claimSlot(b.cursorSteerTrigger, b.id, "locomotion.cursorSteerToggle", true);
-            }
-          }
-
-          isSteerCursorActive =
-            (b.cursorSteerMode === "toggleButton" && Boolean(char.isCursorModeActive)) ||
-            (b.cursorSteerMode === "whenHoldingButton" && isSlotActive(b.cursorSteerTrigger, "hold", false, b.id, "locomotion.cursorSteer")) ||
-            (b.cursorSteerMode === "whenAiming" && isAimingTrajectory);
-
-          char.isSteeringCursor = isSteerCursorActive;
+          const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
 
           if (isSteerCursorActive) {
             if (b.cursorSteerMode === "whenHoldingButton") {
@@ -292,7 +307,6 @@ export class ModularBlockEvaluator {
             }
 
             // In cursor mode: walk forward button drives toward cursor
-            const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
             if (fwdActive) {
               moveX += Math.cos(char.facingAngle);
               moveY += Math.sin(char.facingAngle);
@@ -306,13 +320,13 @@ export class ModularBlockEvaluator {
             if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
               moveX += gpLeftStick.x;
               moveY += gpLeftStick.y;
+              char.facingAngle = Math.atan2(gpLeftStick.y, gpLeftStick.x);
             }
           } else if (b.mode === "stickDirectionDriveButton") {
             const stickMag = gpLeftStick ? Math.hypot(gpLeftStick.x, gpLeftStick.y) : 0;
             if (stickMag > 0.08) {
               char.facingAngle = Math.atan2(gpLeftStick.y, gpLeftStick.x);
             }
-            const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
             if (fwdActive) {
               const driveSpeed = stickMag > 0.08 ? Math.min(1.0, stickMag) : 1.0;
               moveX += Math.cos(char.facingAngle) * driveSpeed;
