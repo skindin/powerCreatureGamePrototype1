@@ -274,27 +274,57 @@ export class TrajectoryRenderer {
     // Render ghost preview arcs for the flattest and steepest reachable curves when locked or user has adjusted arc ratio
     // When aiming wall clear or static hold-and-release, do not draw min and max curves: only the active arc and straight sightline
     const isWallClearAim = Boolean(character?.isAimingWallClear || character?.isHoldingThrowRelease);
-    const isLockHeld = Boolean(traj.lockedTargetPos || character?.throwModule?.hasUserSetArcRatio) && !isWallClearAim;
+    const isTriggerPull = Boolean(character?.isTriggerPullThrowing || (traj as any)?.isTriggerPull);
+    const isLockHeld = Boolean(traj.lockedTargetPos || character?.throwModule?.hasUserSetArcRatio || isTriggerPull) && !isWallClearAim;
     let isSnapped = false;
     if (isLockHeld) {
       const isCharging = Boolean(character?.isChargingThrow);
       const chargingTowards = character?.throwChargingTowards || (traj as any)?.chargingTowards;
 
-      // When charging towards flattest arc -> do not show max height arc
-      // When charging towards highest arc -> do not show flattest arc
-      const showFlattest = !isCharging || chargingTowards === "flattest";
-      const showSteepest = !isCharging || chargingTowards === "steepest";
+      if (isTriggerPull) {
+        // Trigger setting for throw:
+        // - max traj should only show when there's a wall in the way
+        // - min traj should only show when there isn't
+        // - faded traj with the trajectory of the most efficient trajectory should show
+        const hasWallInWay = Boolean(
+          (traj as any)?.flattestBlocked ||
+          traj.isBlockedByWall ||
+          traj.flattestPoints?.some((pt) => pt.collidesWall)
+        );
 
-      if (showFlattest && traj.flattestPoints && traj.flattestPoints.length >= 2) {
-        drawDottedArc(traj.flattestPoints, colorGhostOpaque, colorGhostTransparent, true);
-      }
-      if (showSteepest && traj.steepestPoints && traj.steepestPoints.length >= 2) {
-        drawDottedArc(traj.steepestPoints, colorGhostOpaque, colorGhostTransparent, true);
+        if (hasWallInWay && traj.steepestPoints && traj.steepestPoints.length >= 2) {
+          drawDottedArc(traj.steepestPoints, colorGhostOpaque, colorGhostTransparent, true);
+        }
+        if (!hasWallInWay && traj.flattestPoints && traj.flattestPoints.length >= 2) {
+          drawDottedArc(traj.flattestPoints, colorGhostOpaque, colorGhostTransparent, true);
+        }
+
+        const optPoints = (traj as any)?.optimalTrajectoryPoints;
+        if (optPoints && optPoints.length >= 2) {
+          const alreadyDrawn = hasWallInWay ? (optPoints === traj.steepestPoints) : (optPoints === traj.flattestPoints);
+          if (!alreadyDrawn) {
+            drawDottedArc(optPoints, colorGhostOpaque, colorGhostTransparent, true);
+          }
+        }
+      } else {
+        // Standard arc modulation:
+        // When charging towards flattest arc -> do not show max height arc
+        // When charging towards highest arc -> do not show flattest arc
+        const showFlattest = !isCharging || chargingTowards === "flattest";
+        const showSteepest = !isCharging || chargingTowards === "steepest";
+
+        if (showFlattest && traj.flattestPoints && traj.flattestPoints.length >= 2) {
+          drawDottedArc(traj.flattestPoints, colorGhostOpaque, colorGhostTransparent, true);
+        }
+        if (showSteepest && traj.steepestPoints && traj.steepestPoints.length >= 2) {
+          drawDottedArc(traj.steepestPoints, colorGhostOpaque, colorGhostTransparent, true);
+        }
       }
 
       // Trajectory Modulation Guide Rail (when holding right-click):
-      // Dotted vertical rail at the 2D average position with optimal detent notch and clamped slider pip (hidden when charging over time or aiming wall clear)
-      const rail = (character && !isCharging && !character.isAimingWallClear && !character.isHoldingThrowRelease)
+      // Dotted vertical rail at the 2D average position with optimal detent notch and clamped slider pip.
+      // Strictly hidden when using trigger pull, charging over time, or aiming wall clear
+      const rail = (character && !isCharging && !character.isAimingWallClear && !character.isHoldingThrowRelease && !isTriggerPull)
         ? TrajectoryRenderer.calculateMidpointRail(character, arena, traj, ppu, hoverScale)
         : null;
       if (rail) {

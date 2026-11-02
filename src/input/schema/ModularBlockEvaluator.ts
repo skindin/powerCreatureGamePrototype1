@@ -229,11 +229,15 @@ export class ModularBlockEvaluator {
         (locoBlock.cursorSteerMode === "whenHoldingButton" && isSlotActive(locoBlock.cursorSteerTrigger, "hold", false, locoBlock.id, "locomotion.cursorSteer")) ||
         (locoBlock.cursorSteerMode === "whenAiming" && isAimingTrajectory);
 
+      const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
+      const stickMag = gpLeftStick ? Math.hypot(gpLeftStick.x, gpLeftStick.y) : 0;
+      const isPushingStick = stickMag > 0.08;
       const fwdActive = isSlotActive(locoBlock.forwardTrigger, "hold", false, locoBlock.id, "locomotion.forwardDrive");
       const rawWhileWalking = Boolean(locoBlock.rawDirectionWhileWalking || locoBlock.cursorSteerMode === "cursorWhenIdle");
+      const isWalking = fwdActive && isPushingStick;
 
-      if (rawWhileWalking && fwdActive) {
-        // While walking: forward switch overrides to raw direction! Attacks and movement use stick heading
+      if (rawWhileWalking && isWalking) {
+        // While walking (forward button held + joystick pushed): forward switch overrides to raw direction!
         isSteerCursorActive = false;
       } else {
         isSteerCursorActive = isCursorArmed;
@@ -306,8 +310,9 @@ export class ModularBlockEvaluator {
               char.facingAngle = Math.atan2(aimDy, aimDx);
             }
 
-            // In cursor mode: walk forward button drives toward cursor
-            if (fwdActive) {
+            // In cursor mode: walk forward button only drives toward cursor if also pushing joystick
+            const stickMag = gpLeftStick ? Math.hypot(gpLeftStick.x, gpLeftStick.y) : 0;
+            if (fwdActive && stickMag > 0.08) {
               moveX += Math.cos(char.facingAngle);
               moveY += Math.sin(char.facingAngle);
               claimSlot(b.forwardTrigger, b.id, "locomotion.forwardDrive", false);
@@ -326,12 +331,16 @@ export class ModularBlockEvaluator {
             const stickMag = gpLeftStick ? Math.hypot(gpLeftStick.x, gpLeftStick.y) : 0;
             if (stickMag > 0.08) {
               char.facingAngle = Math.atan2(gpLeftStick.y, gpLeftStick.x);
-            }
-            if (fwdActive) {
-              const driveSpeed = stickMag > 0.08 ? Math.min(1.0, stickMag) : 1.0;
-              moveX += Math.cos(char.facingAngle) * driveSpeed;
-              moveY += Math.sin(char.facingAngle) * driveSpeed;
-              claimSlot(b.forwardTrigger, b.id, "locomotion.forwardDrive", false);
+              if (fwdActive) {
+                const driveSpeed = Math.min(1.0, stickMag);
+                moveX += Math.cos(char.facingAngle) * driveSpeed;
+                moveY += Math.sin(char.facingAngle) * driveSpeed;
+                claimSlot(b.forwardTrigger, b.id, "locomotion.forwardDrive", false);
+              }
+            } else {
+              // Only walk forward if also pushing joystick
+              moveX = 0;
+              moveY = 0;
             }
           } else if (b.mode === "walkToMouse") {
             // Update facing angle toward aim cursor

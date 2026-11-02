@@ -280,6 +280,11 @@ export class ThrowCapability {
 
         if (char.activeTrajectory) {
           (char.activeTrajectory as any).chargingTowards = char.throwChargingTowards;
+          (char.activeTrajectory as any).isTriggerPull = true;
+          if (clearTraj) {
+            (char.activeTrajectory as any).optimalTrajectoryPoints = clearTraj.points;
+            (char.activeTrajectory as any).flattestBlocked = flattestBlocked;
+          }
         }
       } else {
         char.isThrowCancelZone = false;
