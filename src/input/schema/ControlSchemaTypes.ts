@@ -289,6 +289,7 @@ export interface InputPipelineBinding {
 export interface BlockInputSlot {
   code?: string | null;         // Primary button/key code (e.g. "KeyF", "MouseLeft"), or null/undefined if unassigned
   gateButtons?: string[];       // Extra buttons that must be held down (chords / modifiers)
+  requireCleanPress?: boolean;  // Whether this input requires a clean press per action (releasing before triggering again)
 }
 
 export interface LocomotionControlBlock {
@@ -302,6 +303,7 @@ export interface LocomotionControlBlock {
     downKey?: string | null;
     leftKey?: string | null;
     rightKey?: string | null;
+    requireCleanPress?: boolean;
   };
   forwardTrigger?: BlockInputSlot; // for walkToMouse mode (e.g. MouseRight or KeyW)
   reverseKey?: string | null;      // optional reverse/back-pedal key in walkToMouse mode

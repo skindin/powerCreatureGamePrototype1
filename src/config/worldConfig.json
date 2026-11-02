@@ -1,6 +1,6 @@
 {
-  "version": 200,
-  "lastSaved": "2026-11-02T06:40:31.941Z",
+  "version": 205,
+  "lastSaved": "2026-11-02T06:45:34.624Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -1932,7 +1932,14 @@
             "sprint": {
               "code": "ShiftLeft",
               "mode": "hold"
-            }
+            },
+            "mode": "walkToMouse",
+            "forwardTrigger": {
+              "code": "MouseLeft"
+            },
+            "reverseKey": null,
+            "strafeLeftKey": null,
+            "strafeRightKey": null
           },
           {
             "type": "itemInteraction",
@@ -1952,16 +1959,20 @@
               "code": "KeyE"
             },
             "swapRequiresHolding": false,
-            "triggerPickupWhenEmptyHanded": true
+            "triggerPickupWhenEmptyHanded": true,
+            "additionalPickup": {
+              "code": "MouseRight",
+              "gateButtons": []
+            }
           },
           {
             "type": "throw",
             "id": "block-throw",
             "name": "Throwing & Ballistics",
             "enabled": true,
-            "mode": "aimWallClear",
+            "mode": "chargeAndRelease",
             "chargeTrigger": {
-              "code": "MouseLeft"
+              "code": "MouseRight"
             },
             "aimTrigger": {
               "code": "MouseRight"
@@ -1984,7 +1995,7 @@
             "name": "Melee Combat",
             "enabled": true,
             "punch": {
-              "code": "KeyF"
+              "code": "KeyS"
             }
           },
           {
@@ -1993,14 +2004,12 @@
             "name": "Laser Beam",
             "enabled": true,
             "aimTrigger": {
-              "code": "MouseRight",
-              "gateButtons": [
-                "MouseLeft"
-              ]
+              "code": "KeyD",
+              "gateButtons": []
             },
-            "aimMode": "mouseScreenPos",
+            "aimMode": "mouseWorldPos",
             "fireTrigger": {
-              "code": "MouseLeft",
+              "code": "MouseRight",
               "autoFireWhenAiming": false
             },
             "powerLevel": {
@@ -5255,7 +5264,14 @@
               "sprint": {
                 "code": "ShiftLeft",
                 "mode": "hold"
-              }
+              },
+              "mode": "walkToMouse",
+              "forwardTrigger": {
+                "code": "MouseLeft"
+              },
+              "reverseKey": null,
+              "strafeLeftKey": null,
+              "strafeRightKey": null
             },
             {
               "type": "itemInteraction",
@@ -5275,16 +5291,20 @@
                 "code": "KeyE"
               },
               "swapRequiresHolding": false,
-              "triggerPickupWhenEmptyHanded": true
+              "triggerPickupWhenEmptyHanded": true,
+              "additionalPickup": {
+                "code": "MouseRight",
+                "gateButtons": []
+              }
             },
             {
               "type": "throw",
               "id": "block-throw",
               "name": "Throwing & Ballistics",
               "enabled": true,
-              "mode": "aimWallClear",
+              "mode": "chargeAndRelease",
               "chargeTrigger": {
-                "code": "MouseLeft"
+                "code": "MouseRight"
               },
               "aimTrigger": {
                 "code": "MouseRight"
@@ -5307,7 +5327,7 @@
               "name": "Melee Combat",
               "enabled": true,
               "punch": {
-                "code": "KeyF"
+                "code": "KeyS"
               }
             },
             {
@@ -5316,14 +5336,12 @@
               "name": "Laser Beam",
               "enabled": true,
               "aimTrigger": {
-                "code": "MouseRight",
-                "gateButtons": [
-                  "MouseLeft"
-                ]
+                "code": "KeyD",
+                "gateButtons": []
               },
-              "aimMode": "mouseScreenPos",
+              "aimMode": "mouseWorldPos",
               "fireTrigger": {
-                "code": "MouseLeft",
+                "code": "MouseRight",
                 "autoFireWhenAiming": false
               },
               "powerLevel": {

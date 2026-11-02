@@ -1265,6 +1265,18 @@ export class ControlsInspector {
     return base;
   }
 
+  private static defaultCleanForSlot(slotName: string): boolean {
+    if (
+      slotName === "forwardTrigger" ||
+      slotName === "sprint" ||
+      slotName === "aimTrigger" ||
+      slotName === "consume"
+    ) {
+      return false;
+    }
+    return true;
+  }
+
   private static renderInputSlot(
     blockId: string,
     slotName: string,
@@ -1281,6 +1293,9 @@ export class ControlsInspector {
     const code = slot?.code;
     const label = code ? this.formatChannelKeyLabel(code) : "None (Unassigned)";
     const gateButtons = slot?.gateButtons || [];
+    const isClean = slot?.requireCleanPress !== undefined
+      ? Boolean(slot.requireCleanPress)
+      : this.defaultCleanForSlot(slotName);
 
     return `
       <div style="display: flex; flex-direction: column; gap: 3px;">
@@ -1357,6 +1372,12 @@ export class ControlsInspector {
             border-radius: 3px;
             cursor: pointer;
           " title="Require an additional held button for this action">+ Key</button>
+
+          <!-- Clean Press Toggle Checkbox -->
+          <label style="display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; cursor: pointer; user-select: none;" title="Require clean press: button must be released before triggering this action again (prevents continuous auto-repeat)">
+            <input type="checkbox" class="block-slot-clean-toggle" data-block-id="${blockId}" data-slot-name="${slotName}" ${isClean ? "checked" : ""} style="cursor: pointer; width: 12px; height: 12px; accent-color: #38bdf8;" />
+            <span style="font-size: 0.62rem; font-weight: 600; ${isClean ? "color: #38bdf8;" : "color: #64748b;"}">Clean</span>
+          </label>
         </div>
       </div>
     `;
@@ -1420,7 +1441,13 @@ export class ControlsInspector {
                 </div>
               ` : `
                 <div>
-                  <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Directional Movement (WASD)</span>
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Directional Movement (WASD)</span>
+                    <label style="display: inline-flex; align-items: center; gap: 3px; cursor: pointer; user-select: none;" title="Require clean tap for movement (step-by-step)">
+                      <input type="checkbox" class="block-move-keys-clean-toggle" data-block-id="${b.id}" ${b.moveKeys?.requireCleanPress ? "checked" : ""} style="cursor: pointer; width: 11px; height: 11px; accent-color: #38bdf8;" />
+                      <span style="font-size: 0.58rem; font-weight: 600; ${b.moveKeys?.requireCleanPress ? "color: #38bdf8;" : "color: #64748b;"}">Clean Tap</span>
+                    </label>
+                  </div>
                   <div style="display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap;">
                     ${renderMoveKey("↑", "upKey")}
                     ${renderMoveKey("↓", "downKey")}
@@ -3105,6 +3132,39 @@ export class ControlsInspector {
           const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
           if (block) {
             block.mode = (e.target as HTMLSelectElement).value as any;
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Slot Clean Press Toggle
+      root.querySelectorAll(".block-slot-clean-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const slotName = (chk as HTMLElement).dataset.slotName;
+          const block = blocks.find((b) => b.id === bId);
+          if (block && slotName) {
+            const slot = (block as any)[slotName] as BlockInputSlot | undefined;
+            const checked = (e.target as HTMLInputElement).checked;
+            if (slot) {
+              slot.requireCleanPress = checked;
+            } else {
+              (block as any)[slotName] = { code: null, requireCleanPress: checked };
+            }
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Move Keys Clean Tap Toggle
+      root.querySelectorAll(".block-move-keys-clean-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block && block.type === "locomotion") {
+            const loco = block as LocomotionControlBlock;
+            loco.moveKeys = loco.moveKeys || {};
+            loco.moveKeys.requireCleanPress = (e.target as HTMLInputElement).checked;
             this.renderActiveView();
           }
         });

@@ -58,10 +58,23 @@ export class ModularBlockEvaluator {
       return execCtx.keyStates?.justReleased(c) ?? false;
     };
 
+    const defaultCleanForIntent = (intent: string): boolean => {
+      if (
+        intent.includes("forward") ||
+        intent.includes("sprint") ||
+        intent.includes("aim") ||
+        intent.includes("consume") ||
+        intent.includes("laser.fire")
+      ) {
+        return false;
+      }
+      return true;
+    };
+
     const isSlotActive = (
       slot: BlockInputSlot | undefined | null,
       triggerMode: "down" | "hold" | "up" = "down",
-      requireClean: boolean = true,
+      defaultRequireClean: boolean = true,
       blockId: string = "",
       intent: string = ""
     ): boolean => {
@@ -71,31 +84,56 @@ export class ModularBlockEvaluator {
         const allGatesDown = slot.gateButtons.every((g) => tokens.isDown(g));
         if (!allGatesDown) return false;
       }
+
+      const requireClean = slot.requireCleanPress !== undefined
+        ? slot.requireCleanPress
+        : defaultRequireClean;
+
       if (triggerMode === "hold") {
-        return tokens.isDown(slot.code) && (!requireClean || !tokens.isConsumed(slot.code));
+        if (!tokens.isDown(slot.code)) return false;
+        if (requireClean && tokens.isConsumed(slot.code)) return false;
+        return true;
       } else if (triggerMode === "down") {
         if (!tokens.isDown(slot.code)) return false;
-        if (tokens.isConsumed(slot.code)) return false;
+        if (requireClean && tokens.isConsumed(slot.code)) return false;
         if (requireClean) {
           return tokens.canExecute(slot.code, "requireCleanPress", blockId, intent);
         }
         return true;
       } else if (triggerMode === "up") {
-        return isCodeJustReleased(slot.code);
+        if (!isCodeJustReleased(slot.code) && !tokens.wasReleased(slot.code)) return false;
+        if (requireClean) {
+          return tokens.canExecuteRelease(slot.code, "requireCleanPress", blockId, intent);
+        }
+        return true;
       }
       return false;
     };
 
     const isSlotAnyJustReleased = (slot?: BlockInputSlot | null): boolean => {
       if (!slot || !slot.code) return false;
-      if (isCodeJustReleased(slot.code)) return true;
-      if (slot.gateButtons && slot.gateButtons.some(isCodeJustReleased)) return true;
+      if (isCodeJustReleased(slot.code) || tokens.wasReleased(slot.code)) return true;
+      if (slot.gateButtons && slot.gateButtons.some((g) => isCodeJustReleased(g) || tokens.wasReleased(g))) return true;
       return false;
     };
 
-    const claimSlot = (slot: BlockInputSlot | undefined | null, blockId: string, intent: string): void => {
+    const claimSlot = (
+      slot: BlockInputSlot | undefined | null,
+      blockId: string,
+      intent: string,
+      isActionExecution: boolean = true
+    ): void => {
       if (!slot || !slot.code) return;
-      tokens.claim(slot.code, blockId, intent);
+      const requireClean = slot.requireCleanPress !== undefined
+        ? slot.requireCleanPress
+        : defaultCleanForIntent(intent);
+
+      if (requireClean && isActionExecution) {
+        tokens.consume(slot.code, blockId, intent);
+      } else {
+        tokens.claim(slot.code, blockId, intent);
+      }
+
       if (slot.gateButtons) {
         for (const g of slot.gateButtons) {
           tokens.claim(g, blockId, intent);
@@ -166,12 +204,25 @@ export class ModularBlockEvaluator {
           } else {
             // Move WASD
             if (b.moveKeys) {
+              const requireCleanMove = Boolean(b.moveKeys.requireCleanPress);
               let vx = 0;
               let vy = 0;
-              if (b.moveKeys.upKey && tokens.isDown(b.moveKeys.upKey)) vy -= 1;
-              if (b.moveKeys.downKey && tokens.isDown(b.moveKeys.downKey)) vy += 1;
-              if (b.moveKeys.leftKey && tokens.isDown(b.moveKeys.leftKey)) vx -= 1;
-              if (b.moveKeys.rightKey && tokens.isDown(b.moveKeys.rightKey)) vx += 1;
+              if (b.moveKeys.upKey && tokens.isDown(b.moveKeys.upKey) && (!requireCleanMove || !tokens.isConsumed(b.moveKeys.upKey))) {
+                vy -= 1;
+                if (requireCleanMove) tokens.consume(b.moveKeys.upKey, b.id, "locomotion.moveUp");
+              }
+              if (b.moveKeys.downKey && tokens.isDown(b.moveKeys.downKey) && (!requireCleanMove || !tokens.isConsumed(b.moveKeys.downKey))) {
+                vy += 1;
+                if (requireCleanMove) tokens.consume(b.moveKeys.downKey, b.id, "locomotion.moveDown");
+              }
+              if (b.moveKeys.leftKey && tokens.isDown(b.moveKeys.leftKey) && (!requireCleanMove || !tokens.isConsumed(b.moveKeys.leftKey))) {
+                vx -= 1;
+                if (requireCleanMove) tokens.consume(b.moveKeys.leftKey, b.id, "locomotion.moveLeft");
+              }
+              if (b.moveKeys.rightKey && tokens.isDown(b.moveKeys.rightKey) && (!requireCleanMove || !tokens.isConsumed(b.moveKeys.rightKey))) {
+                vx += 1;
+                if (requireCleanMove) tokens.consume(b.moveKeys.rightKey, b.id, "locomotion.moveRight");
+              }
               moveX += vx;
               moveY += vy;
             }
@@ -180,20 +231,20 @@ export class ModularBlockEvaluator {
           // Jump
           if (isSlotActive(b.jump, "down", true, b.id, "locomotion.jump")) {
             isJumpHeld = true;
-            claimSlot(b.jump, b.id, "locomotion.jump");
+            claimSlot(b.jump, b.id, "locomotion.jump", true);
           }
 
           // Sprint
           if (b.sprint?.mode === "toggle") {
             if (isSlotActive(b.sprint, "down", false, b.id, "locomotion.sprintToggle")) {
               char.isSprinting = !char.isSprinting;
-              claimSlot(b.sprint, b.id, "locomotion.sprintToggle");
+              claimSlot(b.sprint, b.id, "locomotion.sprintToggle", true);
             }
             if (char.isSprinting) isSprinting = true;
           } else {
             if (isSlotActive(b.sprint, "hold", false, b.id, "locomotion.sprint")) {
               isSprinting = true;
-              claimSlot(b.sprint, b.id, "locomotion.sprint");
+              claimSlot(b.sprint, b.id, "locomotion.sprint", false);
             }
           }
           break;
@@ -203,7 +254,7 @@ export class ModularBlockEvaluator {
           const b = block as MeleeControlBlock;
           if (isSlotActive(b.punch, "down", true, b.id, "melee.punch")) {
             isMeleeRequested = true;
-            claimSlot(b.punch, b.id, "melee.punch");
+            claimSlot(b.punch, b.id, "melee.punch", true);
           }
           break;
         }
@@ -242,13 +293,13 @@ export class ModularBlockEvaluator {
 
           switch (b.mode) {
             case "chargeAndRelease": {
-              if (isSlotActive(b.chargeTrigger, "hold", true, b.id, "throw.chargeBow")) {
+              if (isSlotActive(b.chargeTrigger, "hold", false, b.id, "throw.chargeBow")) {
                 isAimingTrajectory = true;
                 char.isChargingThrow = true;
                 if (!char.throwChargeStartTime) {
                   char.throwChargeStartTime = now;
                 }
-                claimSlot(b.chargeTrigger, b.id, "throw.chargeBow");
+                claimSlot(b.chargeTrigger, b.id, "throw.chargeBow", false);
               }
 
               // Auto-release fire on button / gate release
@@ -265,26 +316,26 @@ export class ModularBlockEvaluator {
                   char.throwChargeProgress = 0;
                   char.activeTrajectory = null;
                   char.isThrowCancelZone = false;
-                  claimSlot(b.chargeTrigger, b.id, "throw.cancel");
+                  claimSlot(b.chargeTrigger, b.id, "throw.cancel", false);
                 } else {
                   isThrow = true;
                   char.isChargingThrow = false;
                   char.throwChargeStartTime = null;
-                  claimSlot(b.chargeTrigger, b.id, "throw.fire");
+                  claimSlot(b.chargeTrigger, b.id, "throw.fire", true);
                 }
               }
               break;
             }
 
             case "aimAndFire": {
-              if (isSlotActive(b.aimTrigger, "hold", true, b.id, "throw.aim")) {
+              if (isSlotActive(b.aimTrigger, "hold", false, b.id, "throw.aim")) {
                 isAimingTrajectory = true;
-                claimSlot(b.aimTrigger, b.id, "throw.aim");
+                claimSlot(b.aimTrigger, b.id, "throw.aim", false);
               }
 
               if (isSlotActive(b.fireTrigger, "down", true, b.id, "throw.fire")) {
                 isThrow = true;
-                claimSlot(b.fireTrigger, b.id, "throw.fire");
+                claimSlot(b.fireTrigger, b.id, "throw.fire", true);
               }
 
               // Arc Height Modulation
@@ -333,7 +384,7 @@ export class ModularBlockEvaluator {
                   char.throwModule.hasUserSetArcRatio = false;
                 }
                 isThrow = true;
-                claimSlot(b.quickTrigger, b.id, "throw.fire");
+                claimSlot(b.quickTrigger, b.id, "throw.fire", true);
               }
               break;
             }
@@ -351,16 +402,16 @@ export class ModularBlockEvaluator {
                   0
                 );
                 isThrow = true;
-                claimSlot(b.quickTrigger, b.id, "throw.fire");
+                claimSlot(b.quickTrigger, b.id, "throw.fire", true);
               }
               break;
             }
 
             case "aimWallClear": {
-              if (isSlotActive(b.aimTrigger, "hold", true, b.id, "throw.aimWallClear")) {
+              if (isSlotActive(b.aimTrigger, "hold", false, b.id, "throw.aimWallClear")) {
                 isAimingTrajectory = true;
                 char.isAimingWallClear = true;
-                claimSlot(b.aimTrigger, b.id, "throw.aimWallClear");
+                claimSlot(b.aimTrigger, b.id, "throw.aimWallClear", false);
               }
 
               if (isSlotAnyJustReleased(b.aimTrigger) && char.isAimingWallClear) {
@@ -374,11 +425,11 @@ export class ModularBlockEvaluator {
                   char.isAimingWallClear = false;
                   char.activeTrajectory = null;
                   char.isThrowCancelZone = false;
-                  claimSlot(b.aimTrigger, b.id, "throw.cancel");
+                  claimSlot(b.aimTrigger, b.id, "throw.cancel", false);
                 } else {
                   isThrow = true;
                   char.isAimingWallClear = false;
-                  claimSlot(b.aimTrigger, b.id, "throw.fire");
+                  claimSlot(b.aimTrigger, b.id, "throw.fire", true);
                 }
               }
               break;
@@ -392,44 +443,44 @@ export class ModularBlockEvaluator {
 
           // Pickup
           if (isSlotActive(b.pickup, "down", true, b.id, "pickup.grab")) {
-            if (!execCtx.isHoldingItem) {
+            if (!execCtx.isHoldingItem && grabTargetObjectId) {
               isGrabHeld = true;
-              claimSlot(b.pickup, b.id, "pickup.grab");
+              claimSlot(b.pickup, b.id, "pickup.grab", true);
             }
           }
 
           // Additional Pickup
           if (b.additionalPickup && isSlotActive(b.additionalPickup, "down", true, b.id, "pickup.grab")) {
-            if (!execCtx.isHoldingItem) {
+            if (!execCtx.isHoldingItem && grabTargetObjectId) {
               isGrabHeld = true;
-              claimSlot(b.additionalPickup, b.id, "pickup.grab");
+              claimSlot(b.additionalPickup, b.id, "pickup.grab", true);
             }
           }
 
           // Drop
           if (execCtx.isHoldingItem && isSlotActive(b.drop, "down", true, b.id, "pickup.drop")) {
             isDrop = true;
-            claimSlot(b.drop, b.id, "pickup.drop");
+            claimSlot(b.drop, b.id, "pickup.drop", true);
           }
 
           // Swap
           if (isSlotActive(b.swap, "down", true, b.id, "pickup.swap")) {
             if (b.swapRequiresHolding && !execCtx.isHoldingItem) {
               // Denied: user configured swap to require holding an item
-            } else {
+            } else if (execCtx.isHoldingItem) {
               isSwap = true;
-              // If empty-handed and allowed, trigger pickup
-              if (!execCtx.isHoldingItem && b.triggerPickupWhenEmptyHanded) {
-                isGrabHeld = true;
-              }
-              claimSlot(b.swap, b.id, "pickup.swap");
+              claimSlot(b.swap, b.id, "pickup.swap", true);
+            } else if (b.triggerPickupWhenEmptyHanded && grabTargetObjectId) {
+              isSwap = true;
+              isGrabHeld = true;
+              claimSlot(b.swap, b.id, "pickup.swap", true);
             }
           }
 
           // Consume / Eat
-          if (execCtx.heldItemIsEdible && isSlotActive(b.consume, "hold", true, b.id, "consume.bite")) {
+          if (execCtx.heldItemIsEdible && isSlotActive(b.consume, "hold", false, b.id, "consume.bite")) {
             isUsingItem = true;
-            claimSlot(b.consume, b.id, "consume.bite");
+            claimSlot(b.consume, b.id, "consume.bite", false);
           }
           break;
         }
