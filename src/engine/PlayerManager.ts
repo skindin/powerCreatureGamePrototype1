@@ -1526,7 +1526,21 @@ export class PlayerManager {
 
       // Dedicated Swap Action: drops current item, discludes it, and grabs selected item
       if (!isEditMode && (pkt as any).isSwap && !isDeviceSuppressed && char.pickupModule) {
-        const droppedObj = char.heldObject;
+        const currentlyHeld = char.heldObject;
+        const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter((e) => e !== currentlyHeld);
+        let targetObj: GameObject | null = null;
+        if (pkt.grabTargetObjectId && pkt.grabTargetObjectId !== currentlyHeld?.id) {
+          targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId) || null;
+        }
+        if (!targetObj && aimTarget) {
+          targetObj = char.pickupModule.findTargetObject(char, aimTarget.x, aimTarget.y, otherEntities, this.arena.wallHeight);
+        }
+
+        // SWAP REQUIREMENT: If holding an item, do NOT drop it unless another object is near enough to swap with!
+        if (currentlyHeld && (!targetObj || !char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight))) {
+          // No candidate object in reach: preserve held object
+        } else {
+        const droppedObj = currentlyHeld;
         if (droppedObj) {
           char.pickupModule.drop(char);
           input.arcModulationCursor = null;
@@ -1549,15 +1563,6 @@ export class PlayerManager {
             pkt.tick ?? 0,
             droppedObj.id
           );
-        }
-
-        const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter((e) => e !== droppedObj);
-        let targetObj: GameObject | null = null;
-        if (pkt.grabTargetObjectId && pkt.grabTargetObjectId !== droppedObj?.id) {
-          targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId) || null;
-        }
-        if (!targetObj && aimTarget) {
-          targetObj = char.pickupModule.findTargetObject(char, aimTarget.x, aimTarget.y, otherEntities, this.arena.wallHeight);
         }
 
         if (targetObj && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) {
@@ -1630,6 +1635,7 @@ export class PlayerManager {
               held.id
             );
           }
+        }
         }
       }
       const isSeeking = !justDepletedConsumable && pkt.isGrabHeld && !isDeviceSuppressed;

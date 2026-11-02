@@ -535,9 +535,12 @@ export class ModularBlockEvaluator {
             if (b.swapRequiresHolding && !execCtx.isHoldingItem) {
               // Denied: user configured swap to require holding an item
             } else if (execCtx.isHoldingItem) {
-              isSwap = true;
-              if (b.swap?.code) (char as any)._pickupPressCode = b.swap.code;
-              claimSlot(b.swap, b.id, "pickup.swap", true);
+              // Swap key must NOT drop or trigger unless another object is near enough to swap it with!
+              if (grabTargetObjectId) {
+                isSwap = true;
+                if (b.swap?.code) (char as any)._pickupPressCode = b.swap.code;
+                claimSlot(b.swap, b.id, "pickup.swap", true);
+              }
             } else if (b.triggerPickupWhenEmptyHanded && grabTargetObjectId) {
               isSwap = true;
               isGrabHeld = true;
