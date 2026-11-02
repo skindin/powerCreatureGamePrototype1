@@ -312,6 +312,9 @@ export interface LocomotionControlBlock {
   cursorSteerTrigger?: BlockInputSlot; // optional modifier button/trigger that redirects left stick to steer the aim cursor
   cursorSteerMode?: "whenHoldingButton" | "toggleButton" | "cursorWhenIdle" | "whenAiming" | "never"; // how left-stick cursor steering is triggered
   rawDirectionWhileWalking?: boolean; // When cursor mode is toggled on, holding forward switch switches to raw direction while walking; releasing returns to cursor
+  stickCursorInFront?: boolean; // When exiting/outside cursor mode, stick cursor in front of character with distance dictated by joystick magnitude
+  cursorMaxDistance?: number;   // Maximum clamp distance for cursor in front of character
+  cursorMinDistance?: number;   // Minimum distance for cursor in front of character
   jump?: BlockInputSlot;
   sprint?: BlockInputSlot & {
     mode?: "hold" | "toggle";

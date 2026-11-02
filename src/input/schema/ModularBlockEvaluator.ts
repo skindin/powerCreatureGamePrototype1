@@ -252,6 +252,9 @@ export class ModularBlockEvaluator {
     const getEffectiveAimPos = (): { x: number; y: number } => {
       const isRawMode = !isSteerCursorActive && !char.isSteeringCursor && Boolean(execCtx.gamepadStates);
       if (isRawMode) {
+        if (locoBlock?.stickCursorInFront) {
+          return targetAimPos;
+        }
         const rawAngle = char.facingAngle ?? 0;
         const rawDirX = Math.cos(rawAngle);
         const rawDirY = Math.sin(rawAngle);
@@ -403,6 +406,43 @@ export class ModularBlockEvaluator {
               moveY += vy;
             }
           }
+
+          // Stick cursor in front when outside/exiting cursor mode on gamepad
+          if (!isSteerCursorActive && b.stickCursorInFront && execCtx.gamepadStates) {
+            const stickMag = gpLeftStick ? Math.hypot(gpLeftStick.x, gpLeftStick.y) : 0;
+            const maxDist = b.cursorMaxDistance ?? 6.0;
+            const minDist = b.cursorMinDistance ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.5);
+            const justExitedCursorMode = Boolean((char as any)._prevSteerCursorActive);
+            let curDist: number;
+            if (stickMag > 0.08) {
+              const normalizedMag = Math.min(1.0, (stickMag - 0.08) / 0.92);
+              curDist = minDist + normalizedMag * (maxDist - minDist);
+              (char as any)._lastRawCursorDist = curDist;
+            } else if (justExitedCursorMode || (char as any)._lastRawCursorDist === undefined) {
+              curDist = maxDist;
+              (char as any)._lastRawCursorDist = curDist;
+            } else {
+              curDist = (char as any)._lastRawCursorDist ?? minDist;
+            }
+            const facing = char.facingAngle ?? 0;
+            targetAimPos.x = char.position.x + Math.cos(facing) * curDist;
+            targetAimPos.y = char.position.y + Math.sin(facing) * curDist;
+            if (execCtx.arena) {
+              targetAimPos.x = Math.max(0.1, Math.min(execCtx.arena.width - 0.1, targetAimPos.x));
+              targetAimPos.y = Math.max(0.1, Math.min(execCtx.arena.height - 0.1, targetAimPos.y));
+            }
+            const slot = input.gamepadSlots.get(execCtx.gamepadStates.slotIndex);
+            if (slot) {
+              slot.aimPos.x = targetAimPos.x;
+              slot.aimPos.y = targetAimPos.y;
+              slot.hasMovedAimStick = true;
+              slot.aimMovedWhileInRange = true;
+              if (!slot.aimOffset) slot.aimOffset = { x: 0, y: 0 };
+              slot.aimOffset.x = slot.aimPos.x - char.position.x;
+              slot.aimOffset.y = slot.aimPos.y - char.position.y;
+            }
+          }
+          (char as any)._prevSteerCursorActive = isSteerCursorActive;
 
           // Jump
           if (isSlotActive(b.jump, "down", true, b.id, "locomotion.jump")) {
