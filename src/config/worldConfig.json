@@ -1,6 +1,6 @@
 {
-  "version": 229,
-  "lastSaved": "2026-11-02T10:03:08.558Z",
+  "version": 248,
+  "lastSaved": "2026-11-02T12:02:56.176Z",
   "arena": {
     "width": 20,
     "height": 14,
@@ -2285,7 +2285,7 @@
             "id": "block-locomotion-gp",
             "name": "Locomotion",
             "enabled": true,
-            "mode": "stickDirectionDriveButton",
+            "mode": "analogStick",
             "moveKeys": {
               "upKey": "GamepadDpadUp",
               "downKey": "GamepadDpadDown",
@@ -2299,19 +2299,22 @@
             },
             "sprint": {
               "code": "GamepadLS",
-              "mode": "hold",
-              "requireCleanPress": false
+              "mode": "toggle",
+              "requireCleanPress": true
             },
             "forwardTrigger": {
-              "code": "GamepadRT"
+              "code": "GamepadLT"
             },
             "cursorSteerTrigger": {
               "code": "GamepadLB"
             },
-            "cursorSteerMode": "toggleButton",
+            "cursorSteerMode": "whenHoldingButton",
             "reverseKey": "KeyS",
             "strafeLeftKey": "KeyA",
-            "strafeRightKey": "KeyD"
+            "strafeRightKey": "KeyD",
+            "rawDirectionWhileWalking": true,
+            "stickCursorInFront": true,
+            "cursorMaxDistance": 4
           },
           {
             "type": "itemInteraction",
@@ -5772,19 +5775,22 @@
               },
               "sprint": {
                 "code": "GamepadLS",
-                "mode": "hold",
-                "requireCleanPress": false
+                "mode": "toggle",
+                "requireCleanPress": true
               },
               "forwardTrigger": {
-                "code": "GamepadRT"
+                "code": "GamepadLT"
               },
               "cursorSteerTrigger": {
-                "code": null
+                "code": "GamepadLB"
               },
               "cursorSteerMode": "whenHoldingButton",
               "reverseKey": "KeyS",
               "strafeLeftKey": "KeyA",
-              "strafeRightKey": "KeyD"
+              "strafeRightKey": "KeyD",
+              "rawDirectionWhileWalking": true,
+              "stickCursorInFront": true,
+              "cursorMaxDistance": 4
             },
             {
               "type": "itemInteraction",
