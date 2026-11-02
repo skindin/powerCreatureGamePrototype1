@@ -114,23 +114,41 @@ export class ModularBlockEvaluator {
         ? slot.requireCleanPress
         : defaultRequireClean;
 
+      // Analog trigger detection (GamepadLT / GamepadRT)
+      const isAnalogTrigger = slot.code === "GamepadLT" || slot.code === "GamepadRT";
+      const analogVal = isAnalogTrigger ? getSlotAnalogValue(slot) : 0;
+      const isAnalogPulled = analogVal > 0.2;
+      const isCodeDown = tokens.isDown(slot.code) || isAnalogPulled;
+
       // If the button press was consumed by another module (e.g. pickup claimed LMB),
       // no other block can hold or trigger on it until physically released!
-      if (tokens.isConsumed(slot.code)) {
+      // Modifier, cursor steer, or forward drive intents are non-exclusive and must not be blocked by action token consumption
+      const isModifierIntent = intent.includes("cursorSteer") || intent.includes("forwardDrive") || intent.includes("sprint");
+      if (tokens.isConsumed(slot.code) && !isModifierIntent) {
         if (!tokens.isClaimedBy(slot.code, blockId) || requireClean) {
           return false;
         }
       }
 
       if (triggerMode === "hold") {
-        return tokens.isDown(slot.code);
+        return isCodeDown;
       } else if (triggerMode === "down") {
-        if (!tokens.isDown(slot.code)) return false;
+        if (!isCodeDown) return false;
         if (requireClean) {
+          if (isAnalogTrigger && isAnalogPulled) {
+            const prevAnalog = (char as any)[`_prevAnalog_${slot.code}`] ?? 0;
+            (char as any)[`_prevAnalog_${slot.code}`] = analogVal;
+            if (prevAnalog <= 0.2) return true;
+          }
           return tokens.canExecute(slot.code, "requireCleanPress", blockId, intent);
         }
         return true;
       } else if (triggerMode === "up") {
+        if (isAnalogTrigger) {
+          const prevAnalog = (char as any)[`_prevAnalog_${slot.code}`] ?? 0;
+          (char as any)[`_prevAnalog_${slot.code}`] = analogVal;
+          if (prevAnalog > 0.2 && !isAnalogPulled) return true;
+        }
         if (!isCodeJustReleased(slot.code) && !tokens.wasReleased(slot.code)) return false;
         if (requireClean) {
           return tokens.canExecuteRelease(slot.code, "requireCleanPress", blockId, intent);
@@ -412,18 +430,24 @@ export class ModularBlockEvaluator {
             const stickMag = gpLeftStick ? Math.hypot(gpLeftStick.x, gpLeftStick.y) : 0;
             const maxDist = b.cursorMaxDistance ?? 6.0;
             const minDist = b.cursorMinDistance ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.5);
-            const justExitedCursorMode = Boolean((char as any)._prevSteerCursorActive);
+            const isAimingThrow = Boolean(char.isChargingThrow || char.isTriggerPullThrowing || isAimingTrajectory);
+
             let curDist: number;
             if (stickMag > 0.08) {
               const normalizedMag = Math.min(1.0, (stickMag - 0.08) / 0.92);
               curDist = minDist + normalizedMag * (maxDist - minDist);
-              (char as any)._lastRawCursorDist = curDist;
-            } else if (justExitedCursorMode || (char as any)._lastRawCursorDist === undefined) {
-              curDist = maxDist;
-              (char as any)._lastRawCursorDist = curDist;
+              if (isAimingThrow) {
+                (char as any)._aimingThrowDist = curDist;
+              }
+            } else if (isAimingThrow && (char as any)._aimingThrowDist !== undefined) {
+              // During throw aiming: if player releases stick to pull trigger, retain the intentional aim distance!
+              curDist = (char as any)._aimingThrowDist;
             } else {
-              curDist = (char as any)._lastRawCursorDist ?? minDist;
+              // Outside aiming or at rest: cursor sits predictably and consistently at max clamp distance!
+              curDist = maxDist;
+              (char as any)._aimingThrowDist = undefined;
             }
+
             const facing = char.facingAngle ?? 0;
             targetAimPos.x = char.position.x + Math.cos(facing) * curDist;
             targetAimPos.y = char.position.y + Math.sin(facing) * curDist;
@@ -451,17 +475,23 @@ export class ModularBlockEvaluator {
           }
 
           // Sprint
-          if (b.sprint?.mode === "toggle") {
+          const isSprintHold = b.sprint?.mode !== "toggle";
+          if (!isSprintHold) {
+            // Toggle sprint mode
             if (isSlotActive(b.sprint, "down", false, b.id, "locomotion.sprintToggle")) {
               char.isSprinting = !char.isSprinting;
               claimSlot(b.sprint, b.id, "locomotion.sprintToggle", true);
             }
             if (char.isSprinting) isSprinting = true;
           } else {
+            // Hold sprint mode: only active while sprint key/button is actively held
             if (isSlotActive(b.sprint, "hold", false, b.id, "locomotion.sprint")) {
               isSprinting = true;
               claimSlot(b.sprint, b.id, "locomotion.sprint", false);
+            } else {
+              isSprinting = false;
             }
+            char.isSprinting = isSprinting;
           }
           break;
         }
@@ -923,6 +953,12 @@ export class ModularBlockEvaluator {
       moveY /= moveLen;
     }
 
+    // When the creature stops moving, sprint naturally cancels (matches keyboard mode)
+    if (moveLen < 0.05) {
+      isSprinting = false;
+      char.isSprinting = false;
+    }
+
     const isAiming = !isEditMode && (isLaserAiming || isAimingTrajectory);
     const kLaunchVel = isThrow && char.activeTrajectory?.launchVel ? char.activeTrajectory.launchVel : undefined;
     const kLaunchPos = isThrow && char.activeTrajectory?.launchPos ? char.activeTrajectory.launchPos : undefined;
@@ -949,7 +985,7 @@ export class ModularBlockEvaluator {
       playerName: char.name,
       moveX,
       moveY,
-      isSprinting: isSprinting || Boolean(char.isSprinting),
+      isSprinting: isSprinting,
       isJumpHeld,
       isGrabHeld,
       grabTargetObjectId: (isGrabHeld || isSwap) ? grabTargetObjectId : null,

@@ -347,6 +347,10 @@ export class DevPanel {
     this.renderPanel();
   }
 
+  public getActiveCharacters(): Character[] {
+    return this.getAllCharacters ? this.getAllCharacters() : (this.character ? [this.character] : []);
+  }
+
   public setSelectedEntity(entity: GameObject): void {
     this.selectedEntity = entity;
     this.updateSelectorOptions();

@@ -242,17 +242,17 @@ export class ControlsInspector {
   }
 
   public static getActiveSchema(char: Character): ControlSchema {
-    if (char.controlSchema) {
-      this.ensureSchemaTags(char.controlSchema);
-      return char.controlSchema;
-    }
     if (char.prefabId) {
       const prefab = prefabManager.get(char.prefabId);
       if (prefab?.controlSchema) {
-        char.controlSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
-        this.ensureSchemaTags(char.controlSchema!);
-        return char.controlSchema!;
+        char.controlSchema = prefab.controlSchema;
+        this.ensureSchemaTags(char.controlSchema);
+        return char.controlSchema;
       }
+    }
+    if (char.controlSchema) {
+      this.ensureSchemaTags(char.controlSchema);
+      return char.controlSchema;
     }
     char.controlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
     this.ensureSchemaTags(char.controlSchema!);
@@ -260,7 +260,39 @@ export class ControlsInspector {
   }
 
   public static setActiveSchema(char: Character, schema: ControlSchema): void {
-    char.controlSchema = JSON.parse(JSON.stringify(schema));
+    const copy = JSON.parse(JSON.stringify(schema));
+    char.controlSchema = copy;
+    if (char.prefabId) {
+      const prefab = prefabManager.get(char.prefabId);
+      if (prefab) {
+        prefab.controlSchema = copy;
+        if (prefab.archetype instanceof Character) {
+          (prefab.archetype as Character).controlSchema = copy;
+        }
+      }
+    }
+  }
+
+  public static syncLiveWorkingSchema(): void {
+    if (!this.modalChar || !this.workingSchema) return;
+    const schemaCopy = JSON.parse(JSON.stringify(this.workingSchema));
+    this.modalChar.controlSchema = schemaCopy;
+    if (this.modalChar.prefabId) {
+      const prefab = prefabManager.get(this.modalChar.prefabId);
+      if (prefab) {
+        prefab.controlSchema = schemaCopy;
+        if (prefab.archetype instanceof Character) {
+          (prefab.archetype as Character).controlSchema = schemaCopy;
+        }
+      }
+      if (this.modalPanel) {
+        for (const ent of this.modalPanel.getActiveCharacters()) {
+          if (ent.prefabId === this.modalChar.prefabId) {
+            ent.controlSchema = schemaCopy;
+          }
+        }
+      }
+    }
   }
 
   public static notifyRuleFired(ruleId: string): void {
@@ -2091,6 +2123,7 @@ export class ControlsInspector {
         }
       }
 
+      ControlsInspector.syncLiveWorkingSchema();
       cleanup();
       this.listeningBlockTarget = null;
       this.renderActiveView();
@@ -3029,6 +3062,7 @@ export class ControlsInspector {
           const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
           if (block && block.sprint) {
             block.sprint.mode = (e.target as HTMLSelectElement).value as any;
+            ControlsInspector.syncLiveWorkingSchema();
           }
         });
       });
@@ -3151,6 +3185,7 @@ export class ControlsInspector {
           const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
           if (block) {
             block.cursorSteerMode = (e.target as HTMLSelectElement).value as any;
+            ControlsInspector.syncLiveWorkingSchema();
             this.renderActiveView();
           }
         });
@@ -3163,6 +3198,7 @@ export class ControlsInspector {
           const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
           if (block) {
             block.rawDirectionWhileWalking = (e.target as HTMLInputElement).checked;
+            ControlsInspector.syncLiveWorkingSchema();
           }
         });
       });
@@ -3174,6 +3210,7 @@ export class ControlsInspector {
           const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
           if (block) {
             block.stickCursorInFront = (e.target as HTMLInputElement).checked;
+            ControlsInspector.syncLiveWorkingSchema();
             this.renderActiveView();
           }
         });
@@ -3188,6 +3225,7 @@ export class ControlsInspector {
             const val = parseFloat((e.target as HTMLInputElement).value);
             if (!isNaN(val) && val > 0) {
               block.cursorMaxDistance = val;
+              ControlsInspector.syncLiveWorkingSchema();
             }
           }
         });
