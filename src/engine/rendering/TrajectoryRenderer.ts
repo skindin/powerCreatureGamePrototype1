@@ -272,7 +272,9 @@ export class TrajectoryRenderer {
     };
 
     // Render ghost preview arcs for the flattest and steepest reachable curves when locked or user has adjusted arc ratio
-    const isLockHeld = Boolean(traj.lockedTargetPos || character?.throwModule?.hasUserSetArcRatio);
+    // When aiming wall clear or static hold-and-release, do not draw min and max curves: only the active arc and straight sightline
+    const isWallClearAim = Boolean(character?.isAimingWallClear || character?.isHoldingThrowRelease);
+    const isLockHeld = Boolean(traj.lockedTargetPos || character?.throwModule?.hasUserSetArcRatio) && !isWallClearAim;
     let isSnapped = false;
     if (isLockHeld) {
       const isCharging = Boolean(character?.isChargingThrow);
@@ -292,7 +294,9 @@ export class TrajectoryRenderer {
 
       // Trajectory Modulation Guide Rail (when holding right-click):
       // Dotted vertical rail at the 2D average position with optimal detent notch and clamped slider pip (hidden when charging over time or aiming wall clear)
-      const rail = (character && !isCharging && !character.isAimingWallClear) ? TrajectoryRenderer.calculateMidpointRail(character, arena, traj, ppu, hoverScale) : null;
+      const rail = (character && !isCharging && !character.isAimingWallClear && !character.isHoldingThrowRelease)
+        ? TrajectoryRenderer.calculateMidpointRail(character, arena, traj, ppu, hoverScale)
+        : null;
       if (rail) {
         const { midScreenX, lowScreenY, highScreenY, lineDy, lineLen, effScreenY } = rail;
 
