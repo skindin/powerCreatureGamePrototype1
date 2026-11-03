@@ -7,6 +7,7 @@ import { VerticalPositionModule } from "../engine/VerticalPositionModule.js";
 import { GravityModule } from "../engine/GravityModule.js";
 import { RollModule } from "../engine/RollModule.js";
 import { ConsumableModule } from "../engine/ConsumableModule.js";
+import { GunModule } from "../engine/GunModule.js";
 import { HealthModule } from "../character/HealthModule.js";
 import { LaserModule } from "../character/LaserModule.js";
 import { MeleeModule } from "../character/MeleeModule.js";
@@ -93,6 +94,21 @@ export interface SerializedGameObjectConfig {
     minScaleFloor?: number;
     minRadiusFloor?: number;
     unlimited?: boolean;
+  } | null;
+
+  // Gun Weapon
+  hasGunModule?: boolean;
+  gunModule?: {
+    enabled: boolean;
+    fireRate: number;
+    damagePerBullet: number;
+    bulletSpeed: number;
+    firingSeconds: number;
+    cooldownTime: number;
+    bulletMass: number;
+    gunLength?: number;
+    gunWidth?: number;
+    bulletColor?: string;
   } | null;
 
   // Health & Vitality
@@ -806,6 +822,7 @@ export function serializeGameObject(obj: GameObject): SerializedGameObjectConfig
     hasGravity: obj.gravityModule !== null,
     hasRollModule: obj.rollModule !== null,
     hasConsumableModule: obj.consumableModule !== null,
+    hasGunModule: obj.gunModule !== null,
     hasHealthModule: obj.healthModule !== null,
     hasDamageAuraModule: obj.damageAuraModule !== null,
     hasDamageSolverModule: obj.damageSolverModule !== null,
@@ -884,6 +901,21 @@ export function serializeGameObject(obj: GameObject): SerializedGameObjectConfig
       minScaleFloor: obj.consumableModule.minScaleFloor,
       minRadiusFloor: obj.consumableModule.minRadiusFloor,
       unlimited: obj.consumableModule.unlimited,
+    };
+  }
+
+  if (obj.gunModule) {
+    result.gunModule = {
+      enabled: obj.gunModule.enabled,
+      fireRate: obj.gunModule.fireRateProp.get(obj.properties),
+      damagePerBullet: obj.gunModule.damagePerBulletProp.get(obj.properties),
+      bulletSpeed: obj.gunModule.bulletSpeedProp.get(obj.properties),
+      firingSeconds: obj.gunModule.firingSecondsProp.get(obj.properties),
+      cooldownTime: obj.gunModule.cooldownTimeProp.get(obj.properties),
+      bulletMass: obj.gunModule.bulletMassProp.get(obj.properties),
+      gunLength: obj.gunModule.gunLength,
+      gunWidth: obj.gunModule.gunWidth,
+      bulletColor: obj.gunModule.bulletColor,
     };
   }
 
@@ -1039,6 +1071,24 @@ export function deserializeGameObject(config: SerializedGameObjectConfig): GameO
       minScaleFloor: config.consumableModule.minScaleFloor,
       minRadiusFloor: config.consumableModule.minRadiusFloor,
       unlimited: config.consumableModule.unlimited,
+    });
+  }
+
+  // Gun Weapon
+  if (config.hasGunModule === false) {
+    options.gunModule = null;
+  } else if (config.gunModule) {
+    options.gunModule = new GunModule({
+      enabled: config.gunModule.enabled,
+      fireRate: config.gunModule.fireRate,
+      damagePerBullet: config.gunModule.damagePerBullet,
+      bulletSpeed: config.gunModule.bulletSpeed,
+      firingSeconds: config.gunModule.firingSeconds,
+      cooldownTime: config.gunModule.cooldownTime,
+      bulletMass: config.gunModule.bulletMass,
+      gunLength: config.gunModule.gunLength,
+      gunWidth: config.gunModule.gunWidth,
+      bulletColor: config.gunModule.bulletColor,
     });
   }
 

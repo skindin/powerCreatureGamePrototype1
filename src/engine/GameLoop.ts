@@ -15,6 +15,7 @@ import type { AuthoritativeWorldSnapshot } from "../server/AuthoritativeSnapshot
 import type { GhostEntityState } from "../network/RelayClient.js";
 import { sceneSpawnerManager } from "./spawner/SceneSpawnerManager.js";
 import { ObjectBallisticsReconciler } from "../network/reconcilers/ObjectBallisticsReconciler.js";
+import { BulletManager } from "./bullet/BulletManager.js";
 
 export type { PlayerEntry, CollisionMode, WorldSnapshot, RollbackResult, ReconciliationResult };
 export { PLAYER_COLORS, StateHistoryBuffer, IslandManager, PredictionReconciliation };
@@ -638,6 +639,9 @@ export class GameLoop {
     if (!isOnline) {
       sceneSpawnerManager.update(dt, this.arena, this.objects);
     }
+
+    // 3d. Update active ballistic bullets and gun overheat cooldown
+    BulletManager.getInstance().update(dt, this.arena, this.allCharacters, this.objects);
 
     // 4. Resolve collisions across all characters and objects via CollisionResolver
     CollisionResolver.resolveEntityCollisions(

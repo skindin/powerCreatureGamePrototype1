@@ -47,6 +47,24 @@ export class SceneSpawnerManager {
     });
 
     this.spawners.set(superAppleSpawner.id, superAppleSpawner);
+
+    // Default Gun Spawner: maintains firearms in the quarry arena
+    const gunSpawner = new SceneSpawner({
+      id: "spawner_gun_default",
+      name: "Gun Weapon Spawner",
+      enabled: true,
+      prefabId: "prefab_pistol",
+      intervalMinutes: 0.5,
+      maxCount: 2,
+      designatedSpawnPoints: [
+        { x: 13.5, y: 15.0, z: 0 },
+        { x: 16.5, y: 15.0, z: 0 },
+        { x: 15.0, y: 8.5, z: 0 },
+        { x: 15.0, y: 21.5, z: 0 },
+      ],
+    });
+
+    this.spawners.set(gunSpawner.id, gunSpawner);
   }
 
   public getAll(): SceneSpawner[] {

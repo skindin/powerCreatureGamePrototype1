@@ -379,6 +379,7 @@ export interface ThrowControlBlock {
   fireTrigger?: BlockInputSlot;   // For aimAndFire
   quickTrigger?: BlockInputSlot;  // For quickOptimal and quickWallClear
   cancelTrigger?: BlockInputSlot; // Optional button to cancel active throw trajectory preview/charging
+  throwOverrideTrigger?: BlockInputSlot; // Optional button required to override weapon firing and throw held gun
   triggerMargin?: number;         // Deadzone margin (default 0.15) before analog trigger increases force
   arcModulation?: {
     source?: "mouseDeltaY" | "mouseWheel" | "none";
@@ -398,6 +399,7 @@ export interface ItemInteractionControlBlock {
   drop?: BlockInputSlot;
   swap?: BlockInputSlot;
   consume?: BlockInputSlot;
+  fireWeapon?: BlockInputSlot;               // Button/Trigger to fire held weapon / gun
   swapRequiresHolding?: boolean;             // Default false
   triggerPickupWhenEmptyHanded?: boolean;    // Default false: if swap or secondary is pressed when empty-handed, triggers pickup
   additionalPickup?: BlockInputSlot;         // Optional extra button that triggers pickup when emptyhanded

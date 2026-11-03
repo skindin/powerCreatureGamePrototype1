@@ -9,6 +9,7 @@ import { WallRoofPass } from "./rendering/WallRoofPass.js";
 import { EntityPass } from "./rendering/EntityPass.js";
 import { HudOverlayPass } from "./rendering/HudOverlayPass.js";
 import { prefabManager } from "./prefab/PrefabManager.js";
+import { BulletManager } from "./bullet/BulletManager.js";
 import type { CanvasViewport } from "../ui/InputManager.js";
 
 export type VerticalVisualMode = "bigger" | "hover" | "both";
@@ -905,6 +906,9 @@ export class Renderer {
           ShadowPass.drawVerticalConnectorLine(ctx, entity, arena, ppu, effPos, this.viewSettings);
         }
       }
+
+      // 9b. Render active ballistic bullet projectiles and vapor streaks
+      BulletManager.getInstance().render(ctx, ppu, arena, this.viewSettings);
 
       // 10. Trajectory Lines and Aim Cursors
       // First: render active trajectories for any character holding an object

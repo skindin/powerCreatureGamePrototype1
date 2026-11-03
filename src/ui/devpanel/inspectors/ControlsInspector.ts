@@ -1948,6 +1948,12 @@ export class ControlsInspector {
               Press while aiming or charging a throw to immediately cancel the trajectory preview without firing.
             </div>
           </div>
+          <div style="margin-top: 4px; padding-top: 8px; border-top: 1px dashed rgba(148, 163, 184, 0.2);">
+            ${this.renderInputSlot(b.id, "throwOverrideTrigger", b.throwOverrideTrigger, "Throw Weapon Override Button (Optional)")}
+            <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+              When holding a gun/weapon, hold this button to throw the weapon instead of firing it.
+            </div>
+          </div>
         `;
 
         return `
@@ -1994,6 +2000,9 @@ export class ControlsInspector {
               </div>
               <div>
                 ${this.renderInputSlot(b.id, "consume", b.consume, "Consume / Bite Item")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "fireWeapon", b.fireWeapon, "Fire Weapon / Shoot Gun")}
               </div>
             </div>
             
@@ -2865,6 +2874,7 @@ export class ControlsInspector {
               drop: { code: "GamepadY", requireCleanPress: true },
               swap: { code: "GamepadB", requireCleanPress: true },
               consume: { code: "GamepadLB", requireCleanPress: false },
+              fireWeapon: { code: "GamepadRT", requireCleanPress: false },
               swapRequiresHolding: false,
               triggerPickupWhenEmptyHanded: true,
             } : {
@@ -2876,6 +2886,7 @@ export class ControlsInspector {
               drop: { code: "KeyQ" },
               swap: { code: "KeyF" },
               consume: { code: "KeyE" },
+              fireWeapon: { code: "MouseRight", requireCleanPress: false },
               swapRequiresHolding: false,
               triggerPickupWhenEmptyHanded: true,
             });
@@ -2890,6 +2901,7 @@ export class ControlsInspector {
               aimTrigger: { code: "GamepadLT", requireCleanPress: false },
               fireTrigger: { code: "GamepadRT", requireCleanPress: true },
               quickTrigger: { code: "GamepadRT", requireCleanPress: true },
+              throwOverrideTrigger: { code: null, requireCleanPress: false },
               arcModulation: { source: "none", autoCursorLock: false, sensitivity: 0.005 },
               enableProximityCancel: false,
               cancelRadius: 1.5,
@@ -2903,6 +2915,7 @@ export class ControlsInspector {
               aimTrigger: { code: "MouseRight" },
               fireTrigger: { code: "MouseLeft" },
               quickTrigger: { code: "MouseLeft" },
+              throwOverrideTrigger: { code: "KeyT", requireCleanPress: false },
               arcModulation: { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 },
               enableProximityCancel: false,
               cancelRadius: 1.5,

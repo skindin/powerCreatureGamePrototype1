@@ -2,6 +2,7 @@ import { Arena, WallMapPreset } from "../Arena.js";
 import { GameObject } from "../GameObject.js";
 import { RollModule } from "../RollModule.js";
 import { ConsumableModule } from "../ConsumableModule.js";
+import { GunModule } from "../GunModule.js";
 
 /**
  * 🪨 The Stone Quarry Map Preset
@@ -364,6 +365,56 @@ export function createQuarryStones(): GameObject[] {
       hasGravity: true,
       hasVerticalPosition: true,
       rollModule: new RollModule({ rollResistance: 0.45 }),
+    }),
+
+    // --- Starter Firearms in the Central Quarry Clearings ---
+    new GameObject({
+      id: "gun-starter-pistol",
+      name: "Tactical Pistol",
+      prefabId: "prefab_pistol",
+      position: { x: 13.5, y: 15.0, z: 0 },
+      color: "#475569",
+      visualShape: "box",
+      mass: 0.65,
+      colliderRadius: 0.22,
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      gunModule: new GunModule({
+        fireRate: 4.0,
+        damagePerBullet: 25.0,
+        bulletSpeed: 32.0,
+        firingSeconds: 2.0,
+        cooldownTime: 1.2,
+        bulletMass: 0.08,
+        gunLength: 0.55,
+        gunWidth: 0.22,
+        bulletColor: "#f59e0b",
+      }),
+    }),
+    new GameObject({
+      id: "gun-starter-blaster",
+      name: "Rapid Blaster",
+      prefabId: "prefab_blaster",
+      position: { x: 16.5, y: 15.0, z: 0 },
+      color: "#0284c7",
+      visualShape: "box",
+      mass: 0.55,
+      colliderRadius: 0.22,
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      gunModule: new GunModule({
+        fireRate: 10.0,
+        damagePerBullet: 12.0,
+        bulletSpeed: 28.0,
+        firingSeconds: 3.0,
+        cooldownTime: 1.8,
+        bulletMass: 0.04,
+        gunLength: 0.60,
+        gunWidth: 0.24,
+        bulletColor: "#38bdf8",
+      }),
     }),
   ];
 }

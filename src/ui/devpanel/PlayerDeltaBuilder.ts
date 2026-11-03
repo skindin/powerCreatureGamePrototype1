@@ -106,6 +106,14 @@ export class PlayerDeltaBuilder {
       if (prop === owner.consumableModule.consumeRateWattsProp) return "consumableModule.consumeRateWatts";
       if (prop === owner.consumableModule.healRateProp) return "consumableModule.healRate";
     }
+    if (owner.gunModule) {
+      if (prop === owner.gunModule.fireRateProp) return "gunModule.fireRate";
+      if (prop === owner.gunModule.damagePerBulletProp) return "gunModule.damagePerBullet";
+      if (prop === owner.gunModule.bulletSpeedProp) return "gunModule.bulletSpeed";
+      if (prop === owner.gunModule.firingSecondsProp) return "gunModule.firingSeconds";
+      if (prop === owner.gunModule.cooldownTimeProp) return "gunModule.cooldownTime";
+      if (prop === owner.gunModule.bulletMassProp) return "gunModule.bulletMass";
+    }
     if (owner.damageAuraModule) {
       if (prop === owner.damageAuraModule.damageRadiusProp) return "damageAuraModule.damageRadius";
       if (prop === owner.damageAuraModule.damageRateProp) return "damageAuraModule.damageRate";

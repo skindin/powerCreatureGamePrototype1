@@ -4263,6 +4263,146 @@
         "minScaleFloor": 0.35,
         "minRadiusFloor": 0.12
       }
+    },
+    {
+      "id": "gun-starter-pistol",
+      "name": "Tactical Pistol",
+      "prefabId": "prefab_pistol",
+      "position": {
+        "x": 13.5,
+        "y": 15,
+        "z": 0
+      },
+      "color": "#475569",
+      "visualShape": "box",
+      "isSleeping": false,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": false,
+      "hasGunModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.65,
+      "colliderRadius": 0.22,
+      "bounceMod": 0.15,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.65,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.22
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "gunModule": {
+        "enabled": true,
+        "fireRate": 4,
+        "damagePerBullet": 25,
+        "bulletSpeed": 32,
+        "firingSeconds": 2,
+        "cooldownTime": 1.2,
+        "bulletMass": 0.08,
+        "gunLength": 0.55,
+        "gunWidth": 0.22,
+        "bulletColor": "#f59e0b"
+      }
+    },
+    {
+      "id": "gun-starter-blaster",
+      "name": "Rapid Blaster",
+      "prefabId": "prefab_blaster",
+      "position": {
+        "x": 16.5,
+        "y": 15,
+        "z": 0
+      },
+      "color": "#0284c7",
+      "visualShape": "box",
+      "isSleeping": false,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": false,
+      "hasGunModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.55,
+      "colliderRadius": 0.22,
+      "bounceMod": 0.15,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.55,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.22
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "gunModule": {
+        "enabled": true,
+        "fireRate": 10,
+        "damagePerBullet": 12,
+        "bulletSpeed": 28,
+        "firingSeconds": 3,
+        "cooldownTime": 1.8,
+        "bulletMass": 0.04,
+        "gunLength": 0.6,
+        "gunWidth": 0.24,
+        "bulletColor": "#38bdf8"
+      }
     }
   ],
   "prefabs": [
@@ -6900,6 +7040,154 @@
           }
         ]
       }
+    },
+    {
+      "id": "prefab_pistol",
+      "name": "Pistol",
+      "icon": "🔫",
+      "archetype": {
+        "id": "archetype_pistol",
+        "name": "Pistol",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "color": "#475569",
+        "visualShape": "box",
+        "isSleeping": false,
+        "hasRigidbody": true,
+        "hasCollider": true,
+        "hasFriction": true,
+        "hasBounce": true,
+        "hasVerticalPosition": true,
+        "hasGravity": true,
+        "hasRollModule": false,
+        "hasConsumableModule": false,
+        "hasGunModule": true,
+        "hasHealthModule": false,
+        "hasDamageAuraModule": false,
+        "hasDamageSolverModule": false,
+        "mass": 0.65,
+        "colliderRadius": 0.22,
+        "bounceMod": 0.15,
+        "verticalBounce": true,
+        "staticGroundFrictionMod": 1,
+        "dynamicGroundFrictionMod": 1,
+        "rigidbodyModule": {
+          "enabled": true,
+          "mass": 0.65,
+          "collisionMode": "dynamic",
+          "hasVerticalVelocity": true
+        },
+        "colliderModule": {
+          "enabled": true,
+          "radius": 0.22
+        },
+        "frictionModule": {
+          "enabled": true,
+          "staticFrictionMod": 1,
+          "dynamicFrictionMod": 1
+        },
+        "bounceModule": {
+          "enabled": true,
+          "bounceMod": 0.15,
+          "verticalBounce": true
+        },
+        "verticalPositionModule": {
+          "enabled": true,
+          "z": 0
+        },
+        "gravityModule": {
+          "enabled": true
+        },
+        "gunModule": {
+          "enabled": true,
+          "fireRate": 4,
+          "damagePerBullet": 25,
+          "bulletSpeed": 32,
+          "firingSeconds": 2,
+          "cooldownTime": 1.2,
+          "bulletMass": 0.08,
+          "gunLength": 0.55,
+          "gunWidth": 0.22,
+          "bulletColor": "#f59e0b"
+        }
+      }
+    },
+    {
+      "id": "prefab_blaster",
+      "name": "Rapid Blaster",
+      "icon": "⚡",
+      "archetype": {
+        "id": "archetype_blaster",
+        "name": "Rapid Blaster",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "color": "#0284c7",
+        "visualShape": "box",
+        "isSleeping": false,
+        "hasRigidbody": true,
+        "hasCollider": true,
+        "hasFriction": true,
+        "hasBounce": true,
+        "hasVerticalPosition": true,
+        "hasGravity": true,
+        "hasRollModule": false,
+        "hasConsumableModule": false,
+        "hasGunModule": true,
+        "hasHealthModule": false,
+        "hasDamageAuraModule": false,
+        "hasDamageSolverModule": false,
+        "mass": 0.55,
+        "colliderRadius": 0.22,
+        "bounceMod": 0.15,
+        "verticalBounce": true,
+        "staticGroundFrictionMod": 1,
+        "dynamicGroundFrictionMod": 1,
+        "rigidbodyModule": {
+          "enabled": true,
+          "mass": 0.55,
+          "collisionMode": "dynamic",
+          "hasVerticalVelocity": true
+        },
+        "colliderModule": {
+          "enabled": true,
+          "radius": 0.22
+        },
+        "frictionModule": {
+          "enabled": true,
+          "staticFrictionMod": 1,
+          "dynamicFrictionMod": 1
+        },
+        "bounceModule": {
+          "enabled": true,
+          "bounceMod": 0.15,
+          "verticalBounce": true
+        },
+        "verticalPositionModule": {
+          "enabled": true,
+          "z": 0
+        },
+        "gravityModule": {
+          "enabled": true
+        },
+        "gunModule": {
+          "enabled": true,
+          "fireRate": 10,
+          "damagePerBullet": 12,
+          "bulletSpeed": 28,
+          "firingSeconds": 3,
+          "cooldownTime": 1.8,
+          "bulletMass": 0.04,
+          "gunLength": 0.6,
+          "gunWidth": 0.24,
+          "bulletColor": "#38bdf8"
+        }
+      }
     }
   ],
   "spawners": [
@@ -7023,6 +7311,36 @@
         },
         {
           "x": 21.5,
+          "y": 21.5,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "spawner_gun_default",
+      "name": "Gun Weapon Spawner",
+      "enabled": true,
+      "prefabId": "prefab_pistol",
+      "intervalMinutes": 0.5,
+      "maxCount": 2,
+      "designatedSpawnPoints": [
+        {
+          "x": 13.5,
+          "y": 15,
+          "z": 0
+        },
+        {
+          "x": 16.5,
+          "y": 15,
+          "z": 0
+        },
+        {
+          "x": 15,
+          "y": 8.5,
+          "z": 0
+        },
+        {
+          "x": 15,
           "y": 21.5,
           "z": 0
         }

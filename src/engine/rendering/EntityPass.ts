@@ -122,6 +122,56 @@ export class EntityPass {
     ctx.save();
     ctx.globalAlpha = shouldBeTransparent ? 0.55 : 1.0;
 
+    // Gun Weapon Rendering: simple directional rectangle aligned with character aim/facing angle
+    if (obj.gunModule) {
+      const holder = obj.heldBy || allCharacters.find((c) => c.heldObject === obj);
+      const angle = holder ? holder.facingAngle : 0;
+      const gunLength = Math.max(16, renderRadius * 2.2);
+      const gunWidth = Math.max(8, renderRadius * 0.85);
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+
+      // Main gun rectangle
+      ctx.beginPath();
+      const rectX = -gunLength * 0.3;
+      const rectY = -gunWidth * 0.5;
+      if (ctx.roundRect) {
+        ctx.roundRect(rectX, rectY, gunLength, gunWidth, 2);
+      } else {
+        ctx.rect(rectX, rectY, gunLength, gunWidth);
+      }
+      ctx.fillStyle = obj.color || "#475569";
+      ctx.fill();
+
+      const primaryTargetChar = targetingChars[0];
+      const targetColor = primaryTargetChar ? (primaryTargetChar.playerColor || "#ffffff") : "#ffffff";
+      ctx.strokeStyle = isWithinPickupRange ? (isTargetGrab ? targetColor : "#ffffff") : "rgba(255, 255, 255, 0.45)";
+      ctx.lineWidth = isWithinPickupRange ? 2.5 : 1.5;
+      ctx.stroke();
+
+      // Barrel tip & muzzle detail
+      ctx.fillStyle = "#1e293b";
+      ctx.fillRect(rectX + gunLength * 0.7, -gunWidth * 0.35, gunLength * 0.3, gunWidth * 0.7);
+
+      // Overheat / Heat gauge bar above gun
+      if (obj.gunModule.heat > 0.02) {
+        const barW = gunLength * 0.9;
+        const barH = 3;
+        const barX = -barW * 0.5;
+        const barY = -gunWidth * 0.5 - 6;
+        ctx.fillStyle = "rgba(15, 23, 42, 0.7)";
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.fillStyle = obj.gunModule.isOverheated ? "#ef4444" : "#f59e0b";
+        ctx.fillRect(barX, barY, barW * Math.min(1.0, obj.gunModule.heat), barH);
+      }
+
+      ctx.restore();
+      ctx.restore();
+      return;
+    }
+
     if (obj.visualShape === "box") {
       const size = renderRadius * 2;
       const cornerR = Math.max(3, renderRadius * 0.16);

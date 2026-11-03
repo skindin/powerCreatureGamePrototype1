@@ -22,6 +22,7 @@ import { ConsumeModule } from "../../character/ConsumeModule.js";
 import { LaserModule } from "../../character/LaserModule.js";
 import { MeleeModule } from "../../character/MeleeModule.js";
 import { SpawnerModule } from "../../engine/SpawnerModule.js";
+import { GunModule } from "../../engine/GunModule.js";
 import type { DevPanel } from "../DevPanel.js";
 
 /**
@@ -90,6 +91,9 @@ export class EntityModuleLifecycle {
       case "consumable":
       case "food":
         if (e.consumableModule) e.consumableModule.enabled = !e.consumableModule.enabled;
+        break;
+      case "gun":
+        if (e.gunModule) e.gunModule.enabled = !e.gunModule.enabled;
         break;
       case "spawner":
         if (e.spawnerModule) e.spawnerModule.enabled = !e.spawnerModule.enabled;
@@ -202,6 +206,9 @@ export class EntityModuleLifecycle {
       case "consumable":
       case "food":
         e.consumableModule = null;
+        break;
+      case "gun":
+        e.gunModule = null;
         break;
       case "spawner":
         e.spawnerModule = null;
@@ -347,6 +354,17 @@ export class EntityModuleLifecycle {
           consumeRateWatts: 800,
         });
         e.consumableModule.initialColliderRadius = e.colliderRadius;
+        break;
+      case "gun":
+        e.gunModule = new GunModule({
+          fireRate: 5.0,
+          damagePerBullet: 15.0,
+          bulletSpeed: 28.0,
+          firingSeconds: 2.5,
+          cooldownTime: 1.5,
+          bulletMass: 0.06,
+        });
+        e.gunModule.registerProperties(e.properties);
         break;
       case "spawner":
         e.spawnerModule = new SpawnerModule({

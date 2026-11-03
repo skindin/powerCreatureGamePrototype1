@@ -232,6 +232,99 @@ export class InteractionModulesInspector {
         healRateSocketEl.appendChild(healCtrl.element);
       }
     }
+
+    // Gun Module controls
+    if (e.gunModule) {
+      const gm = e.gunModule;
+
+      const fireRateSocketEl = container.querySelector("#prop-socket-gun-fire-rate");
+      if (fireRateSocketEl) {
+        const ctrl = new PropertyControl({
+          property: gm.fireRateProp,
+          owner: e,
+          label: "Fire Rate (rounds/s)",
+          step: 0.5,
+          onUserChange: () => {
+            if (!(e instanceof Character)) panel.markDirty("objects", e);
+            const dpsEl = container.querySelector("#label-gun-dps");
+            if (dpsEl) dpsEl.textContent = `${gm.dps.toFixed(1)} DPS`;
+          },
+        });
+        fireRateSocketEl.appendChild(ctrl.element);
+      }
+
+      const dmgSocketEl = container.querySelector("#prop-socket-gun-damage-per-bullet");
+      if (dmgSocketEl) {
+        const ctrl = new PropertyControl({
+          property: gm.damagePerBulletProp,
+          owner: e,
+          label: "Damage Per Bullet",
+          step: 1.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) panel.markDirty("objects", e);
+            const dpsEl = container.querySelector("#label-gun-dps");
+            if (dpsEl) dpsEl.textContent = `${gm.dps.toFixed(1)} DPS`;
+          },
+        });
+        dmgSocketEl.appendChild(ctrl.element);
+      }
+
+      const speedSocketEl = container.querySelector("#prop-socket-gun-bullet-speed");
+      if (speedSocketEl) {
+        const ctrl = new PropertyControl({
+          property: gm.bulletSpeedProp,
+          owner: e,
+          label: "Bullet Speed (u/s)",
+          step: 1.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) panel.markDirty("objects", e);
+          },
+        });
+        speedSocketEl.appendChild(ctrl.element);
+      }
+
+      const firingSecSocketEl = container.querySelector("#prop-socket-gun-firing-seconds");
+      if (firingSecSocketEl) {
+        const ctrl = new PropertyControl({
+          property: gm.firingSecondsProp,
+          owner: e,
+          label: "Firing Seconds (Overheat Cap)",
+          step: 0.2,
+          onUserChange: () => {
+            if (!(e instanceof Character)) panel.markDirty("objects", e);
+          },
+        });
+        firingSecSocketEl.appendChild(ctrl.element);
+      }
+
+      const cooldownSocketEl = container.querySelector("#prop-socket-gun-cooldown-time");
+      if (cooldownSocketEl) {
+        const ctrl = new PropertyControl({
+          property: gm.cooldownTimeProp,
+          owner: e,
+          label: "Cooldown Time (s)",
+          step: 0.1,
+          onUserChange: () => {
+            if (!(e instanceof Character)) panel.markDirty("objects", e);
+          },
+        });
+        cooldownSocketEl.appendChild(ctrl.element);
+      }
+
+      const massSocketEl = container.querySelector("#prop-socket-gun-bullet-mass");
+      if (massSocketEl) {
+        const ctrl = new PropertyControl({
+          property: gm.bulletMassProp,
+          owner: e,
+          label: "Bullet Mass (kg - Recoil & Knockback)",
+          step: 0.01,
+          onUserChange: () => {
+            if (!(e instanceof Character)) panel.markDirty("objects", e);
+          },
+        });
+        massSocketEl.appendChild(ctrl.element);
+      }
+    }
   }
 }
 

@@ -77,6 +77,9 @@ export class EntityModuleCardsHtml {
     const hasConsumableModule = Boolean(e.consumableModule);
     const consumableEnabled = Boolean(e.consumableModule?.enabled);
 
+    const hasGunModule = Boolean(e.gunModule);
+    const gunEnabled = Boolean(e.gunModule?.enabled);
+
     const hasConsumeModule = isChar && Boolean(char?.consumeModule);
     const consumeEnabled = isChar && Boolean(char?.consumeModule?.enabled);
 
@@ -706,6 +709,49 @@ export class EntityModuleCardsHtml {
       `;
     }
 
+    // Gun Module
+    if (hasGunModule && e.gunModule) {
+      attachedCount++;
+      const gm = e.gunModule;
+      const heatPct = Math.min(100, Math.max(0, gm.heat * 100));
+
+      html += `
+        <div class="module-card ${!gunEnabled ? "module-disabled" : ""}" data-module-id="gun">
+          ${panel.renderModuleHeader("gun", "🔫 Gun Weapon", renderToggleBtn("gun", gunEnabled))}
+          <div id="collapse-body-mod-gun" style="display: ${isCollapsed("mod-gun") ? "none" : "block"};">
+          ${!gunEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Weapon firing is disabled</div>` : ""}
+          <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+            Ballistic firearm with high-speed projectile physics, continuous overheat capacity, shooter recoil kickback, and target knockback.
+          </div>
+
+          <div style="margin: 6px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: #e2e8f0; margin-bottom: 2px;">
+              <span>Overheat Status</span>
+              <span id="label-gun-heat-status" style="color: ${gm.isOverheated ? "#ef4444" : "#f59e0b"}; font-weight: 700;">
+                ${gm.isOverheated ? "🔥 OVERHEATED" : `${heatPct.toFixed(0)}% Heat`}
+              </span>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 4px; height: 10px; overflow: hidden;">
+              <div id="bar-gun-heat-fill" style="background: linear-gradient(90deg, #f59e0b, #ef4444); height: 100%; width: ${heatPct}%; transition: width 0.1s ease;"></div>
+            </div>
+          </div>
+
+          <div style="padding: 6px 8px; margin: 6px 0; background: rgba(15, 23, 42, 0.6); border-radius: 4px; border: 1px solid rgba(148, 163, 184, 0.2); display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.72rem; color: #94a3b8; font-weight: 600;">CALCULATED DPS</span>
+            <span id="label-gun-dps" style="font-size: 0.85rem; color: #38bdf8; font-weight: 700;">${gm.dps.toFixed(1)} DPS</span>
+          </div>
+
+          <div id="prop-socket-gun-fire-rate"></div>
+          <div id="prop-socket-gun-damage-per-bullet"></div>
+          <div id="prop-socket-gun-bullet-speed"></div>
+          <div id="prop-socket-gun-firing-seconds"></div>
+          <div id="prop-socket-gun-cooldown-time"></div>
+          <div id="prop-socket-gun-bullet-mass"></div>
+          </div>
+        </div>
+      `;
+    }
+
     // Spawner Module
     if (hasSpawnerModule && e.spawnerModule) {
       attachedCount++;
@@ -843,6 +889,7 @@ export class EntityModuleCardsHtml {
       { id: "damageAura", name: "Damage Aura", icon: "☣️", description: "Radiates continuous damage in a 3D spherical radius to living entities", isAttached: hasDamageAuraModule },
       { id: "damageSolver", name: "Damage Solver & Armor", icon: "🛡️", description: "Converts blunt physical impacts and wall collisions into HP damage", isAttached: hasDamageSolverModule },
       { id: "consumable", name: "Consumable", icon: "🍎", description: "Consumable physical item with customizable tag and energy/healing payload", isAttached: hasConsumableModule },
+      { id: "gun", name: "Gun Weapon", icon: "🔫", description: "Ballistic firearm with recoil, damage, fire rate, and overheat", isAttached: hasGunModule },
       { id: "spawner", name: "Spawner (Clone On Pickup)", icon: "📦", description: "Clones the item at its initial spawn position upon pickup for infinite supplies", isAttached: hasSpawnerModule },
       { id: "character", name: "Character Module", icon: "👤", description: "Classifies entity role: Local/Remote Player, Local/Remote AI, or Inert Dummy", isAttached: hasCharModule },
     ];

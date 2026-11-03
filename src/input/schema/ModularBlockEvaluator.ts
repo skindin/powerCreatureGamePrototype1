@@ -16,6 +16,7 @@ import { InputPressTokenManager } from "./InputPressTokenManager.js";
 import type { PlayerInputPacket } from "../../engine/physics/StateHistoryBuffer.js";
 import { ThrowCapability } from "../../character/capabilities/ThrowCapability.js";
 import { ControlSchemaArbiter } from "./ControlSchemaArbiter.js";
+import { BulletManager } from "../../engine/bullet/BulletManager.js";
 
 /**
  * ModularBlockEvaluator executes prebuilt, intuitive Control Blocks.
@@ -44,7 +45,7 @@ export class ModularBlockEvaluator {
   ): PlayerInputPacket {
     const char = execCtx.character;
     const now = performance.now();
-    const isEditMode = Boolean((window as any).__DEV_PANEL_OPEN);
+    const isEditMode = typeof window !== "undefined" && Boolean((window as any).__DEV_PANEL_OPEN);
 
     const playerId = execCtx.gamepadStates
       ? `gamepad-${execCtx.gamepadStates.slotIndex}`
@@ -236,7 +237,7 @@ export class ModularBlockEvaluator {
     let isSteerCursorActive = false;
 
     // Reticle/Aim target position (works seamlessly for mouse and gamepad reticle)
-    const baseAim = execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos;
+    const baseAim = execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos || { x: char.position.x + 1, y: char.position.y };
     const targetAimPos = { x: baseAim.x, y: baseAim.y };
 
     // Pre-evaluate locomotion cursor mode states
@@ -690,6 +691,37 @@ export class ModularBlockEvaluator {
             break;
           }
 
+          // Gun Wielding: If holding a gun, check if throw override trigger is active.
+          // If not active, show high-speed ballistic bullet trajectory and suppress physical throwing.
+          const isHoldingGun = Boolean(char.heldObject?.gunModule && char.heldObject.gunModule.enabled);
+          const isThrowOverrideActive = isHoldingGun && Boolean(
+            b.throwOverrideTrigger &&
+            b.throwOverrideTrigger.code &&
+            (isSlotActive(b.throwOverrideTrigger, "hold", false, b.id, "check") ||
+             isSlotActive(b.throwOverrideTrigger, "down", false, b.id, "check") ||
+             getSlotAnalogValue(b.throwOverrideTrigger) > 0.15)
+          );
+
+          if (isHoldingGun && !isThrowOverrideActive) {
+            char.isChargingThrow = false;
+            char.isAimingWallClear = false;
+            char.isHoldingThrowRelease = false;
+            char.isTriggerPullThrowing = false;
+            char.triggerThrowPower = 0;
+            char.throwChargeStartTime = null;
+            char.throwChargeProgress = 0;
+            const effAim = getEffectiveAimPos();
+            if (execCtx.arena) {
+              char.activeTrajectory = BulletManager.getInstance().calculateBulletTrajectory(
+                char,
+                char.heldObject!.gunModule!,
+                effAim,
+                execCtx.arena
+              );
+            }
+            break;
+          }
+
           // If the button pressed to pick up or swap this item is STILL held down or releasing,
           // throw charging/aiming is strictly locked out until that button is fully released!
           const pickupCode = (char as any)._pickupPressCode;
@@ -1057,6 +1089,26 @@ export class ModularBlockEvaluator {
           if (execCtx.heldItemIsEdible && isSlotActive(b.consume, "hold", false, b.id, "consume.bite")) {
             isUsingItem = true;
             claimSlot(b.consume, b.id, "consume.bite", false);
+          }
+
+          // Fire Weapon / Shoot Gun
+          const isHoldingGunItem = Boolean(char.heldObject?.gunModule && char.heldObject.gunModule.enabled);
+          const isFireSlotActive = Boolean(
+            b.fireWeapon && (
+              isSlotActive(b.fireWeapon, "hold", false, b.id, "gun.fire") ||
+              isSlotActive(b.fireWeapon, "down", false, b.id, "gun.fire") ||
+              getSlotAnalogValue(b.fireWeapon) > 0.15
+            )
+          );
+
+          if (isHoldingGunItem && isFireSlotActive && execCtx.arena) {
+            isUsingItem = true;
+            (char as any).isFiringWeapon = true;
+            const effAim = getEffectiveAimPos();
+            BulletManager.getInstance().fireBullet(char, char.heldObject!.gunModule!, effAim, execCtx.arena);
+            claimSlot(b.fireWeapon, b.id, "gun.fire", false);
+          } else {
+            (char as any).isFiringWeapon = false;
           }
           break;
         }

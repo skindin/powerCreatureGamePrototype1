@@ -16,6 +16,7 @@ import type { CharacterModule } from "../character/CharacterModule.js";
 import type { Character } from "../character/Character.js";
 import type { ConsumableModule } from "./ConsumableModule.js";
 import type { SpawnerModule } from "./SpawnerModule.js";
+import { GunModule } from "./GunModule.js";
 
 import { ObjectPropertiesRegistry } from "./properties/DynamicProperty.js";
 
@@ -161,6 +162,7 @@ export class GameObject {
   public characterModule: CharacterModule | null = null;
   public foodModule: ConsumableModule | null = null;
   public consumableModule: ConsumableModule | null = null;
+  public gunModule: GunModule | null = null;
   public spawnerModule: SpawnerModule | null = null;
 
   /** Reference to the Scene Prefab archetype this object was instantiated from (if any) */
@@ -192,6 +194,7 @@ export class GameObject {
     characterModule?: CharacterModule | null;
     consumableModule?: ConsumableModule | null;
     foodModule?: ConsumableModule | null;
+    gunModule?: GunModule | null;
     spawnerModule?: SpawnerModule | null;
     // Convenience option shorthands
     mass?: number;
@@ -277,6 +280,10 @@ export class GameObject {
     this.characterModule = options.characterModule ?? null;
     this.consumableModule = options.consumableModule ?? options.foodModule ?? null;
     this.foodModule = this.consumableModule;
+    this.gunModule = options.gunModule ?? null;
+    if (this.gunModule) {
+      this.gunModule.registerProperties(this.properties);
+    }
     this.spawnerModule = options.spawnerModule ?? null;
     if (this.spawnerModule && (this.spawnerModule.spawnPosition.x === 0 && this.spawnerModule.spawnPosition.y === 0 && this.spawnerModule.spawnPosition.z === 0)) {
       this.spawnerModule.spawnPosition = { ...this.position };
@@ -301,6 +308,9 @@ export class GameObject {
    * Any consumable object has a primary item ability.
    */
   public hasPrimaryItemAbility(): boolean {
+    if (this.gunModule && this.gunModule.enabled) {
+      return true;
+    }
     if (this.consumableModule && this.consumableModule.enabled && !this.consumableModule.isConsumed) {
       return true;
     }
@@ -310,8 +320,12 @@ export class GameObject {
   /**
    * Returns the primary item ability type of this object.
    * For any consumable object, its primary item ability is 'consume'.
+   * For any gun object, its primary item ability is 'gun'.
    */
   public getPrimaryItemAbilityType(): string | null {
+    if (this.gunModule && this.gunModule.enabled) {
+      return "gun";
+    }
     if (this.consumableModule && this.consumableModule.enabled && !this.consumableModule.isConsumed) {
       return "consume";
     }
@@ -328,6 +342,12 @@ export class GameObject {
     objects?: GameObject[],
     arena?: Arena
   ): { success: boolean; abilityType: string; isDepleted?: boolean; watts?: number; joules?: number } {
+    if (this.gunModule && this.gunModule.enabled) {
+      return {
+        success: true,
+        abilityType: "gun",
+      };
+    }
     if (this.consumableModule && this.consumableModule.enabled && !this.consumableModule.isConsumed) {
       if (holder.consumeModule && holder.consumeModule.canConsume(this)) {
         const result = holder.consumeModule.consume(dt, holder, this, objects, arena);

@@ -1,6 +1,7 @@
 import { GameObject } from "../GameObject.js";
 import { ConsumableModule } from "../ConsumableModule.js";
 import { RollModule } from "../RollModule.js";
+import { GunModule } from "../GunModule.js";
 import { Prefab } from "./Prefab.js";
 import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
@@ -112,6 +113,72 @@ export class PrefabManager {
     });
 
     this.prefabs.set(stonePrefab.id, stonePrefab);
+
+    // 🔫 "Pistol" Gun prefab: punchy semi-auto sidearm with high bullet damage & kickback
+    const pistolArchetype = new GameObject({
+      id: "archetype_pistol",
+      name: "Pistol",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#475569",
+      visualShape: "box",
+      mass: 0.65,
+      colliderRadius: 0.22,
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      gunModule: new GunModule({
+        fireRate: 4.0,
+        damagePerBullet: 25.0,
+        bulletSpeed: 32.0,
+        firingSeconds: 2.0,
+        cooldownTime: 1.2,
+        bulletMass: 0.08,
+        gunLength: 0.55,
+        gunWidth: 0.22,
+        bulletColor: "#f59e0b",
+      }),
+    });
+
+    const pistolPrefab = new Prefab({
+      id: "prefab_pistol",
+      name: "Pistol",
+      icon: "🔫",
+      archetype: pistolArchetype,
+    });
+    this.prefabs.set(pistolPrefab.id, pistolPrefab);
+
+    // ⚡ "Rapid Blaster" Gun prefab: high fire rate automatic blaster
+    const blasterArchetype = new GameObject({
+      id: "archetype_blaster",
+      name: "Rapid Blaster",
+      position: { x: 0, y: 0, z: 0 },
+      color: "#0284c7",
+      visualShape: "box",
+      mass: 0.55,
+      colliderRadius: 0.22,
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      gunModule: new GunModule({
+        fireRate: 10.0,
+        damagePerBullet: 12.0,
+        bulletSpeed: 28.0,
+        firingSeconds: 3.0,
+        cooldownTime: 1.8,
+        bulletMass: 0.04,
+        gunLength: 0.60,
+        gunWidth: 0.24,
+        bulletColor: "#38bdf8",
+      }),
+    });
+
+    const blasterPrefab = new Prefab({
+      id: "prefab_blaster",
+      name: "Rapid Blaster",
+      icon: "⚡",
+      archetype: blasterArchetype,
+    });
+    this.prefabs.set(blasterPrefab.id, blasterPrefab);
 
     // 🧙 Default "Player" character prefab
     const playerArchetype = new Character({
