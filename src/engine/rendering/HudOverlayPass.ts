@@ -33,7 +33,8 @@ export class HudOverlayPass {
 
     if (char.playerId) {
       let chosenName: string;
-      if (char.hasCustomName && char.name && char.name.trim().length > 0) {
+      const isHardwareOrGeneric = /Xbox|XInput|DualShock|DualSense|PlayStation|Wireless Controller|Gamepad|Joystick|STANDARD GAMEPAD|Vendor:|Product:/i.test(char.name || "");
+      if (char.hasCustomName && char.name && char.name.trim().length > 0 && !isHardwareOrGeneric && !/^Player(\s+\d+)?$/i.test(char.name.trim())) {
         chosenName = char.name.trim();
       } else {
         chosenName = `Player ${char.playerNumber || 1}`;

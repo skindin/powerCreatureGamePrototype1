@@ -286,6 +286,21 @@ export class ModularBlockEvaluator {
       char.isSteeringCursor = isSteerCursorActive;
     }
 
+    // Pre-evaluate laser aiming & firing state for modal arbitration (LASER > CONSUME > THROW > PICKUP)
+    const laserBlock = blocks.find((blk) => blk.enabled && blk.type === "laser") as LaserControlBlock | undefined;
+    if (laserBlock) {
+      if (isSlotActive(laserBlock.aimTrigger, "hold", false, laserBlock.id, "laser.aim")) {
+        isLaserAiming = true;
+      }
+      const isAimConfigured = Boolean(laserBlock.aimTrigger && laserBlock.aimTrigger.code);
+      const canFire = !isAimConfigured || isLaserAiming;
+      if (isLaserAiming && laserBlock.fireTrigger?.autoFireWhenAiming) {
+        isLaserFiring = true;
+      } else if (canFire && isSlotActive(laserBlock.fireTrigger, "hold", false, laserBlock.id, "laser.fire")) {
+        isLaserFiring = true;
+      }
+    }
+
     // Helper to get effective aim position for abilities:
     // In Raw Direction Mode on Gamepad: abilities aim along the character's raw facing direction.
     // In Cursor Mode (or Mouse/Keyboard): abilities aim at targetAimPos (the cursor).
@@ -528,6 +543,9 @@ export class ModularBlockEvaluator {
 
         case "melee": {
           const b = block as MeleeControlBlock;
+          if (isLaserAiming || isLaserFiring) {
+            break;
+          }
           if (isSlotActive(b.punch, "down", true, b.id, "melee.punch")) {
             isMeleeRequested = true;
             claimSlot(b.punch, b.id, "melee.punch", true);
@@ -537,15 +555,11 @@ export class ModularBlockEvaluator {
 
         case "laser": {
           const b = block as LaserControlBlock;
-          if (isSlotActive(b.aimTrigger, "hold", false, b.id, "laser.aim")) {
-            isLaserAiming = true;
+          if (isLaserAiming) {
             claimSlot(b.aimTrigger, b.id, "laser.aim");
           }
 
-          if (isLaserAiming && b.fireTrigger?.autoFireWhenAiming) {
-            isLaserFiring = true;
-          } else if (isSlotActive(b.fireTrigger, "hold", false, b.id, "laser.fire")) {
-            isLaserFiring = true;
+          if (isLaserFiring) {
             claimSlot(b.fireTrigger, b.id, "laser.fire");
           }
 
@@ -565,6 +579,15 @@ export class ModularBlockEvaluator {
 
         case "throw": {
           const b = block as ThrowControlBlock;
+          if (isLaserAiming || isLaserFiring) {
+            char.isChargingThrow = false;
+            char.isAimingWallClear = false;
+            char.isHoldingThrowRelease = false;
+            char.isTriggerPullThrowing = false;
+            char.activeTrajectory = null;
+            (char as any)._throwRequiresFreshPress = true;
+            break;
+          }
           if (!execCtx.isHoldingItem) {
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
@@ -851,6 +874,9 @@ export class ModularBlockEvaluator {
 
         case "itemInteraction": {
           const b = block as ItemInteractionControlBlock;
+          if (isLaserAiming || isLaserFiring) {
+            break;
+          }
 
           // Pickup
           if (isSlotActive(b.pickup, "down", true, b.id, "pickup.grab")) {

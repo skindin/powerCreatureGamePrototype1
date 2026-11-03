@@ -430,7 +430,8 @@ export class UniversalRoomManager {
       name &&
       name.trim().length > 0 &&
       !/^Player(\s+\d+)?$/i.test(name.trim()) &&
-      !/^Controller\s+#\d+$/i.test(name.trim())
+      !/^Controller\s+#\d+$/i.test(name.trim()) &&
+      !/Xbox|XInput|DualShock|DualSense|PlayStation|Wireless Controller|Gamepad|Joystick|STANDARD GAMEPAD|Vendor:|Product:/i.test(name)
     );
     const charName = isExplicitCustom ? name!.trim() : `Player ${playerNumber}`;
 
@@ -629,7 +630,7 @@ export class UniversalRoomManager {
               this.registerCharacter(client, "keyboard", data.name, data.spawnPos);
             } else if (data.name && typeof data.name === "string" && data.name.trim().length > 0) {
               const entry = client.characters.get("keyboard")!;
-              if (!/^Player(\s+\d+)?$/i.test(data.name.trim()) && !/^Controller\s+#\d+$/i.test(data.name.trim())) {
+              if (!/^Player(\s+\d+)?$/i.test(data.name.trim()) && !/^Controller\s+#\d+$/i.test(data.name.trim()) && !/Xbox|XInput|DualShock|DualSense|PlayStation|Wireless Controller|Gamepad|Joystick|STANDARD GAMEPAD|Vendor:|Product:/i.test(data.name)) {
                 entry.name = data.name.trim();
                 const sChar = this.simulation.characters.get(entry.serverCharId);
                 if (sChar) {
@@ -760,7 +761,7 @@ export class UniversalRoomManager {
 
           if (sChar && pkt.playerName && pkt.playerName !== sChar.name) {
             // Only adopt explicit custom name from packet, never overwrite with default template name
-            if (!/^Player(\s+\d+)?$/i.test(pkt.playerName.trim()) && !/^Controller\s+#\d+$/i.test(pkt.playerName.trim())) {
+            if (!/^Player(\s+\d+)?$/i.test(pkt.playerName.trim()) && !/^Controller\s+#\d+$/i.test(pkt.playerName.trim()) && !/Xbox|XInput|DualShock|DualSense|PlayStation|Wireless Controller|Gamepad|Joystick|STANDARD GAMEPAD|Vendor:|Product:/i.test(pkt.playerName)) {
               sChar.name = pkt.playerName.trim();
               sChar.hasCustomName = true;
               charEntry.name = pkt.playerName.trim();

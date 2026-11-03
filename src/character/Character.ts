@@ -391,7 +391,9 @@ export class Character extends GameObject {
     this.playerNumber = options.playerNumber !== undefined ? options.playerNumber : (determinedRole === "dummy" ? 0 : 1);
     this.playerColor = initialColor;
     const isExplicitCustom = options.name
-      ? (!/^Player(\s+\d+)?$/i.test(options.name.trim()) && !/^Controller\s+#\d+$/i.test(options.name.trim()))
+      ? (!/^Player(\s+\d+)?$/i.test(options.name.trim()) &&
+         !/^Controller\s+#\d+$/i.test(options.name.trim()) &&
+         !/Xbox|XInput|DualShock|DualSense|PlayStation|Wireless Controller|Gamepad|Joystick|STANDARD GAMEPAD|Vendor:|Product:/i.test(options.name))
       : false;
     this.hasCustomName = options.hasCustomName ?? isExplicitCustom;
 
