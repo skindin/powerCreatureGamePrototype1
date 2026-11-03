@@ -22,25 +22,14 @@ export interface ModuleActionCategory {
 
 export class ControlActionCatalog {
   public static readonly categories: ModuleActionCategory[] = [
-    // 1. Locomotion
+    // 1. Walk & Sprint
     {
       id: "locomotion",
-      label: "Locomotion & Mobility",
+      label: "Walk & Sprint",
       icon: "🏃",
       requiredModule: "walkingModule",
       isAttached: (char: Character) => Boolean(char.walkingModule && char.walkingModule.enabled),
       actions: [
-        {
-          id: "jump",
-          label: "Jump (Impulse)",
-          description: "Performs a vertical physical takeoff jump",
-          recommendedMode: "hold",
-          execute: (ctx) => {
-            if (ctx.character.jumpModule) {
-              ctx.character.jump();
-            }
-          },
-        },
         {
           id: "toggleSprint",
           label: "Toggle Sprint",
@@ -60,6 +49,28 @@ export class ControlActionCatalog {
           },
           stop: (ctx) => {
             ctx.character.setSprinting(false);
+          },
+        },
+      ],
+    },
+
+    // 2. Jump (Independent from walking / friction)
+    {
+      id: "jump",
+      label: "Jump Ability",
+      icon: "🦘",
+      requiredModule: "jumpModule",
+      isAttached: (char: Character) => Boolean(char.jumpModule && char.jumpModule.enabled),
+      actions: [
+        {
+          id: "jump",
+          label: "Jump (Impulse)",
+          description: "Performs a vertical physical takeoff jump",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            if (ctx.character.jumpModule) {
+              ctx.character.jump();
+            }
           },
         },
       ],

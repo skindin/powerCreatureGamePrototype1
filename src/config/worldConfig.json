@@ -1,6 +1,6 @@
 {
-  "version": 263,
-  "lastSaved": "2026-11-03T18:20:45.809Z",
+  "version": 265,
+  "lastSaved": "2026-11-03T19:49:50.323Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -2614,7 +2614,7 @@
             },
             "consume": {
               "code": "KeyE",
-              "requireCleanPress": true
+              "requireCleanPress": false
             },
             "swapRequiresHolding": false,
             "triggerPickupWhenEmptyHanded": true,
@@ -6054,19 +6054,15 @@
           ],
           "blocks": [
             {
-              "type": "locomotion",
-              "id": "block-locomotion",
-              "name": "Locomotion",
+              "type": "walkSprint",
+              "id": "block-walk",
+              "name": "Walk & Sprint",
               "enabled": true,
               "moveKeys": {
                 "upKey": "KeyW",
                 "downKey": "KeyS",
                 "leftKey": "KeyA",
                 "rightKey": "MouseLeft"
-              },
-              "jump": {
-                "code": "Space",
-                "requireCleanPress": false
               },
               "sprint": {
                 "code": "ShiftLeft",
@@ -6085,6 +6081,17 @@
               "cursorSteerMode": "whenHoldingButton"
             },
             {
+              "type": "jump",
+              "id": "block-jump",
+              "name": "Jump",
+              "enabled": true,
+              "jump": {
+                "code": "Space",
+                "requireCleanPress": false
+              },
+              "requireCleanPress": false
+            },
+            {
               "type": "itemInteraction",
               "id": "block-items",
               "name": "Item Interaction",
@@ -6100,7 +6107,7 @@
               },
               "consume": {
                 "code": "KeyE",
-                "requireCleanPress": true
+                "requireCleanPress": false
               },
               "swapRequiresHolding": false,
               "triggerPickupWhenEmptyHanded": true,
@@ -6424,9 +6431,9 @@
           ],
           "blocks": [
             {
-              "type": "locomotion",
-              "id": "block-locomotion-gp",
-              "name": "Locomotion",
+              "type": "walkSprint",
+              "id": "block-walk-gp",
+              "name": "Walk & Sprint",
               "enabled": true,
               "mode": "analogStick",
               "moveKeys": {
@@ -6434,10 +6441,6 @@
                 "downKey": "GamepadDpadDown",
                 "leftKey": "GamepadDpadLeft",
                 "rightKey": "GamepadDpadRight",
-                "requireCleanPress": false
-              },
-              "jump": {
-                "code": "GamepadA",
                 "requireCleanPress": false
               },
               "sprint": {
@@ -6459,6 +6462,17 @@
               "stickCursorInFront": true,
               "cursorMaxDistance": 4,
               "lockCursorDistanceToMax": true
+            },
+            {
+              "type": "jump",
+              "id": "block-jump-gp",
+              "name": "Jump",
+              "enabled": true,
+              "jump": {
+                "code": "GamepadA",
+                "requireCleanPress": false
+              },
+              "requireCleanPress": false
             },
             {
               "type": "itemInteraction",

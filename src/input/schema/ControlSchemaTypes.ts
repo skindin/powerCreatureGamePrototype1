@@ -292,8 +292,8 @@ export interface BlockInputSlot {
   requireCleanPress?: boolean;  // Whether this input requires a clean press per action (releasing before triggering again)
 }
 
-export interface LocomotionControlBlock {
-  type: "locomotion";
+export interface WalkSprintControlBlock {
+  type: "walkSprint" | "locomotion"; // "walkSprint" (preferred) or legacy "locomotion"
   id: string;
   name?: string;
   enabled: boolean;
@@ -316,10 +316,23 @@ export interface LocomotionControlBlock {
   lockCursorDistanceToMax?: boolean; // When sticking cursor in front, lock cursor distance to cursorMaxDistance instead of varying with stick magnitude
   cursorMaxDistance?: number;   // Maximum clamp distance for cursor in front of character
   cursorMinDistance?: number;   // Minimum distance for cursor in front of character
-  jump?: BlockInputSlot;
   sprint?: BlockInputSlot & {
     mode?: "hold" | "toggle";
   };
+  jump?: BlockInputSlot; // Legacy fallback if jump is embedded in this block
+}
+
+// Backward compatibility alias
+export type LocomotionControlBlock = WalkSprintControlBlock;
+
+export interface JumpControlBlock {
+  type: "jump";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  jump?: BlockInputSlot;
+  jumpTrigger?: BlockInputSlot; // Alias for jump slot
+  requireCleanPress?: boolean;  // When false (default), holding button continuously auto-jumps on touching ground
 }
 
 export interface MeleeControlBlock {
@@ -399,7 +412,8 @@ export interface FacingControlBlock {
 }
 
 export type ControlBlock =
-  | LocomotionControlBlock
+  | WalkSprintControlBlock
+  | JumpControlBlock
   | MeleeControlBlock
   | LaserControlBlock
   | ThrowControlBlock

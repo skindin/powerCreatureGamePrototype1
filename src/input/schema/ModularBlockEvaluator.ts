@@ -3,6 +3,8 @@ import type {
   ControlExecutionContext,
   BlockInputSlot,
   LocomotionControlBlock,
+  WalkSprintControlBlock,
+  JumpControlBlock,
   MeleeControlBlock,
   LaserControlBlock,
   ThrowControlBlock,
@@ -238,7 +240,7 @@ export class ModularBlockEvaluator {
     const targetAimPos = { x: baseAim.x, y: baseAim.y };
 
     // Pre-evaluate locomotion cursor mode states
-    const locoBlock = blocks.find((blk) => blk.enabled && blk.type === "locomotion") as LocomotionControlBlock | undefined;
+    const locoBlock = blocks.find((blk) => blk.enabled && (blk.type === "locomotion" || blk.type === "walkSprint")) as WalkSprintControlBlock | undefined;
     if (locoBlock) {
       const isToggleMode = locoBlock.cursorSteerMode === "toggleButton";
       if (isToggleMode && locoBlock.cursorSteerTrigger) {
@@ -371,8 +373,9 @@ export class ModularBlockEvaluator {
       if (!block.enabled) continue;
 
       switch (block.type) {
+        case "walkSprint":
         case "locomotion": {
-          const b = block as LocomotionControlBlock;
+          const b = block as WalkSprintControlBlock;
           const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
           const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
 
@@ -574,18 +577,19 @@ export class ModularBlockEvaluator {
           }
           (char as any)._prevSteerCursorActive = isSteerCursorActive;
 
-          // Jump: continuous jumping while button is held once touching ground,
-          // unless explicitly configured with requireCleanPress: true in control schema.
-          const jumpRequiresClean = b.jump?.requireCleanPress === true;
-          if (jumpRequiresClean) {
-            if (isSlotActive(b.jump, "down", true, b.id, "locomotion.jump")) {
-              isJumpHeld = true;
-              claimSlot(b.jump, b.id, "locomotion.jump", true);
-            }
-          } else {
-            if (isSlotActive(b.jump, "hold", false, b.id, "locomotion.jump")) {
-              isJumpHeld = true;
-              claimSlot(b.jump, b.id, "locomotion.jump", false);
+          // Legacy Jump fallback if block has jump and no separate jump block exists
+          if (b.jump && !blocks.some((blk) => blk.enabled && blk.type === "jump")) {
+            const jumpRequiresClean = b.jump?.requireCleanPress === true;
+            if (jumpRequiresClean) {
+              if (isSlotActive(b.jump, "down", true, b.id, "locomotion.jump")) {
+                isJumpHeld = true;
+                claimSlot(b.jump, b.id, "locomotion.jump", true);
+              }
+            } else {
+              if (isSlotActive(b.jump, "hold", false, b.id, "locomotion.jump")) {
+                isJumpHeld = true;
+                claimSlot(b.jump, b.id, "locomotion.jump", false);
+              }
             }
           }
 
@@ -607,6 +611,24 @@ export class ModularBlockEvaluator {
               isSprinting = false;
             }
             char.isSprinting = isSprinting;
+          }
+          break;
+        }
+
+        case "jump": {
+          const b = block as JumpControlBlock;
+          const slot = b.jumpTrigger || b.jump;
+          const jumpRequiresClean = slot?.requireCleanPress === true || b.requireCleanPress === true;
+          if (jumpRequiresClean) {
+            if (isSlotActive(slot, "down", true, b.id, "jump")) {
+              isJumpHeld = true;
+              claimSlot(slot, b.id, "jump", true);
+            }
+          } else {
+            if (isSlotActive(slot, "hold", false, b.id, "jump")) {
+              isJumpHeld = true;
+              claimSlot(slot, b.id, "jump", false);
+            }
           }
           break;
         }
@@ -1046,7 +1068,7 @@ export class ModularBlockEvaluator {
           if (isSteerCursorActive || char.isSteeringCursor) {
             break;
           }
-          const locoBlock = execCtx.schema?.gamepad?.blocks?.find((blk) => blk.enabled && blk.type === "locomotion") as LocomotionControlBlock | undefined;
+          const locoBlock = execCtx.schema?.gamepad?.blocks?.find((blk) => blk.enabled && (blk.type === "locomotion" || blk.type === "walkSprint")) as WalkSprintControlBlock | undefined;
           if (locoBlock?.mode === "stickDirectionDriveButton") {
             // Facing is already set by left stick heading in locomotion block
             break;

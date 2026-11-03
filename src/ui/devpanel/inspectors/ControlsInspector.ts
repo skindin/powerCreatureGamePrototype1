@@ -18,6 +18,8 @@ import type {
   ControlBlock,
   BlockInputSlot,
   LocomotionControlBlock,
+  WalkSprintControlBlock,
+  JumpControlBlock,
   MeleeControlBlock,
   LaserControlBlock,
   ThrowControlBlock,
@@ -1543,8 +1545,9 @@ export class ControlsInspector {
 
   private static renderBlockBodyHtml(block: ControlBlock): string {
     switch (block.type) {
+      case "walkSprint":
       case "locomotion": {
-        const b = block as LocomotionControlBlock;
+        const b = block as WalkSprintControlBlock;
         b.mode = b.mode || "wasd";
         b.moveKeys = b.moveKeys || { upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" };
         b.forwardTrigger = b.forwardTrigger || { code: "MouseRight" };
@@ -1553,7 +1556,6 @@ export class ControlsInspector {
         b.strafeRightKey = b.strafeRightKey !== undefined ? b.strafeRightKey : "KeyD";
         b.cursorSteerTrigger = b.cursorSteerTrigger || { code: "GamepadLB" };
         b.cursorSteerMode = b.cursorSteerMode || "whenHoldingButton";
-        b.jump = b.jump || { code: "Space" };
         b.sprint = b.sprint || { code: "ShiftLeft", mode: "hold" };
 
         const renderMoveKey = (dir: string, keyName: "upKey" | "downKey" | "leftKey" | "rightKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey") => {
@@ -1720,9 +1722,6 @@ export class ControlsInspector {
                 </div>
               `}
               <div>
-                ${this.renderInputSlot(b.id, "jump", b.jump, "Jump / Vertical Hop")}
-              </div>
-              <div>
                 ${this.renderInputSlot(b.id, "sprint", b.sprint, "Sprint")}
                 <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
                   <span style="font-size: 0.62rem; color: #94a3b8;">Sprint Mode:</span>
@@ -1730,6 +1729,31 @@ export class ControlsInspector {
                     <option value="hold" ${b.sprint.mode !== "toggle" ? "selected" : ""}>Hold to Sprint</option>
                     <option value="toggle" ${b.sprint.mode === "toggle" ? "selected" : ""}>Toggle Sprint</option>
                   </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      case "jump": {
+        const b = block as JumpControlBlock;
+        b.jump = b.jump || b.jumpTrigger || { code: "Space", requireCleanPress: false };
+        const requireClean = b.jump.requireCleanPress === true || b.requireCleanPress === true;
+        return `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: start;">
+              <div>
+                ${this.renderInputSlot(b.id, "jump", b.jump, "Jump / Vertical Leap Button")}
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px; padding-top: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                  <input type="checkbox" class="block-jump-clean-toggle" data-block-id="${b.id}" ${requireClean ? "checked" : ""} style="cursor: pointer; width: 13px; height: 13px; accent-color: #38bdf8;" />
+                  <span style="font-size: 0.68rem; font-weight: 600; color: #e2e8f0;">Require Fresh Press Per Jump</span>
+                </label>
+                <div style="font-size: 0.60rem; color: #64748b; line-height: 1.25;">
+                  When unchecked: holding jump button continuously hops whenever touching ground.<br/>
+                  When checked: requires releasing and pressing button again for each jump.
                 </div>
               </div>
             </div>
@@ -2028,7 +2052,8 @@ export class ControlsInspector {
           <div style="display: flex; gap: 6px; align-items: center;">
             <select id="select-add-control-block" class="dev-select" style="font-size: 0.72rem; font-weight: 700; padding: 4px 8px; background: rgba(56,189,248,0.15); border: 1px solid #38bdf8; color: #38bdf8; border-radius: 4px;">
               <option value="" disabled selected>+ Add Control Module...</option>
-              <option value="locomotion">+ Locomotion (Move, Jump, Sprint)</option>
+              <option value="walkSprint">+ Walk & Sprint (Movement & Speed)</option>
+              <option value="jump">+ Jump (Vertical Leap)</option>
               <option value="itemInteraction">+ Item Interaction (Pickup, Drop, Swap, Eat)</option>
               <option value="throw">+ Throwing & Ballistics</option>
               <option value="melee">+ Melee Combat</option>
@@ -2046,7 +2071,9 @@ export class ControlsInspector {
             </div>
           ` : blocks.map((b) => {
             const typeIcons: Record<string, string> = {
+              walkSprint: "🏃",
               locomotion: "🏃",
+              jump: "🦘",
               itemInteraction: "📦",
               throw: "🏹",
               melee: "🥊",
@@ -2124,8 +2151,8 @@ export class ControlsInspector {
       const block = blocks.find((b) => b.id === blockId);
       if (!block) return;
 
-      if (isMoveKey && block.type === "locomotion") {
-        const loco = block as LocomotionControlBlock;
+      if (isMoveKey && (block.type === "locomotion" || block.type === "walkSprint")) {
+        const loco = block as WalkSprintControlBlock;
         if (isMoveKey === "reverseKey" || isMoveKey === "strafeLeftKey" || isMoveKey === "strafeRightKey") {
           (loco as any)[isMoveKey] = code;
         } else {
@@ -2786,25 +2813,47 @@ export class ControlsInspector {
           const type = selectAddBlock.value as any;
           if (!type) return;
           const newId = `block-${type}-${Date.now().toString(36)}`;
-          if (type === "locomotion") {
+          if (type === "walkSprint" || type === "locomotion") {
             blocks.push(isGamepad ? {
-              type: "locomotion",
+              type: "walkSprint",
               id: newId,
-              name: "Locomotion",
+              name: "Walk & Sprint",
               enabled: true,
-              mode: "wasd",
+              mode: "stickDirectionDriveButton",
               moveKeys: { upKey: "GamepadDpadUp", downKey: "GamepadDpadDown", leftKey: "GamepadDpadLeft", rightKey: "GamepadDpadRight", requireCleanPress: false },
-              jump: { code: "GamepadA", requireCleanPress: false },
               sprint: { code: "GamepadLS", mode: "hold", requireCleanPress: false },
+              forwardTrigger: { code: "GamepadRT" },
+              cursorSteerTrigger: { code: "GamepadLB" },
+              cursorSteerMode: "toggleButton",
+              rawDirectionWhileWalking: true,
             } : {
-              type: "locomotion",
+              type: "walkSprint",
               id: newId,
-              name: "Locomotion",
+              name: "Walk & Sprint",
               enabled: true,
               mode: "wasd",
               moveKeys: { upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" },
-              jump: { code: "Space" },
+              forwardTrigger: { code: "MouseRight", requireCleanPress: false },
+              reverseKey: "KeyS",
+              strafeLeftKey: "KeyA",
+              strafeRightKey: "KeyD",
               sprint: { code: "ShiftLeft", mode: "hold" },
+            });
+          } else if (type === "jump") {
+            blocks.push(isGamepad ? {
+              type: "jump",
+              id: newId,
+              name: "Jump",
+              enabled: true,
+              jump: { code: "GamepadA", requireCleanPress: false },
+              requireCleanPress: false,
+            } : {
+              type: "jump",
+              id: newId,
+              name: "Jump",
+              enabled: true,
+              jump: { code: "Space", requireCleanPress: false },
+              requireCleanPress: false,
             });
           } else if (type === "itemInteraction") {
             blocks.push(isGamepad ? {
@@ -3022,8 +3071,8 @@ export class ControlsInspector {
           const bId = (btn as HTMLElement).dataset.blockId;
           const moveKey = (btn as HTMLElement).dataset.moveKey as any;
           const block = blocks.find((b) => b.id === bId);
-          if (block && block.type === "locomotion" && moveKey) {
-            const loco = block as LocomotionControlBlock;
+          if (block && (block.type === "locomotion" || block.type === "walkSprint") && moveKey) {
+            const loco = block as WalkSprintControlBlock;
             if (moveKey === "reverseKey" || moveKey === "strafeLeftKey" || moveKey === "strafeRightKey") {
               (loco as any)[moveKey] = null;
             } else if (loco.moveKeys) {
@@ -3038,7 +3087,7 @@ export class ControlsInspector {
       root.querySelectorAll(".block-loco-mode").forEach((sel) => {
         sel.addEventListener("change", (e) => {
           const bId = (sel as HTMLElement).dataset.blockId;
-          const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
+          const block = blocks.find((b) => b.id === bId) as WalkSprintControlBlock;
           if (block) {
             block.mode = (e.target as HTMLSelectElement).value as any;
             this.renderActiveView();
@@ -3070,8 +3119,8 @@ export class ControlsInspector {
         chk.addEventListener("change", (e) => {
           const bId = (chk as HTMLElement).dataset.blockId;
           const block = blocks.find((b) => b.id === bId);
-          if (block && block.type === "locomotion") {
-            const loco = block as LocomotionControlBlock;
+          if (block && (block.type === "locomotion" || block.type === "walkSprint")) {
+            const loco = block as WalkSprintControlBlock;
             loco.moveKeys = loco.moveKeys || {};
             loco.moveKeys.requireCleanPress = (e.target as HTMLInputElement).checked;
             this.renderActiveView();
@@ -3083,10 +3132,26 @@ export class ControlsInspector {
       root.querySelectorAll(".block-sprint-mode").forEach((sel) => {
         sel.addEventListener("change", (e) => {
           const bId = (sel as HTMLElement).dataset.blockId;
-          const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
+          const block = blocks.find((b) => b.id === bId) as WalkSprintControlBlock;
           if (block && block.sprint) {
             block.sprint.mode = (e.target as HTMLSelectElement).value as any;
             ControlsInspector.syncLiveWorkingSchema();
+          }
+        });
+      });
+
+      // Jump require clean press toggle
+      root.querySelectorAll(".block-jump-clean-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as JumpControlBlock;
+          if (block) {
+            const checked = (e.target as HTMLInputElement).checked;
+            block.requireCleanPress = checked;
+            if (block.jump) block.jump.requireCleanPress = checked;
+            if (block.jumpTrigger) block.jumpTrigger.requireCleanPress = checked;
+            ControlsInspector.syncLiveWorkingSchema();
+            this.renderActiveView();
           }
         });
       });

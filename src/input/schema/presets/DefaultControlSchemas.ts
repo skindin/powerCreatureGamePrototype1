@@ -2,9 +2,9 @@ import type { ControlSchema, PrebuiltControlChannels, InputPipelineBinding, Cont
 
 export const DefaultControlBlocks: ControlBlock[] = [
   {
-    type: "locomotion",
-    id: "block-locomotion",
-    name: "Locomotion",
+    type: "walkSprint",
+    id: "block-walk",
+    name: "Walk & Sprint",
     enabled: true,
     mode: "wasd",
     moveKeys: {
@@ -18,8 +18,15 @@ export const DefaultControlBlocks: ControlBlock[] = [
     reverseKey: "KeyS",
     strafeLeftKey: "KeyA",
     strafeRightKey: "KeyD",
-    jump: { code: "Space", requireCleanPress: false },
     sprint: { code: "ShiftLeft", mode: "hold", requireCleanPress: false },
+  },
+  {
+    type: "jump",
+    id: "block-jump",
+    name: "Jump",
+    enabled: true,
+    jump: { code: "Space", requireCleanPress: false },
+    requireCleanPress: false,
   },
   {
     type: "itemInteraction",
@@ -76,9 +83,9 @@ export const DefaultControlBlocks: ControlBlock[] = [
 
 export const DefaultGamepadControlBlocks: ControlBlock[] = [
   {
-    type: "locomotion",
-    id: "block-locomotion-gp",
-    name: "Locomotion",
+    type: "walkSprint",
+    id: "block-walk-gp",
+    name: "Walk & Sprint",
     enabled: true,
     mode: "stickDirectionDriveButton",
     moveKeys: {
@@ -88,12 +95,19 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
       rightKey: "GamepadDpadRight",
       requireCleanPress: false,
     },
-    jump: { code: "GamepadA", requireCleanPress: false },
     sprint: { code: "GamepadLS", mode: "hold", requireCleanPress: false },
     forwardTrigger: { code: "GamepadRT" },
     cursorSteerTrigger: { code: "GamepadLB" },
     cursorSteerMode: "toggleButton",
     rawDirectionWhileWalking: true,
+  },
+  {
+    type: "jump",
+    id: "block-jump-gp",
+    name: "Jump",
+    enabled: true,
+    jump: { code: "GamepadA", requireCleanPress: false },
+    requireCleanPress: false,
   },
   {
     type: "itemInteraction",
