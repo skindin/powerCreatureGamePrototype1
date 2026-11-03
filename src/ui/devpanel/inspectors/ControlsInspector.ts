@@ -1624,6 +1624,10 @@ export class ControlsInspector {
                       <input type="number" step="0.5" min="1" max="30" class="block-loco-cursor-max-dist dev-input" data-block-id="${b.id}" value="${b.cursorMaxDistance ?? 6.0}" style="width: 60px; font-size: 0.68rem; padding: 2px 4px; background: #0f172a; color: #38bdf8; border: 1px solid rgba(56,189,248,0.4); border-radius: 3px;" />
                       <span style="font-size: 0.58rem; color: #64748b;">units</span>
                     </div>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; margin-top: 4px;">
+                      <input type="checkbox" class="block-loco-lock-max-dist-toggle" data-block-id="${b.id}" ${b.lockCursorDistanceToMax ? "checked" : ""} style="cursor: pointer; width: 13px; height: 13px; accent-color: #38bdf8;" />
+                      <span style="font-size: 0.64rem; font-weight: 600; color: #e2e8f0;">🔒 Lock Cursor Distance to Max (Fixed distance, ignores stick magnitude)</span>
+                    </label>
                   ` : ""}
                 </div>
               ` : b.mode === "stickDirectionDriveButton" ? `
@@ -1669,6 +1673,10 @@ export class ControlsInspector {
                       <input type="number" step="0.5" min="1" max="30" class="block-loco-cursor-max-dist dev-input" data-block-id="${b.id}" value="${b.cursorMaxDistance ?? 6.0}" style="width: 60px; font-size: 0.68rem; padding: 2px 4px; background: #0f172a; color: #38bdf8; border: 1px solid rgba(56,189,248,0.4); border-radius: 3px;" />
                       <span style="font-size: 0.58rem; color: #64748b;">units</span>
                     </div>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; margin-top: 4px;">
+                      <input type="checkbox" class="block-loco-lock-max-dist-toggle" data-block-id="${b.id}" ${b.lockCursorDistanceToMax ? "checked" : ""} style="cursor: pointer; width: 13px; height: 13px; accent-color: #38bdf8;" />
+                      <span style="font-size: 0.64rem; font-weight: 600; color: #e2e8f0;">🔒 Lock Cursor Distance to Max (Fixed distance, ignores stick magnitude)</span>
+                    </label>
                   ` : ""}
                 </div>
               ` : b.mode === "walkToMouse" ? `
@@ -3212,6 +3220,18 @@ export class ControlsInspector {
             block.stickCursorInFront = (e.target as HTMLInputElement).checked;
             ControlsInspector.syncLiveWorkingSchema();
             this.renderActiveView();
+          }
+        });
+      });
+
+      // Locomotion lock cursor distance to max toggle
+      root.querySelectorAll(".block-loco-lock-max-dist-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as LocomotionControlBlock;
+          if (block) {
+            block.lockCursorDistanceToMax = (e.target as HTMLInputElement).checked;
+            ControlsInspector.syncLiveWorkingSchema();
           }
         });
       });

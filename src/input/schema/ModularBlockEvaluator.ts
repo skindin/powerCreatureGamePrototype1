@@ -464,7 +464,9 @@ export class ModularBlockEvaluator {
             const isAimingThrow = Boolean(char.isChargingThrow || char.isTriggerPullThrowing || isAimingTrajectory);
 
             let curDist: number;
-            if (stickMag > 0.08) {
+            if (b.lockCursorDistanceToMax) {
+              curDist = maxDist;
+            } else if (stickMag > 0.08) {
               const normalizedMag = Math.min(1.0, (stickMag - 0.08) / 0.92);
               curDist = minDist + normalizedMag * (maxDist - minDist);
               if (isAimingThrow) {
