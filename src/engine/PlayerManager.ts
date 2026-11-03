@@ -13,6 +13,8 @@ import { ModularBlockEvaluator } from "../input/schema/ModularBlockEvaluator.js"
 import { DefaultControlBlocks, DefaultGamepadControlBlocks } from "../input/schema/presets/DefaultControlSchemas.js";
 import type { ControlExecutionContext, ControlRule } from "../input/schema/ControlSchemaTypes.js";
 import { prefabManager } from "./prefab/PrefabManager.js";
+import { LaserModule } from "../character/LaserModule.js";
+import { MeleeModule } from "../character/MeleeModule.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -350,37 +352,41 @@ export class PlayerManager {
       const targetPrefabId = this.baseCharacter?.prefabId || "prefab_player";
       const targetPrefab = prefabManager.get(targetPrefabId);
 
-      if (targetPrefab) {
-        char = targetPrefab.instantiate({ x: slotSpawn.x, y: slotSpawn.y, z: slotSpawn.z ?? 0 }, this.arena) as Character;
-        char.playerId = "keyboard";
-        char.playerNumber = playerNum;
-        char.color = color;
-        char.playerColor = color;
-        char.name = `Player ${playerNum}`;
-        char.prefabId = targetPrefabId;
-        const schemaToApply = targetPrefab.controlSchema || this.baseCharacter.controlSchema;
-        if (schemaToApply) {
-          char.controlSchema = JSON.parse(JSON.stringify(schemaToApply));
-        }
-      } else {
-        char = new Character({
-          x: slotSpawn.x,
-          y: slotSpawn.y,
-          color,
-          colliderRadius: 0.44,
-          mass: 1.2,
-          strength: 1.0,
-          playerId: "keyboard",
-          playerNumber: playerNum,
-          name: `Player ${playerNum}`,
+      char = new Character({
+        x: slotSpawn.x,
+        y: slotSpawn.y,
+        color,
+        colliderRadius: this.baseCharacter.colliderRadius ?? 0.44,
+        mass: this.baseCharacter.mass ?? 1.2,
+        strength: this.baseCharacter.strength ?? 1.0,
+        playerId: "keyboard",
+        playerNumber: playerNum,
+        name: `Player ${playerNum}`,
+      });
+      char.position.z = slotSpawn.z ?? 0;
+      char.prefabId = targetPrefabId;
+
+      if (this.baseCharacter.laserModule) {
+        char.laserModule = new LaserModule({
+          damageRate: this.baseCharacter.laserModule.damageRateProp.literalValue,
+          maxDamageRate: this.baseCharacter.laserModule.maxDamageRateProp.literalValue,
+          thickness: this.baseCharacter.laserModule.thicknessProp.literalValue,
+          maxPower: this.baseCharacter.laserModule.maxPowerProp.literalValue,
         });
-        char.position.z = slotSpawn.z ?? 0;
-        char.prefabId = targetPrefabId;
-        if (this.baseCharacter.controlSchema) {
-          char.controlSchema = JSON.parse(JSON.stringify(this.baseCharacter.controlSchema));
-        }
-        this.arena.syncEntitiesWithWalls([char]);
       }
+      if (this.baseCharacter.meleeModule) {
+        char.meleeModule = new MeleeModule({
+          maxForce: this.baseCharacter.meleeModule.maxForceProp.literalValue,
+          reach: this.baseCharacter.meleeModule.reachProp.literalValue,
+          punchFrequency: this.baseCharacter.meleeModule.punchFrequencyProp.literalValue,
+        });
+      }
+
+      const schemaToApply = targetPrefab?.controlSchema || this.baseCharacter.controlSchema;
+      if (schemaToApply) {
+        char.controlSchema = JSON.parse(JSON.stringify(schemaToApply));
+      }
+      this.arena.syncEntitiesWithWalls([char]);
     }
 
     this.inputManager.isKeyboardActive = true;
@@ -476,40 +482,43 @@ export class PlayerManager {
       const targetPrefabId = this.baseCharacter?.prefabId || "prefab_player";
       const targetPrefab = prefabManager.get(targetPrefabId);
 
-      if (targetPrefab) {
-        char = targetPrefab.instantiate({ x: slotSpawn.x, y: slotSpawn.y, z: slotSpawn.z ?? 0 }, this.arena) as Character;
-        char.playerId = key;
-        char.playerNumber = playerNum;
-        char.color = color;
-        char.playerColor = color;
-        char.name = cleanName;
-        char.hasCustomName = false;
-        char.prefabId = targetPrefabId;
-        const schemaToApply = targetPrefab.controlSchema || this.baseCharacter.controlSchema;
-        if (schemaToApply) {
-          char.controlSchema = JSON.parse(JSON.stringify(schemaToApply));
-        }
-      } else {
-        char = new Character({
-          x: slotSpawn.x,
-          y: slotSpawn.y,
-          color,
-          colliderRadius: 0.44,
-          mass: 1.2,
-          strength: 1.0,
-          playerId: key,
-          playerNumber: playerNum,
-          name: `Player ${playerNum}`,
-          hasCustomName: false,
+      char = new Character({
+        x: slotSpawn.x,
+        y: slotSpawn.y,
+        color,
+        colliderRadius: this.baseCharacter.colliderRadius ?? 0.44,
+        mass: this.baseCharacter.mass ?? 1.2,
+        strength: this.baseCharacter.strength ?? 1.0,
+        playerId: key,
+        playerNumber: playerNum,
+        name: cleanName,
+        hasCustomName: false,
+      });
+      char.position.z = slotSpawn.z ?? 0;
+      char.hasCustomName = false;
+      char.prefabId = targetPrefabId;
+
+      if (this.baseCharacter.laserModule) {
+        char.laserModule = new LaserModule({
+          damageRate: this.baseCharacter.laserModule.damageRateProp.literalValue,
+          maxDamageRate: this.baseCharacter.laserModule.maxDamageRateProp.literalValue,
+          thickness: this.baseCharacter.laserModule.thicknessProp.literalValue,
+          maxPower: this.baseCharacter.laserModule.maxPowerProp.literalValue,
         });
-        char.position.z = slotSpawn.z ?? 0;
-        char.hasCustomName = false;
-        char.prefabId = targetPrefabId;
-        if (this.baseCharacter.controlSchema) {
-          char.controlSchema = JSON.parse(JSON.stringify(this.baseCharacter.controlSchema));
-        }
-        this.arena.syncEntitiesWithWalls([char]);
       }
+      if (this.baseCharacter.meleeModule) {
+        char.meleeModule = new MeleeModule({
+          maxForce: this.baseCharacter.meleeModule.maxForceProp.literalValue,
+          reach: this.baseCharacter.meleeModule.reachProp.literalValue,
+          punchFrequency: this.baseCharacter.meleeModule.punchFrequencyProp.literalValue,
+        });
+      }
+
+      const schemaToApply = targetPrefab?.controlSchema || this.baseCharacter.controlSchema;
+      if (schemaToApply) {
+        char.controlSchema = JSON.parse(JSON.stringify(schemaToApply));
+      }
+      this.arena.syncEntitiesWithWalls([char]);
     }
 
     const entry: PlayerEntry = {
@@ -599,7 +608,7 @@ export class PlayerManager {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
       const kSchema = ControlsInspector.getActiveSchema(kChar);
       const isHolding = kChar.heldObject !== null;
-      const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject());
+      const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject ? kChar.canConsumeHeldObject() : false);
 
       // Target discovery in reach for pickup or swap
       let grabTargetObjectId: string | null = null;
@@ -645,7 +654,7 @@ export class PlayerManager {
         schema: kSchema,
         isHoldingItem: isHolding,
         heldItemIsEdible: isHoldingConsumable,
-        heldItemHasPrimaryAbility: Boolean(kChar.hasPrimaryItemAbility()),
+        heldItemHasPrimaryAbility: Boolean(kChar.hasPrimaryItemAbility ? kChar.hasPrimaryItemAbility() : false),
         targetInReach: grabTargetObject,
         isGrounded: Boolean(kChar.isRestingOnSurface),
         isClimbing: Boolean(kChar.isClimbing),
@@ -919,7 +928,7 @@ export class PlayerManager {
       const cChar = entry.character;
       const gpSchema = ControlsInspector.getActiveSchema(cChar);
       const isCharHolding = cChar.heldObject !== null;
-      const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject());
+      const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject ? cChar.canConsumeHeldObject() : false);
 
       let aimX = slot.aimPos.x;
       let aimY = slot.aimPos.y;
@@ -964,7 +973,7 @@ export class PlayerManager {
         schema: gpSchema,
         isHoldingItem: isCharHolding,
         heldItemIsEdible: isCharHoldingConsumable,
-        heldItemHasPrimaryAbility: Boolean(cChar.hasPrimaryItemAbility()),
+        heldItemHasPrimaryAbility: Boolean(cChar.hasPrimaryItemAbility ? cChar.hasPrimaryItemAbility() : false),
         targetInReach: grabTargetObject,
         isGrounded: Boolean(cChar.isRestingOnSurface),
         isClimbing: Boolean(cChar.isClimbing),
