@@ -4,6 +4,7 @@ import type { Character } from "../../character/Character.js";
 import type { GunModule } from "../GunModule.js";
 import type { TrajectoryCalculation, TrajectoryPoint } from "../../character/ThrowModule.js";
 import type { ViewSettings } from "../Renderer.js";
+import { ElevationRaycaster } from "../physics/ElevationRaycaster.js";
 
 export interface BulletTrailPoint {
   x: number;
@@ -28,6 +29,93 @@ export interface Bullet {
   lifeTime: number;
   maxLifeTime: number;
   trail: BulletTrailPoint[];
+}
+
+/**
+ * Swept continuous collision detection between a 3D line segment P0 -> P1 and a vertical cylinder.
+ * Cylinder is centered at (cx, cy) with radius R, and spans altitude [cz - zTolerance, cz + zTolerance].
+ * Returns the earliest time of impact (t in [0, 1]), or null if no intersection.
+ */
+function getSweptCylinderHit(
+  x0: number, y0: number, z0: number,
+  dx: number, dy: number, dz: number,
+  cx: number, cy: number, cz: number,
+  radius: number,
+  zTolerance: number
+): number | null {
+  const zMin = cz - zTolerance;
+  const zMax = cz + zTolerance;
+
+  const fx0 = x0 - cx;
+  const fy0 = y0 - cy;
+
+  // 1. Check if start point is already inside the 3D cylinder
+  if (fx0 * fx0 + fy0 * fy0 <= radius * radius && z0 >= zMin && z0 <= zMax) {
+    return 0;
+  }
+
+  let earliestT = Infinity;
+
+  // 2. Check 2D circular boundary extrusion along the segment
+  const a = dx * dx + dy * dy;
+  if (a > 1e-9) {
+    const bCoeff = 2 * (fx0 * dx + fy0 * dy);
+    const cCoeff = fx0 * fx0 + fy0 * fy0 - radius * radius;
+    const disc = bCoeff * bCoeff - 4 * a * cCoeff;
+    if (disc >= 0) {
+      const sqrtDisc = Math.sqrt(disc);
+      const t0 = (-bCoeff - sqrtDisc) / (2 * a);
+      const t1 = (-bCoeff + sqrtDisc) / (2 * a);
+
+      for (const t of [t0, t1]) {
+        if (t >= 0 && t <= 1 && t < earliestT) {
+          const zAtT = z0 + t * dz;
+          if (zAtT >= zMin && zAtT <= zMax) {
+            earliestT = t;
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Check top cap (z = zMax) and bottom cap (z = zMin)
+  if (Math.abs(dz) > 1e-9) {
+    const tTop = (zMax - z0) / dz;
+    if (tTop >= 0 && tTop <= 1 && tTop < earliestT) {
+      const xAtT = x0 + tTop * dx;
+      const yAtT = y0 + tTop * dy;
+      if ((xAtT - cx) ** 2 + (yAtT - cy) ** 2 <= radius * radius) {
+        earliestT = tTop;
+      }
+    }
+
+    const tBottom = (zMin - z0) / dz;
+    if (tBottom >= 0 && tBottom <= 1 && tBottom < earliestT) {
+      const xAtT = x0 + tBottom * dx;
+      const yAtT = y0 + tBottom * dy;
+      if ((xAtT - cx) ** 2 + (yAtT - cy) ** 2 <= radius * radius) {
+        earliestT = tBottom;
+      }
+    }
+  }
+
+  // 4. Closest point on segment safety check for grazing contact
+  if (a > 1e-9) {
+    const bCoeff = 2 * (fx0 * dx + fy0 * dy);
+    const tClosest = Math.max(0, Math.min(1, -bCoeff / (2 * a)));
+    if (tClosest < earliestT) {
+      const xClosest = x0 + tClosest * dx;
+      const yClosest = y0 + tClosest * dy;
+      if ((xClosest - cx) ** 2 + (yClosest - cy) ** 2 <= radius * radius) {
+        const zAtT = z0 + tClosest * dz;
+        if (zAtT >= zMin && zAtT <= zMax) {
+          earliestT = tClosest;
+        }
+      }
+    }
+  }
+
+  return earliestT <= 1 ? earliestT : null;
 }
 
 /**
@@ -167,15 +255,35 @@ export class BulletManager {
     });
 
     for (let i = 1; i <= maxSteps; i++) {
+      const prevX = curX;
+      const prevY = curY;
+      const prevZ = curZ;
       const t = i * dt;
       curX += vx * dt;
       curY += vy * dt;
       curVz -= g * dt;
       curZ += curVz * dt;
 
+      const stepDx = curX - prevX;
+      const stepDy = curY - prevY;
+      const stepDz = curZ - prevZ;
+
+      // Continuous swept check against walls
+      let hitWall = false;
+      for (const wall of arena.walls) {
+        const wallHit = ElevationRaycaster.getRayWallEnterDistance(prevX, prevY, stepDx, stepDy, wall);
+        if (wallHit && wallHit.enterDist <= 1) {
+          const zAtEnter = prevZ + Math.max(0, wallHit.enterDist) * stepDz;
+          if (zAtEnter < wall.wallHeight) {
+            hitWall = true;
+            break;
+          }
+        }
+      }
+
       const wall = arena.getWallAt(curX, curY);
 
-      if (wall && curZ < wall.wallHeight) {
+      if (hitWall || (wall && curZ < wall.wallHeight)) {
         // Intersects wall
         points.push({
           x: curX,
@@ -270,76 +378,141 @@ export class BulletManager {
 
       // Ballistic integration
       b.vz -= g * dt;
-      const nextX = b.x + b.vx * dt;
-      const nextY = b.y + b.vy * dt;
-      const nextZ = b.z + b.vz * dt;
+      const dx = b.vx * dt;
+      const dy = b.vy * dt;
+      const dz = b.vz * dt;
+      const nextX = b.x + dx;
+      const nextY = b.y + dy;
+      const nextZ = b.z + dz;
 
-      // Ground plane collision (z <= 0)
-      if (nextZ <= 0) {
-        // Disappear upon hitting the ground
-        continue;
+      let earliestHitToi = Infinity;
+      let hitType: "ground" | "wall" | "character" | "object" | null = null;
+      let hitTarget: Character | GameObject | null = null;
+
+      // 1. Continuous collision with ground plane (z = 0)
+      if (b.z <= 0) {
+        earliestHitToi = 0;
+        hitType = "ground";
+      } else if (nextZ <= 0 && Math.abs(dz) > 1e-9) {
+        const tGround = Math.max(0, Math.min(1, b.z / (b.z - nextZ)));
+        if (tGround < earliestHitToi) {
+          earliestHitToi = tGround;
+          hitType = "ground";
+        }
       }
 
-      // Wall collision
-      const wall = arena.getWallAt(nextX, nextY);
-      if (wall && nextZ < wall.wallHeight) {
-        // Disappear upon hitting a physical wall
-        continue;
+      // 2. Continuous collision with arena walls
+      for (const wall of arena.walls) {
+        if (
+          b.x >= wall.x &&
+          b.x <= wall.x + wall.width &&
+          b.y >= wall.y &&
+          b.y <= wall.y + wall.height &&
+          b.z < wall.wallHeight
+        ) {
+          if (0 < earliestHitToi) {
+            earliestHitToi = 0;
+            hitType = "wall";
+            hitTarget = null;
+          }
+          continue;
+        }
+
+        const wallHit = ElevationRaycaster.getRayWallEnterDistance(b.x, b.y, dx, dy, wall);
+        if (wallHit && wallHit.enterDist <= 1) {
+          const tEnter = Math.max(0, wallHit.enterDist);
+          const zAtEnter = b.z + tEnter * dz;
+          if (zAtEnter < wall.wallHeight) {
+            if (tEnter < earliestHitToi) {
+              earliestHitToi = tEnter;
+              hitType = "wall";
+              hitTarget = null;
+            }
+          } else if (dz < -1e-9) {
+            const tWallTop = (wall.wallHeight - b.z) / dz;
+            if (tWallTop >= wallHit.enterDist && tWallTop <= wallHit.exitDist && tWallTop >= 0 && tWallTop <= 1) {
+              if (tWallTop < earliestHitToi) {
+                earliestHitToi = tWallTop;
+                hitType = "wall";
+                hitTarget = null;
+              }
+            }
+          }
+        }
       }
 
-      // Character hit detection
-      let hitEntity = false;
+      // 3. Continuous collision with characters
       for (const char of characters) {
         if (char.id === b.shooterId) continue;
         if (char.isHeld) continue;
 
         const charR = char.colliderRadius > 0 ? char.colliderRadius : 0.35;
-        const charZ = char.position.z;
-        // Check 3D altitude proximity
-        if (Math.abs(nextZ - charZ) > 0.9) continue;
+        const tChar = getSweptCylinderHit(
+          b.x, b.y, b.z,
+          dx, dy, dz,
+          char.position.x, char.position.y, char.position.z,
+          charR,
+          0.9
+        );
 
-        // Check horizontal line-circle distance
-        const dist = Math.hypot(nextX - char.position.x, nextY - char.position.y);
-        if (dist <= charR) {
-          // Hit character! Apply damage
+        if (tChar !== null && tChar < earliestHitToi) {
+          earliestHitToi = tChar;
+          hitType = "character";
+          hitTarget = char;
+        }
+      }
+
+      // 4. Continuous collision with dynamic freebody objects
+      for (const obj of objects) {
+        if (obj.isHeld || !obj.hasRigidbody) continue;
+        if (characters.some((c) => c.heldObject === obj)) continue;
+
+        const objR = obj.colliderRadius > 0 ? obj.colliderRadius : 0.28;
+        const tObj = getSweptCylinderHit(
+          b.x, b.y, b.z,
+          dx, dy, dz,
+          obj.position.x, obj.position.y, obj.position.z,
+          objR,
+          0.8
+        );
+
+        if (tObj !== null && tObj < earliestHitToi) {
+          earliestHitToi = tObj;
+          hitType = "object";
+          hitTarget = obj;
+        }
+      }
+
+      // 5. Resolve earliest collision
+      if (hitType !== null) {
+        // Record final impact point on trail so the visual streak connects cleanly to the hit surface
+        const hitX = b.x + earliestHitToi * dx;
+        const hitY = b.y + earliestHitToi * dy;
+        const hitZ = Math.max(0, b.z + earliestHitToi * dz);
+        b.trail.push({ x: hitX, y: hitY, z: hitZ, alpha: 1.0 });
+
+        if (hitType === "character" && hitTarget) {
+          const char = hitTarget as Character;
           if (char.healthModule && char.healthModule.enabled) {
             char.healthModule.takeDamage(b.damage);
           }
 
-          // Apply target knockback momentum: I = m_bullet * v
-          const knockbackImpulse = b.bulletMass * b.bulletSpeed;
+          const speed = Math.hypot(b.vx, b.vy) || b.bulletSpeed || 1;
+          const knockbackImpulse = b.bulletMass * speed;
           const targetMass = char.mass > 0 ? char.mass : 1.2;
-          const dirX = b.vx / b.bulletSpeed;
-          const dirY = b.vy / b.bulletSpeed;
+          const dirX = b.vx / speed;
+          const dirY = b.vy / speed;
 
           char.velocity.x += (dirX * knockbackImpulse) / targetMass;
           char.velocity.y += (dirY * knockbackImpulse) / targetMass;
           char.applyKnockbackWindow(350);
-
-          hitEntity = true;
-          break;
-        }
-      }
-
-      if (hitEntity) continue;
-
-      // Freebody object hit detection
-      for (const obj of objects) {
-        if (obj.isHeld || !obj.hasRigidbody) continue;
-        const holder = characters.find((c) => c.heldObject === obj);
-        if (holder) continue;
-
-        const objR = obj.colliderRadius > 0 ? obj.colliderRadius : 0.28;
-        const objZ = obj.position.z;
-        if (Math.abs(nextZ - objZ) > 0.8) continue;
-
-        const dist = Math.hypot(nextX - obj.position.x, nextY - obj.position.y);
-        if (dist <= objR) {
-          // Hit dynamic object!
-          const knockbackImpulse = b.bulletMass * b.bulletSpeed;
+        } else if (hitType === "object" && hitTarget) {
+          const obj = hitTarget as GameObject;
+          const speed = Math.hypot(b.vx, b.vy) || b.bulletSpeed || 1;
+          const knockbackImpulse = b.bulletMass * speed;
           const objMass = obj.mass > 0 ? obj.mass : 1.0;
-          const dirX = b.vx / b.bulletSpeed;
-          const dirY = b.vy / b.bulletSpeed;
+          const dirX = b.vx / speed;
+          const dirY = b.vy / speed;
 
           obj.velocity.x += (dirX * knockbackImpulse) / objMass;
           obj.velocity.y += (dirY * knockbackImpulse) / objMass;
@@ -348,15 +521,13 @@ export class BulletManager {
           if (obj.healthModule && obj.healthModule.enabled) {
             obj.healthModule.takeDamage(b.damage);
           }
-
-          hitEntity = true;
-          break;
         }
+
+        // Bullet consumed on impact
+        continue;
       }
 
-      if (hitEntity) continue;
-
-      // Bullet continues flight
+      // No collision along the entire swept path: bullet advances freely
       b.x = nextX;
       b.y = nextY;
       b.z = nextZ;
