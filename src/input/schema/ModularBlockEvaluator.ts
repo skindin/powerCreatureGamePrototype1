@@ -44,25 +44,22 @@ export class ModularBlockEvaluator {
     const now = performance.now();
     const isEditMode = Boolean((window as any).__DEV_PANEL_OPEN);
 
-    const tokens = InputPressTokenManager.getInstance();
-    const currentDownKeys = new Set<string>(input.getActiveKeys());
-    if (execCtx.isMouseButtonDown(0)) currentDownKeys.add("MouseLeft");
-    if (execCtx.isMouseButtonDown(1)) currentDownKeys.add("MouseMiddle");
-    if (execCtx.isMouseButtonDown(2)) currentDownKeys.add("MouseRight");
+    const playerId = execCtx.gamepadStates
+      ? `gamepad-${execCtx.gamepadStates.slotIndex}`
+      : (char.playerId || "keyboard");
+    const tokens = InputPressTokenManager.getInstance(playerId);
+    const currentDownKeys = new Set<string>();
 
-    // Gamepad button edge registration
-    if (execCtx.gamepadStates) {
+    if (!execCtx.gamepadStates) {
+      for (const k of input.getActiveKeys()) currentDownKeys.add(k);
+      if (execCtx.isMouseButtonDown(0)) currentDownKeys.add("MouseLeft");
+      if (execCtx.isMouseButtonDown(1)) currentDownKeys.add("MouseMiddle");
+      if (execCtx.isMouseButtonDown(2)) currentDownKeys.add("MouseRight");
+    } else {
+      // Gamepad button edge registration strictly for this specific controller slot
       for (let b = 0; b <= 16; b++) {
         const val = execCtx.gamepadStates.getValue ? execCtx.gamepadStates.getValue(b) : 0;
         if (execCtx.gamepadStates.isDown(b) || val > 0.15) {
-          const gpCode = ControlSchemaArbiter.formatGamepadButtonIndex(b);
-          currentDownKeys.add(gpCode);
-        }
-      }
-    } else if (execCtx.isGamepadButtonDown) {
-      for (let b = 0; b <= 16; b++) {
-        const val = execCtx.getGamepadButtonValue ? execCtx.getGamepadButtonValue(0, b) : 0;
-        if (execCtx.isGamepadButtonDown(0, b) || val > 0.15) {
           const gpCode = ControlSchemaArbiter.formatGamepadButtonIndex(b);
           currentDownKeys.add(gpCode);
         }

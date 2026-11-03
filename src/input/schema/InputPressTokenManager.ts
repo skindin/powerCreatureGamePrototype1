@@ -36,14 +36,16 @@ export interface InputTokenState {
 }
 
 export class InputPressTokenManager {
-  private static instance: InputPressTokenManager | null = null;
+  private static instances: Map<string, InputPressTokenManager> = new Map();
   private tokens: Map<string, InputTokenState> = new Map();
 
-  public static getInstance(): InputPressTokenManager {
-    if (!this.instance) {
-      this.instance = new InputPressTokenManager();
+  public static getInstance(playerId: string = "default"): InputPressTokenManager {
+    let inst = this.instances.get(playerId);
+    if (!inst) {
+      inst = new InputPressTokenManager();
+      this.instances.set(playerId, inst);
     }
-    return this.instance;
+    return inst;
   }
 
   public update(currentDownKeys: Set<string>, now: number): void {

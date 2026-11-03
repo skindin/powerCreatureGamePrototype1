@@ -12,6 +12,7 @@ import { ControlSchemaArbiter } from "../input/schema/ControlSchemaArbiter.js";
 import { ModularBlockEvaluator } from "../input/schema/ModularBlockEvaluator.js";
 import { DefaultControlBlocks, DefaultGamepadControlBlocks } from "../input/schema/presets/DefaultControlSchemas.js";
 import type { ControlExecutionContext, ControlRule } from "../input/schema/ControlSchemaTypes.js";
+import { prefabManager } from "./prefab/PrefabManager.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -125,6 +126,9 @@ export class PlayerManager {
     this.baseCharacter.playerColor = PLAYER_COLORS[0];
     this.baseCharacter.color = PLAYER_COLORS[0];
     this.baseCharacter.name = initialHandle;
+    if (!this.baseCharacter.prefabId) {
+      this.baseCharacter.prefabId = "prefab_player";
+    }
     this.inputManager.isKeyboardActive = false;
     this.arena.syncEntitiesWithWalls([this.baseCharacter]);
 
@@ -326,6 +330,9 @@ export class PlayerManager {
     if (isBaseUnassigned) {
       char = this.baseCharacter;
       char.playerId = "keyboard";
+      if (!char.prefabId) {
+        char.prefabId = "prefab_player";
+      }
       if (!char.playerNumber) {
         char.playerNumber = 1;
       }
@@ -340,19 +347,40 @@ export class PlayerManager {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
       const slotSpawn = HealthModule.RESPAWN_SPAWNS[(playerNum - 1) % HealthModule.RESPAWN_SPAWNS.length];
-      char = new Character({
-        x: slotSpawn.x,
-        y: slotSpawn.y,
-        color,
-        colliderRadius: 0.44,
-        mass: 1.2,
-        strength: 1.0,
-        playerId: "keyboard",
-        playerNumber: playerNum,
-        name: `Player ${playerNum}`,
-      });
-      char.position.z = slotSpawn.z ?? 0;
-      this.arena.syncEntitiesWithWalls([char]);
+      const targetPrefabId = this.baseCharacter?.prefabId || "prefab_player";
+      const targetPrefab = prefabManager.get(targetPrefabId);
+
+      if (targetPrefab) {
+        char = targetPrefab.instantiate({ x: slotSpawn.x, y: slotSpawn.y, z: slotSpawn.z ?? 0 }, this.arena) as Character;
+        char.playerId = "keyboard";
+        char.playerNumber = playerNum;
+        char.color = color;
+        char.playerColor = color;
+        char.name = `Player ${playerNum}`;
+        char.prefabId = targetPrefabId;
+        const schemaToApply = targetPrefab.controlSchema || this.baseCharacter.controlSchema;
+        if (schemaToApply) {
+          char.controlSchema = JSON.parse(JSON.stringify(schemaToApply));
+        }
+      } else {
+        char = new Character({
+          x: slotSpawn.x,
+          y: slotSpawn.y,
+          color,
+          colliderRadius: 0.44,
+          mass: 1.2,
+          strength: 1.0,
+          playerId: "keyboard",
+          playerNumber: playerNum,
+          name: `Player ${playerNum}`,
+        });
+        char.position.z = slotSpawn.z ?? 0;
+        char.prefabId = targetPrefabId;
+        if (this.baseCharacter.controlSchema) {
+          char.controlSchema = JSON.parse(JSON.stringify(this.baseCharacter.controlSchema));
+        }
+        this.arena.syncEntitiesWithWalls([char]);
+      }
     }
 
     this.inputManager.isKeyboardActive = true;
@@ -427,6 +455,9 @@ export class PlayerManager {
     if (isBaseUnassigned) {
       char = this.baseCharacter;
       char.playerId = key;
+      if (!char.prefabId) {
+        char.prefabId = "prefab_player";
+      }
       if (!char.playerNumber) {
         char.playerNumber = 1;
       }
@@ -442,21 +473,43 @@ export class PlayerManager {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
       const slotSpawn = HealthModule.RESPAWN_SPAWNS[(playerNum - 1) % HealthModule.RESPAWN_SPAWNS.length];
-      char = new Character({
-        x: slotSpawn.x,
-        y: slotSpawn.y,
-        color,
-        colliderRadius: 0.44,
-        mass: 1.2,
-        strength: 1.0,
-        playerId: key,
-        playerNumber: playerNum,
-        name: `Player ${playerNum}`,
-        hasCustomName: false,
-      });
-      char.position.z = slotSpawn.z ?? 0;
-      char.hasCustomName = false;
-      this.arena.syncEntitiesWithWalls([char]);
+      const targetPrefabId = this.baseCharacter?.prefabId || "prefab_player";
+      const targetPrefab = prefabManager.get(targetPrefabId);
+
+      if (targetPrefab) {
+        char = targetPrefab.instantiate({ x: slotSpawn.x, y: slotSpawn.y, z: slotSpawn.z ?? 0 }, this.arena) as Character;
+        char.playerId = key;
+        char.playerNumber = playerNum;
+        char.color = color;
+        char.playerColor = color;
+        char.name = cleanName;
+        char.hasCustomName = false;
+        char.prefabId = targetPrefabId;
+        const schemaToApply = targetPrefab.controlSchema || this.baseCharacter.controlSchema;
+        if (schemaToApply) {
+          char.controlSchema = JSON.parse(JSON.stringify(schemaToApply));
+        }
+      } else {
+        char = new Character({
+          x: slotSpawn.x,
+          y: slotSpawn.y,
+          color,
+          colliderRadius: 0.44,
+          mass: 1.2,
+          strength: 1.0,
+          playerId: key,
+          playerNumber: playerNum,
+          name: `Player ${playerNum}`,
+          hasCustomName: false,
+        });
+        char.position.z = slotSpawn.z ?? 0;
+        char.hasCustomName = false;
+        char.prefabId = targetPrefabId;
+        if (this.baseCharacter.controlSchema) {
+          char.controlSchema = JSON.parse(JSON.stringify(this.baseCharacter.controlSchema));
+        }
+        this.arena.syncEntitiesWithWalls([char]);
+      }
     }
 
     const entry: PlayerEntry = {

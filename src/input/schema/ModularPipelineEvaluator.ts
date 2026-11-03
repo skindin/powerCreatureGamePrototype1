@@ -69,14 +69,20 @@ export class ModularPipelineEvaluator {
     input: InputManager
   ): PlayerInputPacket {
     const char = execCtx.character;
-    const tokens = InputPressTokenManager.getInstance();
+    const playerId = execCtx.gamepadStates
+      ? `gamepad-${execCtx.gamepadStates.slotIndex}`
+      : (char.playerId || "keyboard");
+    const tokens = InputPressTokenManager.getInstance(playerId);
     const now = performance.now();
 
     // 1. Ingest raw physical inputs into token manager
-    const currentDownKeys = new Set<string>(input.getActiveKeys());
-    if (execCtx.isMouseButtonDown(0)) currentDownKeys.add("MouseLeft");
-    if (execCtx.isMouseButtonDown(1)) currentDownKeys.add("MouseMiddle");
-    if (execCtx.isMouseButtonDown(2)) currentDownKeys.add("MouseRight");
+    const currentDownKeys = new Set<string>();
+    if (!execCtx.gamepadStates) {
+      for (const k of input.getActiveKeys()) currentDownKeys.add(k);
+      if (execCtx.isMouseButtonDown(0)) currentDownKeys.add("MouseLeft");
+      if (execCtx.isMouseButtonDown(1)) currentDownKeys.add("MouseMiddle");
+      if (execCtx.isMouseButtonDown(2)) currentDownKeys.add("MouseRight");
+    }
 
     tokens.update(currentDownKeys, now);
 

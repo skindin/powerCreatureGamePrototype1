@@ -623,7 +623,10 @@ export class ControlSchemaArbiter {
   ): PlayerInputPacket {
     const char = execCtx.character;
     const now = performance.now();
-    const tokens = InputPressTokenManager.getInstance();
+    const playerId = execCtx.gamepadStates
+      ? `gamepad-${execCtx.gamepadStates.slotIndex}`
+      : (char.playerId || "keyboard");
+    const tokens = InputPressTokenManager.getInstance(playerId);
 
     // 1. Gather all currently depressed keys & buttons
     const activeKeys = new Set<string>();

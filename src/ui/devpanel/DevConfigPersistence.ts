@@ -319,7 +319,8 @@ export class DevConfigPersistence {
     };
 
     // 2. Update linked prefab archetype if exists and sync to all live instances
-    const prefab = char.prefabId ? prefabManager.get(char.prefabId) : undefined;
+    const targetPrefabId = char.prefabId || "prefab_player";
+    const prefab = prefabManager.get(targetPrefabId);
     if (prefab) {
       prefab.controlSchema = JSON.parse(JSON.stringify(schema));
       if (prefab.archetype instanceof Character) {
@@ -327,7 +328,7 @@ export class DevConfigPersistence {
       }
       if (panel) {
         for (const ent of panel.getActiveCharacters()) {
-          if (ent.prefabId === char.prefabId) {
+          if (ent.prefabId === targetPrefabId || (!ent.prefabId && targetPrefabId === "prefab_player")) {
             ent.controlSchema = JSON.parse(JSON.stringify(schema));
           }
         }

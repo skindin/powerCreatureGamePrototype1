@@ -242,13 +242,12 @@ export class ControlsInspector {
   }
 
   public static getActiveSchema(char: Character): ControlSchema {
-    if (char.prefabId) {
-      const prefab = prefabManager.get(char.prefabId);
-      if (prefab?.controlSchema) {
-        char.controlSchema = prefab.controlSchema;
-        this.ensureSchemaTags(char.controlSchema);
-        return char.controlSchema;
-      }
+    const prefabId = char.prefabId || "prefab_player";
+    const prefab = prefabManager.get(prefabId);
+    if (prefab?.controlSchema) {
+      char.controlSchema = prefab.controlSchema;
+      this.ensureSchemaTags(char.controlSchema);
+      return char.controlSchema;
     }
     if (char.controlSchema) {
       this.ensureSchemaTags(char.controlSchema);
@@ -262,12 +261,18 @@ export class ControlsInspector {
   public static setActiveSchema(char: Character, schema: ControlSchema): void {
     const copy = JSON.parse(JSON.stringify(schema));
     char.controlSchema = copy;
-    if (char.prefabId) {
-      const prefab = prefabManager.get(char.prefabId);
-      if (prefab) {
-        prefab.controlSchema = copy;
-        if (prefab.archetype instanceof Character) {
-          (prefab.archetype as Character).controlSchema = copy;
+    const targetPrefabId = char.prefabId || "prefab_player";
+    const prefab = prefabManager.get(targetPrefabId);
+    if (prefab) {
+      prefab.controlSchema = copy;
+      if (prefab.archetype instanceof Character) {
+        (prefab.archetype as Character).controlSchema = copy;
+      }
+    }
+    if (this.modalPanel) {
+      for (const ent of this.modalPanel.getActiveCharacters()) {
+        if (ent.prefabId === targetPrefabId || (!ent.prefabId && targetPrefabId === "prefab_player")) {
+          ent.controlSchema = copy;
         }
       }
     }
@@ -277,19 +282,18 @@ export class ControlsInspector {
     if (!this.modalChar || !this.workingSchema) return;
     const schemaCopy = JSON.parse(JSON.stringify(this.workingSchema));
     this.modalChar.controlSchema = schemaCopy;
-    if (this.modalChar.prefabId) {
-      const prefab = prefabManager.get(this.modalChar.prefabId);
-      if (prefab) {
-        prefab.controlSchema = schemaCopy;
-        if (prefab.archetype instanceof Character) {
-          (prefab.archetype as Character).controlSchema = schemaCopy;
-        }
+    const targetPrefabId = this.modalChar.prefabId || "prefab_player";
+    const prefab = prefabManager.get(targetPrefabId);
+    if (prefab) {
+      prefab.controlSchema = schemaCopy;
+      if (prefab.archetype instanceof Character) {
+        (prefab.archetype as Character).controlSchema = schemaCopy;
       }
-      if (this.modalPanel) {
-        for (const ent of this.modalPanel.getActiveCharacters()) {
-          if (ent.prefabId === this.modalChar.prefabId) {
-            ent.controlSchema = schemaCopy;
-          }
+    }
+    if (this.modalPanel) {
+      for (const ent of this.modalPanel.getActiveCharacters()) {
+        if (ent.prefabId === targetPrefabId || (!ent.prefabId && targetPrefabId === "prefab_player")) {
+          ent.controlSchema = schemaCopy;
         }
       }
     }
