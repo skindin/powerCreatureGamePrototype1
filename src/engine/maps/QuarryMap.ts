@@ -120,11 +120,22 @@ if (!Arena.WALL_PRESETS.some((p) => p.id === quarryPreset.id)) {
 
 /** Designated open ground spawn locations for apples in the Quarry */
 export const QUARRY_APPLE_SPAWN_POINTS: { x: number; y: number; z?: number }[] = [
-  { x: 15.0, y: 7.0, z: 0 },   // North clearing
-  { x: 15.0, y: 23.0, z: 0 },  // South clearing
-  { x: 7.0, y: 15.0, z: 0 },   // West clearing
-  { x: 23.0, y: 15.0, z: 0 },  // East clearing
-  { x: 15.0, y: 15.0, z: 0 },  // Center gateway
+  { x: 15.0, y: 7.0, z: 0 },    // North clearing
+  { x: 15.0, y: 23.0, z: 0 },   // South clearing
+  { x: 7.0, y: 15.0, z: 0 },    // West clearing
+  { x: 23.0, y: 15.0, z: 0 },   // East clearing
+  { x: 8.5, y: 8.5, z: 0 },     // Northwest courtyard
+  { x: 21.5, y: 8.5, z: 0 },    // Northeast courtyard
+  { x: 8.5, y: 21.5, z: 0 },    // Southwest courtyard
+  { x: 21.5, y: 21.5, z: 0 },   // Southeast courtyard
+  { x: 15.0, y: 2.2, z: 0 },    // North perimeter
+  { x: 15.0, y: 27.8, z: 0 },   // South perimeter
+  { x: 2.2, y: 15.0, z: 0 },    // West perimeter
+  { x: 27.8, y: 15.0, z: 0 },   // East perimeter
+  { x: 4.5, y: 4.5, z: 1.0 },   // Elevated NW Rampart
+  { x: 25.5, y: 4.5, z: 1.0 },  // Elevated NE Rampart
+  { x: 4.5, y: 25.5, z: 1.0 },  // Elevated SW Rampart
+  { x: 25.5, y: 25.5, z: 1.0 }, // Elevated SE Rampart
 ];
 
 export const QUARRY_PLAYER_SPAWN = { x: 7.5, y: 7.5 };

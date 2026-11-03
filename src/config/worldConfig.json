@@ -1,6 +1,6 @@
 {
-  "version": 262,
-  "lastSaved": "2026-11-03T17:52:59.126Z",
+  "version": 263,
+  "lastSaved": "2026-11-03T18:20:45.809Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -3933,8 +3933,8 @@
       "name": "Apple",
       "prefabId": "prefab_apple",
       "position": {
-        "x": 10,
-        "y": 2.2,
+        "x": 15,
+        "y": 7,
         "z": 0
       },
       "color": "#22c55e",
@@ -4000,8 +4000,8 @@
       "name": "Super Apple",
       "prefabId": "prefab_super_apple",
       "position": {
-        "x": 10,
-        "y": 7,
+        "x": 15,
+        "y": 15,
         "z": 0
       },
       "color": "#ff1493",
@@ -4068,8 +4068,8 @@
       "name": "Apple",
       "prefabId": "prefab_apple",
       "position": {
-        "x": 3.5,
-        "y": 7,
+        "x": 7,
+        "y": 15,
         "z": 0
       },
       "color": "#22c55e",
@@ -4135,8 +4135,8 @@
       "name": "Apple",
       "prefabId": "prefab_apple",
       "position": {
-        "x": 16.5,
-        "y": 7,
+        "x": 23,
+        "y": 15,
         "z": 0
       },
       "color": "#22c55e",
@@ -4202,8 +4202,8 @@
       "name": "Apple",
       "prefabId": "prefab_apple",
       "position": {
-        "x": 10,
-        "y": 11.8,
+        "x": 15,
+        "y": 23,
         "z": 0
       },
       "color": "#22c55e",
@@ -6894,32 +6894,122 @@
       "name": "Apple Spawner",
       "enabled": true,
       "prefabId": "prefab_apple",
-      "intervalMinutes": 0.1,
+      "intervalMinutes": 0.15,
       "maxCount": 10,
       "designatedSpawnPoints": [
         {
-          "x": 10,
+          "x": 15,
+          "y": 7,
+          "z": 0
+        },
+        {
+          "x": 15,
+          "y": 23,
+          "z": 0
+        },
+        {
+          "x": 7,
+          "y": 15,
+          "z": 0
+        },
+        {
+          "x": 23,
+          "y": 15,
+          "z": 0
+        },
+        {
+          "x": 8.5,
+          "y": 8.5,
+          "z": 0
+        },
+        {
+          "x": 21.5,
+          "y": 8.5,
+          "z": 0
+        },
+        {
+          "x": 8.5,
+          "y": 21.5,
+          "z": 0
+        },
+        {
+          "x": 21.5,
+          "y": 21.5,
+          "z": 0
+        },
+        {
+          "x": 15,
           "y": 2.2,
           "z": 0
         },
         {
-          "x": 10,
-          "y": 11.8,
+          "x": 15,
+          "y": 27.8,
           "z": 0
         },
         {
-          "x": 3.5,
-          "y": 7,
+          "x": 2.2,
+          "y": 15,
           "z": 0
         },
         {
-          "x": 16.5,
-          "y": 7,
+          "x": 27.8,
+          "y": 15,
           "z": 0
         },
         {
-          "x": 10,
-          "y": 7,
+          "x": 4.5,
+          "y": 4.5,
+          "z": 1
+        },
+        {
+          "x": 25.5,
+          "y": 4.5,
+          "z": 1
+        },
+        {
+          "x": 4.5,
+          "y": 25.5,
+          "z": 1
+        },
+        {
+          "x": 25.5,
+          "y": 25.5,
+          "z": 1
+        }
+      ]
+    },
+    {
+      "id": "spawner_super_apple_default",
+      "name": "Super Apple Spawner",
+      "enabled": true,
+      "prefabId": "prefab_super_apple",
+      "intervalMinutes": 1,
+      "maxCount": 1,
+      "designatedSpawnPoints": [
+        {
+          "x": 15,
+          "y": 15,
+          "z": 0
+        },
+        {
+          "x": 8.5,
+          "y": 8.5,
+          "z": 0
+        },
+        {
+          "x": 21.5,
+          "y": 8.5,
+          "z": 0
+        },
+        {
+          "x": 8.5,
+          "y": 21.5,
+          "z": 0
+        },
+        {
+          "x": 21.5,
+          "y": 21.5,
           "z": 0
         }
       ]

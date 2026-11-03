@@ -28,6 +28,25 @@ export class SceneSpawnerManager {
     });
 
     this.spawners.set(appleSpawner.id, appleSpawner);
+
+    // Default Super Apple Spawner: ensures King of the Hill Super Apple is in the arena (cap 1)
+    const superAppleSpawner = new SceneSpawner({
+      id: "spawner_super_apple_default",
+      name: "Super Apple Spawner",
+      enabled: true,
+      prefabId: "prefab_super_apple",
+      intervalMinutes: 1.0,
+      maxCount: 1,
+      designatedSpawnPoints: [
+        { x: 15.0, y: 15.0, z: 0 },
+        { x: 8.5, y: 8.5, z: 0 },
+        { x: 21.5, y: 8.5, z: 0 },
+        { x: 8.5, y: 21.5, z: 0 },
+        { x: 21.5, y: 21.5, z: 0 },
+      ],
+    });
+
+    this.spawners.set(superAppleSpawner.id, superAppleSpawner);
   }
 
   public getAll(): SceneSpawner[] {
