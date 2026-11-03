@@ -896,6 +896,14 @@ export class Renderer {
 
       // 8. Collider Position Outlines (Renders ON TOP OF EVERYTHING - only the shadow fill is covered!)
       for (const entity of allRenderables) {
+        const isHeld = Boolean(
+          entity.isHeld ||
+          entity.heldBy !== null ||
+          ((entity as any).holder !== undefined && (entity as any).holder !== null) ||
+          characters.some((c) => c.heldObject === entity)
+        );
+        if (isHeld) continue;
+
         const effPos = this.getEffectiveObjectPosition(entity, arena, characters);
         ShadowPass.drawObjectColliderPositionOutline(
           ctx, entity, arena, ppu, effPos, this.viewSettings, Renderer.getAltitudeScale

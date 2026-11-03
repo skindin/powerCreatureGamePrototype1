@@ -132,6 +132,8 @@ export class ShadowPass {
     viewSettings: ViewSettings,
     getAltitudeScale: (z: number, wallHeight: number) => number
   ): void {
+    if (obj.isHeld || obj.heldBy !== null || (obj as any).holder) return;
+
     const { x: posX, y: posY, z: posZ } = effectivePos;
     const z = posZ;
     if (z <= 0.01) return;
