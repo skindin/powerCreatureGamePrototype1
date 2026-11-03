@@ -329,6 +329,40 @@ export class ModularBlockEvaluator {
       return targetAimPos;
     };
 
+    // Helper to compute kinematic braking and arrival deadzone toward the cursor
+    const computeCursorArriveDrive = (
+      distToCursor: number,
+      charRadius: number
+    ): { driveFactor: number; shouldUpdateFacing: boolean; isArrived: boolean } => {
+      const arrivalDeadzone = Math.max(0.18, charRadius * 0.55);
+      if (distToCursor <= arrivalDeadzone) {
+        return { driveFactor: 0, shouldUpdateFacing: false, isArrived: true };
+      }
+
+      // Kinematic stopping distance based on current speed and ground deceleration:
+      // d_stop = v^2 / (2 * a_brake) + 1 frame lead
+      const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
+      const totalMass = char.hasMass ? Math.max(0.2, char.mass) : 1.0;
+      const arenaFriction = execCtx.arena ? execCtx.arena.frictionCoeff : 10.4;
+      const grip = char.isRestingOnSurface ? (char.dynamicGroundFrictionMod * (arenaFriction / 10.0)) : 1.0;
+      const maxWalkForce = char.walkingModule ? char.walkingModule.maxWalkForceProp.get(char.properties) : 35.0;
+      const isSprinting = Boolean(char.walkingModule?.canSprint && char.isSprinting);
+      const effForce = isSprinting ? maxWalkForce * 1.5 : maxWalkForce;
+      const maxAccel = Math.max(8.0, ((effForce * Math.max(0.1, char.strength)) / totalMass) * grip);
+
+      const stoppingDist = (curSpeed * curSpeed) / (2 * maxAccel) + curSpeed * execCtx.dt + arrivalDeadzone;
+
+      if (distToCursor > stoppingDist) {
+        // Outside braking threshold: full 100% responsive sprint/walk speed with zero sluggishness
+        return { driveFactor: 1.0, shouldUpdateFacing: true, isArrived: false };
+      }
+
+      // Inside braking window: square-root deceleration curve for crisp settling without slow creeping
+      const span = Math.max(0.01, stoppingDist - arrivalDeadzone);
+      const factor = Math.sqrt(Math.max(0, Math.min(1.0, (distToCursor - arrivalDeadzone) / span)));
+      return { driveFactor: factor, shouldUpdateFacing: true, isArrived: false };
+    };
+
     // Scan for nearby grabbable objects for pickup and swap
     const grabTargetObjectId = execCtx.targetInReach ? execCtx.targetInReach.id : null;
 
@@ -367,11 +401,22 @@ export class ModularBlockEvaluator {
                 }
               }
             }
-            // In cursor mode: character always faces toward the cursor!
+            // In cursor mode: character faces toward cursor with kinematic arrival deadzone
             const aimDx = targetAimPos.x - char.position.x;
             const aimDy = targetAimPos.y - char.position.y;
-            if (Math.hypot(aimDx, aimDy) > 0.05) {
+            const mouseDist = Math.hypot(aimDx, aimDy);
+            const arrive = computeCursorArriveDrive(mouseDist, char.colliderRadius ?? 0.44);
+
+            if (arrive.shouldUpdateFacing && mouseDist > 0.05) {
               char.facingAngle = Math.atan2(aimDy, aimDx);
+            }
+
+            if (arrive.isArrived) {
+              const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
+              if (curSpeed < 0.25) {
+                char.velocity.x = 0;
+                char.velocity.y = 0;
+              }
             }
 
             // In cursor mode: walk forward button only drives toward cursor if also pushing joystick
@@ -382,9 +427,9 @@ export class ModularBlockEvaluator {
               b.forwardTrigger.code === b.cursorSteerTrigger.code
             );
             const canDriveFwd = fwdActive && (!isSameTrigger || b.cursorSteerMode !== "whenHoldingButton");
-            if (canDriveFwd && stickMag > 0.08) {
-              moveX += Math.cos(char.facingAngle);
-              moveY += Math.sin(char.facingAngle);
+            if (canDriveFwd && stickMag > 0.08 && arrive.driveFactor > 0.001) {
+              moveX += Math.cos(char.facingAngle) * arrive.driveFactor;
+              moveY += Math.sin(char.facingAngle) * arrive.driveFactor;
               claimSlot(b.forwardTrigger, b.id, "locomotion.forwardDrive", false);
             } else {
               moveX = 0;
@@ -413,19 +458,29 @@ export class ModularBlockEvaluator {
               moveY = 0;
             }
           } else if (b.mode === "walkToMouse") {
-            // Update facing angle toward aim cursor
+            // Update facing angle toward aim cursor with kinematic arrival deadzone
             const aimDx = targetAimPos.x - char.position.x;
             const aimDy = targetAimPos.y - char.position.y;
             const mouseDist = Math.hypot(aimDx, aimDy);
-            if (mouseDist > 0.05) {
+            const arrive = computeCursorArriveDrive(mouseDist, char.colliderRadius ?? 0.44);
+
+            if (arrive.shouldUpdateFacing && mouseDist > 0.05) {
               char.facingAngle = Math.atan2(aimDy, aimDx);
+            }
+
+            if (arrive.isArrived) {
+              const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
+              if (curSpeed < 0.25) {
+                char.velocity.x = 0;
+                char.velocity.y = 0;
+              }
             }
 
             // Forward Drive Button (e.g. MouseRight or KeyW)
             const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forward");
-            if (fwdActive) {
-              moveX += Math.cos(char.facingAngle);
-              moveY += Math.sin(char.facingAngle);
+            if (fwdActive && arrive.driveFactor > 0.001) {
+              moveX += Math.cos(char.facingAngle) * arrive.driveFactor;
+              moveY += Math.sin(char.facingAngle) * arrive.driveFactor;
               claimSlot(b.forwardTrigger, b.id, "locomotion.forward");
             }
 
