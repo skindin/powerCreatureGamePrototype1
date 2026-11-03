@@ -33,89 +33,77 @@ export interface Bullet {
 
 /**
  * Swept continuous collision detection between a 3D line segment P0 -> P1 and a vertical cylinder.
- * Cylinder is centered at (cx, cy) with radius R, and spans altitude [cz - zTolerance, cz + zTolerance].
+ * Incorporates projectile thickness (Minkowski sum: targetRadius + bulletRadius).
+ * Correctly accounts for physical layer heights (ground layer vs elevated wall top layer).
  * Returns the earliest time of impact (t in [0, 1]), or null if no intersection.
  */
-function getSweptCylinderHit(
+function sweptCircleHit(
   x0: number, y0: number, z0: number,
   dx: number, dy: number, dz: number,
   cx: number, cy: number, cz: number,
-  radius: number,
-  zTolerance: number
+  targetRadius: number,
+  bulletRadius: number = 0.14,
+  targetHeight: number = 0.8,
+  wallHeight: number = 1.0
 ): number | null {
-  const zMin = cz - zTolerance;
-  const zMax = cz + zTolerance;
+  const R = targetRadius + bulletRadius;
+  const fx = x0 - cx;
+  const fy = y0 - cy;
 
-  const fx0 = x0 - cx;
-  const fy0 = y0 - cy;
-
-  // 1. Check if start point is already inside the 3D cylinder
-  if (fx0 * fx0 + fy0 * fy0 <= radius * radius && z0 >= zMin && z0 <= zMax) {
-    return 0;
-  }
-
-  let earliestT = Infinity;
-
-  // 2. Check 2D circular boundary extrusion along the segment
   const a = dx * dx + dy * dy;
-  if (a > 1e-9) {
-    const bCoeff = 2 * (fx0 * dx + fy0 * dy);
-    const cCoeff = fx0 * fx0 + fy0 * fy0 - radius * radius;
+  if (a < 1e-9) {
+    // Static point
+    const dSq = fx * fx + fy * fy;
+    if (dSq <= R * R) {
+      const zMin = cz;
+      const zMax = cz + targetHeight;
+      if (z0 >= zMin - 0.25 && z0 <= zMax + 0.35) return 0;
+    }
+    return null;
+  }
+
+  // Check closest point on segment to circle center
+  const c1 = -fx * dx - fy * dy;
+  const tClosest = Math.max(0, Math.min(1, c1 / a));
+  const closeX = x0 + tClosest * dx;
+  const closeY = y0 + tClosest * dy;
+  const distSq = (closeX - cx) ** 2 + (closeY - cy) ** 2;
+
+  if (distSq > R * R) {
+    return null; // Ray segment never comes within R of target
+  }
+
+  // Calculate earliest entry time
+  let tEnter = 0;
+  const cCoeff = fx * fx + fy * fy - R * R;
+  if (cCoeff > 0) {
+    // Start point is outside circle
+    const bCoeff = 2 * (fx * dx + fy * dy);
     const disc = bCoeff * bCoeff - 4 * a * cCoeff;
-    if (disc >= 0) {
-      const sqrtDisc = Math.sqrt(disc);
-      const t0 = (-bCoeff - sqrtDisc) / (2 * a);
-      const t1 = (-bCoeff + sqrtDisc) / (2 * a);
-
-      for (const t of [t0, t1]) {
-        if (t >= 0 && t <= 1 && t < earliestT) {
-          const zAtT = z0 + t * dz;
-          if (zAtT >= zMin && zAtT <= zMax) {
-            earliestT = t;
-          }
-        }
-      }
+    if (disc < 0) return null;
+    tEnter = (-bCoeff - Math.sqrt(disc)) / (2 * a);
+    if (tEnter < 0 || tEnter > 1) {
+      tEnter = tClosest;
     }
   }
 
-  // 3. Check top cap (z = zMax) and bottom cap (z = zMin)
-  if (Math.abs(dz) > 1e-9) {
-    const tTop = (zMax - z0) / dz;
-    if (tTop >= 0 && tTop <= 1 && tTop < earliestT) {
-      const xAtT = x0 + tTop * dx;
-      const yAtT = y0 + tTop * dy;
-      if ((xAtT - cx) ** 2 + (yAtT - cy) ** 2 <= radius * radius) {
-        earliestT = tTop;
-      }
-    }
+  // Check vertical overlap at tEnter
+  const hitZ = z0 + tEnter * dz;
+  const isTargetElevated = cz >= wallHeight - 0.05;
+  const isBulletElevated = hitZ >= wallHeight - 0.05;
 
-    const tBottom = (zMin - z0) / dz;
-    if (tBottom >= 0 && tBottom <= 1 && tBottom < earliestT) {
-      const xAtT = x0 + tBottom * dx;
-      const yAtT = y0 + tBottom * dy;
-      if ((xAtT - cx) ** 2 + (yAtT - cy) ** 2 <= radius * radius) {
-        earliestT = tBottom;
-      }
-    }
+  // If one is on the high wall roof and the other is down on the ground, ensure they don't phantom-collide
+  if (isTargetElevated !== isBulletElevated && Math.abs(hitZ - cz) > targetHeight + 0.3) {
+    return null;
   }
 
-  // 4. Closest point on segment safety check for grazing contact
-  if (a > 1e-9) {
-    const bCoeff = 2 * (fx0 * dx + fy0 * dy);
-    const tClosest = Math.max(0, Math.min(1, -bCoeff / (2 * a)));
-    if (tClosest < earliestT) {
-      const xClosest = x0 + tClosest * dx;
-      const yClosest = y0 + tClosest * dy;
-      if ((xClosest - cx) ** 2 + (yClosest - cy) ** 2 <= radius * radius) {
-        const zAtT = z0 + tClosest * dz;
-        if (zAtT >= zMin && zAtT <= zMax) {
-          earliestT = tClosest;
-        }
-      }
-    }
+  const zMin = Math.max(0, cz);
+  const zMax = zMin + targetHeight;
+  if (hitZ >= zMin - 0.25 && hitZ <= zMax + 0.35) {
+    return Math.max(0, Math.min(1, tEnter));
   }
 
-  return earliestT <= 1 ? earliestT : null;
+  return null;
 }
 
 /**
@@ -318,6 +306,41 @@ export class BulletManager {
         break;
       }
 
+      // Continuous swept check against entities (characters & objects)
+      const testEntities = arena.entities || [];
+      let hitEntity = false;
+      for (const ent of testEntities) {
+        if (ent === char || ent.isHeld) continue;
+        const entR = ent.colliderRadius > 0 ? ent.colliderRadius : (ent.isCharacter ? 0.44 : 0.26);
+        const tEnt = sweptCircleHit(
+          prevX, prevY, prevZ,
+          stepDx, stepDy, stepDz,
+          ent.position.x, ent.position.y, ent.position.z,
+          entR,
+          0.14,
+          ent.isCharacter ? 1.0 : 0.7,
+          arena.wallHeight
+        );
+        if (tEnt !== null) {
+          const hitX = prevX + tEnt * stepDx;
+          const hitY = prevY + tEnt * stepDy;
+          const hitZ = prevZ + tEnt * stepDz;
+          points.push({
+            x: hitX,
+            y: hitY,
+            z: hitZ,
+            t: t + tEnt * dt,
+            couldClearWall: hitZ >= arena.wallHeight,
+            isOverWall: false,
+            collidesWall: false,
+          });
+          landPoint = { x: hitX, y: hitY, z: hitZ };
+          hitEntity = true;
+          break;
+        }
+      }
+      if (hitEntity) break;
+
       if (curZ <= 0) {
         // Hits ground plane
         curZ = 0;
@@ -465,13 +488,15 @@ export class BulletManager {
         if (char.id === b.shooterId) continue;
         if (char.isHeld) continue;
 
-        const charR = char.colliderRadius > 0 ? char.colliderRadius : 0.35;
-        const tChar = getSweptCylinderHit(
+        const charR = char.colliderRadius > 0 ? char.colliderRadius : 0.44;
+        const tChar = sweptCircleHit(
           b.x, b.y, b.z,
           dx, dy, dz,
           char.position.x, char.position.y, char.position.z,
           charR,
-          0.9
+          0.14,
+          1.0,
+          arena.wallHeight
         );
 
         if (tChar !== null && tChar < earliestHitToi) {
@@ -483,16 +508,18 @@ export class BulletManager {
 
       // 4. Continuous collision with dynamic freebody objects
       for (const obj of objects) {
-        if (obj.isHeld || !obj.hasRigidbody) continue;
+        if (obj.isHeld) continue;
         if (characters.some((c) => c.heldObject === obj)) continue;
 
-        const objR = obj.colliderRadius > 0 ? obj.colliderRadius : 0.28;
-        const tObj = getSweptCylinderHit(
+        const objR = obj.colliderRadius > 0 ? obj.colliderRadius : 0.26;
+        const tObj = sweptCircleHit(
           b.x, b.y, b.z,
           dx, dy, dz,
           obj.position.x, obj.position.y, obj.position.z,
           objR,
-          0.8
+          0.14,
+          0.7,
+          arena.wallHeight
         );
 
         if (tObj !== null && tObj < earliestHitToi) {
@@ -533,9 +560,11 @@ export class BulletManager {
           const dirX = b.vx / speed;
           const dirY = b.vy / speed;
 
-          obj.velocity.x += (dirX * knockbackImpulse) / objMass;
-          obj.velocity.y += (dirY * knockbackImpulse) / objMass;
-          obj.wakeUp();
+          if (obj.hasRigidbody && obj.velocity) {
+            obj.velocity.x += (dirX * knockbackImpulse) / objMass;
+            obj.velocity.y += (dirY * knockbackImpulse) / objMass;
+            obj.wakeUp();
+          }
 
           if (obj.healthModule && obj.healthModule.enabled) {
             obj.healthModule.takeDamage(b.damage);
