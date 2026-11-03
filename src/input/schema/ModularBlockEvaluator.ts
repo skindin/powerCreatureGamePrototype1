@@ -702,20 +702,59 @@ export class ModularBlockEvaluator {
           }
 
           if ((char as any)._throwRequiresFreshPress) {
-            const primarySlot = b.chargeTrigger || b.fireTrigger || b.quickTrigger;
-            const triggerVal = getSlotAnalogValue(primarySlot);
-            const isDown = isSlotActive(primarySlot, "down", false, b.id, "check");
-            const isHold = isSlotActive(primarySlot, "hold", false, b.id, "check");
-            if (triggerVal > 0.05 || isDown || isHold) {
+            const slotsToCheck = [b.chargeTrigger, b.aimTrigger, b.fireTrigger, b.quickTrigger].filter(Boolean);
+            const anyHeld = slotsToCheck.some((slot) => {
+              const triggerVal = getSlotAnalogValue(slot);
+              const isDown = isSlotActive(slot, "down", false, b.id, "check");
+              const isHold = isSlotActive(slot, "hold", false, b.id, "check");
+              return triggerVal > 0.05 || isDown || isHold;
+            });
+            if (anyHeld) {
               char.isChargingThrow = false;
               char.isAimingWallClear = false;
               char.isHoldingThrowRelease = false;
               char.isTriggerPullThrowing = false;
+              char.triggerThrowPower = 0;
+              char.throwChargeStartTime = null;
+              char.throwChargeProgress = 0;
               char.activeTrajectory = null;
               break;
             } else {
               (char as any)._throwRequiresFreshPress = false;
             }
+          }
+
+          // Check if player pressed the cancel throw button while aiming/charging trajectory
+          const isAimingOrCharging = Boolean(
+            char.isChargingThrow ||
+            char.isHoldingThrowRelease ||
+            char.isAimingWallClear ||
+            char.isTriggerPullThrowing ||
+            char.isAimingTrajectory ||
+            char.activeTrajectory !== null ||
+            (b.mode === "chargeAndRelease" && isSlotActive(b.chargeTrigger, "hold", false, b.id, "check")) ||
+            (b.mode === "holdAndRelease" && isSlotActive(b.chargeTrigger, "hold", false, b.id, "check")) ||
+            (b.mode === "aimAndFire" && isSlotActive(b.aimTrigger, "hold", false, b.id, "check")) ||
+            (b.mode === "aimWallClear" && isSlotActive(b.aimTrigger, "hold", false, b.id, "check")) ||
+            (b.mode === "triggerPullForce" && getSlotAnalogValue(b.chargeTrigger) > 0.05)
+          );
+
+          if (isAimingOrCharging && b.cancelTrigger && isSlotActive(b.cancelTrigger, "down", true, b.id, "throw.cancelButton")) {
+            isThrow = false;
+            isAimingTrajectory = false;
+            char.isAimingTrajectory = false;
+            char.isChargingThrow = false;
+            char.isHoldingThrowRelease = false;
+            char.isAimingWallClear = false;
+            char.isTriggerPullThrowing = false;
+            char.triggerThrowPower = 0;
+            char.throwChargeStartTime = null;
+            char.throwChargeProgress = 0;
+            char.activeTrajectory = null;
+            char.isThrowCancelZone = false;
+            (char as any)._throwRequiresFreshPress = true;
+            claimSlot(b.cancelTrigger, b.id, "throw.cancelButton", true);
+            break;
           }
 
           const effAim = getEffectiveAimPos();

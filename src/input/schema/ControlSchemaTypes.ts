@@ -365,6 +365,7 @@ export interface ThrowControlBlock {
   aimTrigger?: BlockInputSlot;    // For aimAndFire and aimWallClear
   fireTrigger?: BlockInputSlot;   // For aimAndFire
   quickTrigger?: BlockInputSlot;  // For quickOptimal and quickWallClear
+  cancelTrigger?: BlockInputSlot; // Optional button to cancel active throw trajectory preview/charging
   triggerMargin?: number;         // Deadzone margin (default 0.15) before analog trigger increases force
   arcModulation?: {
     source?: "mouseDeltaY" | "mouseWheel" | "none";

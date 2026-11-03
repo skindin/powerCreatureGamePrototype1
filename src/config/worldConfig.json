@@ -1,6 +1,6 @@
 {
-  "version": 261,
-  "lastSaved": "2026-11-03T12:12:38.354Z",
+  "version": 262,
+  "lastSaved": "2026-11-03T17:52:59.126Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -2628,7 +2628,7 @@
             "id": "block-throw",
             "name": "Throwing & Ballistics",
             "enabled": true,
-            "mode": "aimWallClear",
+            "mode": "chargeAndRelease",
             "chargeTrigger": {
               "code": "MouseRight",
               "requireCleanPress": false
@@ -2643,6 +2643,10 @@
             },
             "quickTrigger": {
               "code": "MouseRight"
+            },
+            "cancelTrigger": {
+              "code": "KeyX",
+              "requireCleanPress": true
             },
             "arcModulation": {
               "source": "mouseDeltaY",
@@ -3017,6 +3021,10 @@
             },
             "quickTrigger": {
               "code": "GamepadRT",
+              "requireCleanPress": true
+            },
+            "cancelTrigger": {
+              "code": null,
               "requireCleanPress": true
             },
             "triggerMargin": 0.15,
@@ -6106,7 +6114,7 @@
               "id": "block-throw",
               "name": "Throwing & Ballistics",
               "enabled": true,
-              "mode": "aimWallClear",
+              "mode": "chargeAndRelease",
               "chargeTrigger": {
                 "code": "MouseRight",
                 "requireCleanPress": false
@@ -6121,6 +6129,10 @@
               },
               "quickTrigger": {
                 "code": "MouseRight"
+              },
+              "cancelTrigger": {
+                "code": "KeyX",
+                "requireCleanPress": true
               },
               "arcModulation": {
                 "source": "mouseDeltaY",
@@ -6495,6 +6507,10 @@
               },
               "quickTrigger": {
                 "code": "GamepadRT",
+                "requireCleanPress": true
+              },
+              "cancelTrigger": {
+                "code": null,
                 "requireCleanPress": true
               },
               "triggerMargin": 0.15,

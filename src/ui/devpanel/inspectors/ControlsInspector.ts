@@ -1803,6 +1803,7 @@ export class ControlsInspector {
         b.aimTrigger = b.aimTrigger || { code: "MouseRight" };
         b.fireTrigger = b.fireTrigger || { code: "MouseLeft" };
         b.quickTrigger = b.quickTrigger || { code: "MouseLeft" };
+        b.cancelTrigger = b.cancelTrigger || { code: null, requireCleanPress: true };
         b.arcModulation = b.arcModulation || { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 };
         b.enableProximityCancel = Boolean(b.enableProximityCancel);
         b.cancelRadius = b.cancelRadius ?? 1.5;
@@ -1916,6 +1917,15 @@ export class ControlsInspector {
           `
           : "";
 
+        const cancelSlotHtml = `
+          <div style="margin-top: 4px; padding-top: 8px; border-top: 1px dashed rgba(148, 163, 184, 0.2);">
+            ${this.renderInputSlot(b.id, "cancelTrigger", b.cancelTrigger, "Cancel Trajectory Button (Optional)")}
+            <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+              Press while aiming or charging a throw to immediately cancel the trajectory preview without firing.
+            </div>
+          </div>
+        `;
+
         return `
           <div style="display: flex; flex-direction: column; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -1931,6 +1941,7 @@ export class ControlsInspector {
               </select>
             </div>
             ${modeSpecificHtml}
+            ${cancelSlotHtml}
             ${proximityCancelHtml}
           </div>
         `;
