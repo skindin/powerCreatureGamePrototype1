@@ -4424,64 +4424,6 @@
         "gunWidth": 0.24,
         "bulletColor": "#38bdf8"
       }
-    },
-    {
-      "id": "obj-j6pfyem",
-      "name": "Pistol",
-      "prefabId": "prefab_pistol",
-      "position": {
-        "x": 5.62,
-        "y": 13.01,
-        "z": 0
-      },
-      "color": "#475569",
-      "visualShape": "box",
-      "isSleeping": true,
-      "hasRigidbody": true,
-      "hasCollider": true,
-      "hasFriction": true,
-      "hasBounce": true,
-      "hasVerticalPosition": true,
-      "hasGravity": true,
-      "hasRollModule": false,
-      "hasConsumableModule": false,
-      "hasGunModule": false,
-      "hasHealthModule": false,
-      "hasDamageAuraModule": false,
-      "hasDamageSolverModule": false,
-      "mass": 0.65,
-      "colliderRadius": 0.22,
-      "bounceMod": 0.15,
-      "verticalBounce": true,
-      "staticGroundFrictionMod": 1,
-      "dynamicGroundFrictionMod": 1,
-      "rigidbodyModule": {
-        "enabled": true,
-        "mass": 0.65,
-        "collisionMode": "dynamic",
-        "hasVerticalVelocity": true
-      },
-      "colliderModule": {
-        "enabled": true,
-        "radius": 0.22
-      },
-      "frictionModule": {
-        "enabled": true,
-        "staticFrictionMod": 1,
-        "dynamicFrictionMod": 1
-      },
-      "bounceModule": {
-        "enabled": true,
-        "bounceMod": 0.15,
-        "verticalBounce": true
-      },
-      "verticalPositionModule": {
-        "enabled": true,
-        "z": 0
-      },
-      "gravityModule": {
-        "enabled": true
-      }
     }
   ],
   "prefabs": [
@@ -9154,36 +9096,6 @@
         },
         {
           "x": 21.5,
-          "y": 21.5,
-          "z": 0
-        }
-      ]
-    },
-    {
-      "id": "spawner_gun_default",
-      "name": "Gun Weapon Spawner",
-      "enabled": true,
-      "prefabId": "prefab_pistol",
-      "intervalMinutes": 0.5,
-      "maxCount": 2,
-      "designatedSpawnPoints": [
-        {
-          "x": 13.5,
-          "y": 15,
-          "z": 0
-        },
-        {
-          "x": 16.5,
-          "y": 15,
-          "z": 0
-        },
-        {
-          "x": 15,
-          "y": 8.5,
-          "z": 0
-        },
-        {
-          "x": 15,
           "y": 21.5,
           "z": 0
         }
