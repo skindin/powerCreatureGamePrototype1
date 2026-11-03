@@ -120,6 +120,7 @@ export class PlayerDeltaBuilder {
     }
     if (owner.damageSolverModule) {
       if (prop === owner.damageSolverModule.impactSusceptibilityProp) return "damageSolverModule.impactSusceptibility";
+      if (prop === owner.damageSolverModule.piercingMultiplierProp) return "damageSolverModule.piercingMultiplier";
       if (prop === owner.damageSolverModule.damageThresholdHpProp) return "damageSolverModule.minShockThreshold";
       if (prop === owner.damageSolverModule.selfImpactWeightProp) return "damageSolverModule.selfImpactWeight";
     }

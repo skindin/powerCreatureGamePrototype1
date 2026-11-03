@@ -101,22 +101,21 @@ export class ThrowCapability {
         (b) => b.type === "throw"
       ) as ThrowControlBlock | undefined;
 
-      const shouldCheckCancel = Boolean(throwBlock?.enableProximityCancel);
-      const cancelRadius = throwBlock?.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+      const cancelRadius = throwBlock?.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + (char.heldObject?.colliderRadius ?? 0.26) + 0.3);
+      const aimDx = aimTargetPos.x - char.position.x;
+      const aimDy = aimTargetPos.y - char.position.y;
+      const distToAim = Math.hypot(aimDx, aimDy);
+
+      // Proximity cancel / minimum throw distance: Do not render trajectory when aiming within character body clearance
+      if (distToAim < cancelRadius) {
+        char.activeTrajectory = null;
+        char.isThrowCancelZone = true;
+        if (char.isSteeringCursor) char.facingAngle = preservedFacing;
+        return;
+      }
+      char.isThrowCancelZone = false;
 
       if (char.isChargingThrow) {
-        if (shouldCheckCancel) {
-          const aimDx = aimTargetPos.x - char.position.x;
-          const aimDy = aimTargetPos.y - char.position.y;
-          const distToAim = Math.hypot(aimDx, aimDy);
-          if (distToAim < cancelRadius) {
-            char.activeTrajectory = null;
-            char.isThrowCancelZone = true;
-            if (char.isSteeringCursor) char.facingAngle = preservedFacing;
-            return;
-          }
-        }
-        char.isThrowCancelZone = false;
 
         // Step 1: Baseline lowest energy wall-clearing trajectory calculation
         const clearTraj = ThrowCapability.findLowestEnergyWallClearTrajectory(
@@ -173,19 +172,6 @@ export class ThrowCapability {
           (char.activeTrajectory as any).chargingTowards = char.throwChargingTowards;
         }
       } else if (char.isHoldingThrowRelease) {
-        if (shouldCheckCancel) {
-          const aimDx = aimTargetPos.x - char.position.x;
-          const aimDy = aimTargetPos.y - char.position.y;
-          const distToAim = Math.hypot(aimDx, aimDy);
-          if (distToAim < cancelRadius) {
-            char.activeTrajectory = null;
-            char.isThrowCancelZone = true;
-            if (char.isSteeringCursor) char.facingAngle = preservedFacing;
-            return;
-          }
-        }
-        char.isThrowCancelZone = false;
-
         // Static lowest energy wall-clearing trajectory: compute and show arc, don't change arc height or charge
         char.hasUserSetArcRatio = false;
         if (char.throwModule) {
@@ -203,19 +189,6 @@ export class ThrowCapability {
           aimLockDelta
         );
       } else if (char.isAimingWallClear) {
-        if (shouldCheckCancel) {
-          const aimDx = aimTargetPos.x - char.position.x;
-          const aimDy = aimTargetPos.y - char.position.y;
-          const distToAim = Math.hypot(aimDx, aimDy);
-          if (distToAim < cancelRadius) {
-            char.activeTrajectory = null;
-            char.isThrowCancelZone = true;
-            if (char.isSteeringCursor) char.facingAngle = preservedFacing;
-            return;
-          }
-        }
-        char.isThrowCancelZone = false;
-
         ThrowCapability.findLowestEnergyWallClearTrajectory(
           char,
           arena,
@@ -227,18 +200,6 @@ export class ThrowCapability {
           aimLockDelta
         );
       } else if (char.isTriggerPullThrowing) {
-        if (shouldCheckCancel) {
-          const aimDx = aimTargetPos.x - char.position.x;
-          const aimDy = aimTargetPos.y - char.position.y;
-          const distToAim = Math.hypot(aimDx, aimDy);
-          if (distToAim < cancelRadius) {
-            char.activeTrajectory = null;
-            char.isThrowCancelZone = true;
-            if (char.isSteeringCursor) char.facingAngle = preservedFacing;
-            return;
-          }
-        }
-        char.isThrowCancelZone = false;
 
         // Baseline lowest energy wall clear trajectory:
         const clearTraj = ThrowCapability.findLowestEnergyWallClearTrajectory(

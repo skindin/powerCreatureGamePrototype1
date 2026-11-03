@@ -5,7 +5,7 @@ import type { HealthModule } from "../character/HealthModule.js";
 
 export interface ImpactEvent {
   /**
-   * Absorbed deceleration shock (u/s²).
+   * Absorbed deceleration shock (u/sÂ²).
    * Already factors in bounciness cushioning: shockAcceleration * (1 - bounce).
    */
   absorbedShock: number;
@@ -21,6 +21,7 @@ export interface ImpactEvent {
 
 export interface DamageSolverModuleOptions {
   impactSusceptibility?: number;
+  piercingMultiplier?: number;
   /** Flat HP threshold absorbed/subtracted before health damage occurs */
   damageThresholdHp?: number;
   /** Backwards compatibility alias for damageThresholdHp */
@@ -41,6 +42,7 @@ export interface DamageSolverModuleOptions {
  * Receives physical impact shock events, converts absorbed shock to base HP damage via the
  * world collision damage scale and entity impact susceptibility %, and subtracts the
  * flat damageThresholdHp (armor/tolerance buffer) before taking damage, clamped at 0.
+ * Also calculates piercing damage from ballistic bullet projectiles via piercingMultiplier.
  */
 export class DamageSolverModule {
   public id = "damageSolver";
@@ -52,6 +54,12 @@ export class DamageSolverModule {
    * 1.0 = 100% normal damage, 0.0 = completely immune, 0.5 = 50% armored resistance.
    */
   public impactSusceptibilityProp: DynamicProperty;
+
+  /**
+   * Multiplier for piercing damage (ballistic bullets, projectiles).
+   * 1.0 = 100% normal damage, 0.0 = immune, 0.5 = 50% armored resistance, 1.5 = 150% vulnerability.
+   */
+  public piercingMultiplierProp: DynamicProperty;
 
   /**
    * Flat amount of HP subtracted from the incoming scaled impact damage before health is lost.
@@ -73,6 +81,7 @@ export class DamageSolverModule {
 
   constructor(options?: DamageSolverModuleOptions) {
     this.impactSusceptibilityProp = new DynamicProperty(options?.impactSusceptibility ?? 1.0);
+    this.piercingMultiplierProp = new DynamicProperty(options?.piercingMultiplier ?? 1.0);
     const initialThresh = options?.damageThresholdHp ?? options?.minShockThreshold ?? 5.0;
     this.damageThresholdHpProp = new DynamicProperty(initialThresh);
     this.selfImpactWeightProp = new DynamicProperty(options?.selfImpactWeight ?? 0.0);
@@ -85,6 +94,10 @@ export class DamageSolverModule {
 
   public getImpactSusceptibility(registry?: ObjectPropertiesRegistry): number {
     return this.impactSusceptibilityProp.get(registry);
+  }
+
+  public getPiercingMultiplier(registry?: ObjectPropertiesRegistry): number {
+    return this.piercingMultiplierProp.get(registry);
   }
 
   public getDamageThresholdHp(registry?: ObjectPropertiesRegistry): number {
@@ -141,6 +154,38 @@ export class DamageSolverModule {
         type: "instant",
         amount: finalDamage,
         color: "#f87171",
+        isHeal: false,
+      });
+      return finalDamage;
+    }
+
+    return 0;
+  }
+
+  /**
+   * Evaluates incoming piercing damage against the piercing multiplier and applies it to the HealthModule.
+   *
+   * Formula:
+   *   finalDamage = rawDamage * piercingMultiplier
+   */
+  public handlePiercingDamage(
+    rawDamage: number,
+    entity: GameObject,
+    healthModule: HealthModule
+  ): number {
+    if (!this.enabled || !healthModule || !healthModule.enabled || rawDamage <= 0) return 0;
+
+    const registry = entity.properties;
+    const multiplier = Math.max(0, this.getPiercingMultiplier(registry));
+    const finalDamage = rawDamage * multiplier;
+
+    if (finalDamage > 0.001) {
+      healthModule.takeDamage(finalDamage, registry, {
+        id: "piercing_damage",
+        name: "Piercing",
+        type: "instant",
+        amount: finalDamage,
+        color: "#f59e0b",
         isHeal: false,
       });
       return finalDamage;

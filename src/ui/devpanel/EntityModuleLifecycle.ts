@@ -336,6 +336,7 @@ export class EntityModuleLifecycle {
       case "damageSolver":
         e.damageSolverModule = new DamageSolverModule({
           impactSusceptibility: 1.0,
+          piercingMultiplier: 1.0,
           damageThresholdHp: 5.0,
         });
         break;

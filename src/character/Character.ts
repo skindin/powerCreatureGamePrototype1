@@ -73,8 +73,16 @@ export class Character extends GameObject {
     return this._heldObject;
   }
   public set heldObject(obj: GameObject | null) {
+    if (this._heldObject && this._heldObject !== obj) {
+      this._heldObject.isHeld = false;
+      if (this._heldObject.heldBy === this) {
+        this._heldObject.heldBy = null;
+      }
+    }
     this._heldObject = obj;
     if (obj) {
+      obj.isHeld = true;
+      obj.heldBy = this;
       this.hasDiedAwaitingNewPickup = false;
     }
   }

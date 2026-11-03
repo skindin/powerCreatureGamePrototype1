@@ -570,21 +570,31 @@ export class TrajectoryRenderer {
       finalHitX = landX;
       finalGroundY = landY;
 
-      ctx.save();
-      ctx.strokeStyle = "#22c55e";
-      ctx.fillStyle = "rgba(34, 197, 94, 0.25)";
-      ctx.lineWidth = 2.2;
-      ctx.setLineDash([]);
-      drawColliderFootprint(landX, landY);
-      ctx.fill();
-      ctx.stroke();
+      // Do not draw landing footprint if it overlaps the thrower character (e.g. held position or proximity cancel zone)
+      const distToChar = character
+        ? Math.hypot(traj.landPoint.x - character.position.x, traj.landPoint.y - character.position.y)
+        : Infinity;
+      const minDrawDist = character
+        ? (character.colliderRadius ?? 0.35) + (traj.colliderRadius ?? 0.26) + 0.15
+        : 0;
 
-      // Central pinpoint dot
-      ctx.beginPath();
-      ctx.arc(landX, landY, Math.min(4, targetRadius * 0.22), 0, Math.PI * 2);
-      ctx.fillStyle = "#22c55e";
-      ctx.fill();
-      ctx.restore();
+      if (distToChar >= minDrawDist) {
+        ctx.save();
+        ctx.strokeStyle = "#22c55e";
+        ctx.fillStyle = "rgba(34, 197, 94, 0.25)";
+        ctx.lineWidth = 2.2;
+        ctx.setLineDash([]);
+        drawColliderFootprint(landX, landY);
+        ctx.fill();
+        ctx.stroke();
+
+        // Central pinpoint dot
+        ctx.beginPath();
+        ctx.arc(landX, landY, Math.min(4, targetRadius * 0.22), 0, Math.PI * 2);
+        ctx.fillStyle = "#22c55e";
+        ctx.fill();
+        ctx.restore();
+      }
     }
 
     // Aim Cursor & Target Reticle:

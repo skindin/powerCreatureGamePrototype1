@@ -133,6 +133,7 @@ export interface SerializedGameObjectConfig {
   damageSolverModule?: {
     enabled: boolean;
     impactSusceptibility: number;
+    piercingMultiplier?: number;
     minShockThreshold: number;
     selfImpactWeight?: number;
   } | null;
@@ -271,6 +272,7 @@ export interface SerializedCharacterConfig {
   damageSolverModule?: {
     enabled?: boolean;
     impactSusceptibility?: number;
+    piercingMultiplier?: number;
     minShockThreshold?: number;
     selfImpactWeight?: number;
   } | null;
@@ -502,6 +504,7 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
     result.damageSolverModule = {
       enabled: char.damageSolverModule.enabled,
       impactSusceptibility: char.damageSolverModule.impactSusceptibilityProp.get(char.properties),
+      piercingMultiplier: char.damageSolverModule.piercingMultiplierProp.get(char.properties),
       minShockThreshold: char.damageSolverModule.damageThresholdHpProp.get(char.properties),
       selfImpactWeight: char.damageSolverModule.selfImpactWeightProp.get(char.properties),
     };
@@ -792,6 +795,7 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
 
   if (config.damageSolverModule && char.damageSolverModule) {
     if (config.damageSolverModule.impactSusceptibility !== undefined) char.damageSolverModule.impactSusceptibilityProp.set(config.damageSolverModule.impactSusceptibility, char.properties);
+    if (config.damageSolverModule.piercingMultiplier !== undefined) char.damageSolverModule.piercingMultiplierProp.set(config.damageSolverModule.piercingMultiplier, char.properties);
     if (config.damageSolverModule.minShockThreshold !== undefined) char.damageSolverModule.damageThresholdHpProp.set(config.damageSolverModule.minShockThreshold, char.properties);
     if (config.damageSolverModule.selfImpactWeight !== undefined) char.damageSolverModule.selfImpactWeightProp.set(config.damageSolverModule.selfImpactWeight, char.properties);
   }
@@ -940,6 +944,7 @@ export function serializeGameObject(obj: GameObject): SerializedGameObjectConfig
     result.damageSolverModule = {
       enabled: obj.damageSolverModule.enabled,
       impactSusceptibility: obj.damageSolverModule.impactSusceptibilityProp.get(obj.properties),
+      piercingMultiplier: obj.damageSolverModule.piercingMultiplierProp.get(obj.properties),
       minShockThreshold: obj.damageSolverModule.damageThresholdHpProp.get(obj.properties),
       selfImpactWeight: obj.damageSolverModule.selfImpactWeightProp.get(obj.properties),
     };
@@ -1125,6 +1130,7 @@ export function deserializeGameObject(config: SerializedGameObjectConfig): GameO
     options.damageSolverModule = new DamageSolverModule({
       enabled: config.damageSolverModule.enabled,
       impactSusceptibility: config.damageSolverModule.impactSusceptibility,
+      piercingMultiplier: config.damageSolverModule.piercingMultiplier,
       damageThresholdHp: config.damageSolverModule.minShockThreshold,
       selfImpactWeight: config.damageSolverModule.selfImpactWeight,
     });

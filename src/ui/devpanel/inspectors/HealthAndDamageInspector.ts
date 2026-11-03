@@ -216,6 +216,23 @@ export class HealthAndDamageInspector {
         suscSocketEl.appendChild(suscCtrl.element);
       }
 
+      const piercingSocketEl = container.querySelector("#prop-socket-piercing-multiplier");
+      if (piercingSocketEl) {
+        const piercingCtrl = new PropertyControl({
+          property: ds.piercingMultiplierProp,
+          owner: e,
+          label: "Piercing Damage Multiplier",
+          step: 0.1,
+          min: 0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) {
+              panel.markDirty("objects", e);
+            }
+          },
+        });
+        piercingSocketEl.appendChild(piercingCtrl.element);
+      }
+
       const threshSocketEl = container.querySelector("#prop-socket-min-shock-thresh");
       if (threshSocketEl) {
         const threshCtrl = new PropertyControl({

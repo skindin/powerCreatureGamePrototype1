@@ -572,6 +572,7 @@ export class EntityModuleCardsHtml {
             Converts physical impacts, wall collisions, and collisions with freebodies into shock damage.
           </div>
           <div id="prop-socket-impact-susceptibility"></div>
+          <div id="prop-socket-piercing-multiplier"></div>
           <div id="prop-socket-min-shock-thresh"></div>
           <div id="prop-socket-self-impact-weight"></div>
           <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">

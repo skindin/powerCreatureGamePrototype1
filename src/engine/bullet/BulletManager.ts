@@ -539,8 +539,17 @@ export class BulletManager {
 
         if (hitType === "character" && hitTarget) {
           const char = hitTarget as Character;
-          if (char.healthModule && char.healthModule.enabled) {
-            char.healthModule.takeDamage(b.damage);
+          if (char.damageSolverModule && char.damageSolverModule.enabled && char.healthModule && char.healthModule.enabled) {
+            char.damageSolverModule.handlePiercingDamage(b.damage, char, char.healthModule);
+          } else if (char.healthModule && char.healthModule.enabled) {
+            char.healthModule.takeDamage(b.damage, char.properties, {
+              id: "piercing_damage",
+              name: "Piercing",
+              type: "instant",
+              amount: b.damage,
+              color: "#f59e0b",
+              isHeal: false,
+            });
           }
 
           const speed = Math.hypot(b.vx, b.vy) || b.bulletSpeed || 1;
@@ -566,8 +575,17 @@ export class BulletManager {
             obj.wakeUp();
           }
 
-          if (obj.healthModule && obj.healthModule.enabled) {
-            obj.healthModule.takeDamage(b.damage);
+          if (obj.damageSolverModule && obj.damageSolverModule.enabled && obj.healthModule && obj.healthModule.enabled) {
+            obj.damageSolverModule.handlePiercingDamage(b.damage, obj, obj.healthModule);
+          } else if (obj.healthModule && obj.healthModule.enabled) {
+            obj.healthModule.takeDamage(b.damage, obj.properties, {
+              id: "piercing_damage",
+              name: "Piercing",
+              type: "instant",
+              amount: b.damage,
+              color: "#f59e0b",
+              isHeal: false,
+            });
           }
         }
 

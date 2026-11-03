@@ -54,7 +54,7 @@ export const DefaultControlBlocks: ControlBlock[] = [
     cancelTrigger: { code: "KeyX", requireCleanPress: true },
     throwOverrideTrigger: { code: "KeyT", requireCleanPress: false },
     arcModulation: { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 },
-    enableProximityCancel: false,
+    enableProximityCancel: true,
     cancelRadius: 1.5,
   },
   {
@@ -138,7 +138,7 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
     throwOverrideTrigger: { code: null, requireCleanPress: false },
     triggerMargin: 0.15,
     arcModulation: { source: "none", autoCursorLock: false, sensitivity: 0.005 },
-    enableProximityCancel: false,
+    enableProximityCancel: true,
     cancelRadius: 1.5,
   },
   {
