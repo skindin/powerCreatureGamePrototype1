@@ -320,9 +320,6 @@ export class Renderer {
 
         // 2. Viewport Header Overlay
         this.drawViewportHeader(ctx, vp, pv, ghostSnapshot);
-
-        // 3. Viewport HP & Energy HUD connected to focused character
-        this.drawViewportHud(ctx, vp, pv.character, pv.playerColor, false);
       }
 
       // Vertical Divider Line
@@ -413,9 +410,6 @@ export class Renderer {
 
           // 2. Viewport Header
           this.drawViewportHeader(ctx, vp, pv, ghostSnapshot);
-
-          // 3. Viewport HP & Energy HUD
-          this.drawViewportHud(ctx, vp, pv.character, pv.playerColor, true);
 
         } else if (i === 3 && playerViews.length === 3) {
           // Q3: 3-Player mode - overview minimap & waiting banner
@@ -511,135 +505,6 @@ export class Renderer {
       const latencyStr = `${Math.round(ghostSnapshot.rttMs)}ms`;
       ctx.fillText(`RTT: ${latencyStr}`, badgeX + badgeW - 8, badgeY + badgeH / 2);
     }
-    ctx.restore();
-  }
-
-  private drawViewportHud(
-    ctx: CanvasRenderingContext2D,
-    vp: CanvasViewport,
-    char: Character,
-    playerColor: string,
-    isQuadrant: boolean
-  ): void {
-    ctx.save();
-
-    const hudW = Math.min(vp.width - 24, isQuadrant ? 380 : 440);
-    const hudH = isQuadrant ? 36 : 42;
-    const hudX = vp.x + (vp.width - hudW) / 2;
-    const hudY = vp.y + vp.height - hudH - 8;
-
-    // Glass panel background
-    ctx.fillStyle = "rgba(10, 15, 26, 0.88)";
-    ctx.beginPath();
-    ctx.roundRect(hudX, hudY, hudW, hudH, 6);
-    ctx.fill();
-
-    ctx.strokeStyle = `${playerColor}66`;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Two columns: Left (Health), Right (Energy & Stamina)
-    const colPad = 8;
-    const gap = 10;
-    const colW = (hudW - colPad * 2 - gap) / 2;
-
-    // --- Column 1: Health ---
-    const col1X = hudX + colPad;
-    const col1Y = hudY + (isQuadrant ? 4 : 6);
-
-    const maxHp = char.healthModule ? char.healthModule.maxHpProp.literalValue : 100;
-    const curHp = char.healthModule ? char.healthModule.currentHp : maxHp;
-    const hpRatio = Math.max(0, Math.min(1, curHp / maxHp));
-
-    // Col 1 Title
-    ctx.font = isQuadrant ? "bold 9px monospace" : "bold 10px monospace";
-    ctx.fillStyle = "#fca5a5";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillText(`❤️ HP: ${Math.round(curHp)}/${maxHp}`, col1X, col1Y);
-
-    // Col 1 Bar Track
-    const barH = isQuadrant ? 8 : 10;
-    const barY = col1Y + (isQuadrant ? 13 : 16);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
-    ctx.beginPath();
-    ctx.roundRect(col1X, barY, colW, barH, 2);
-    ctx.fill();
-
-    // Health Fill
-    if (hpRatio > 0) {
-      const hpGrad = ctx.createLinearGradient(col1X, barY, col1X + colW * hpRatio, barY);
-      hpGrad.addColorStop(0, "#b91c1c");
-      hpGrad.addColorStop(1, "#ef4444");
-      ctx.fillStyle = hpGrad;
-      ctx.beginPath();
-      ctx.roundRect(col1X, barY, colW * hpRatio, barH, 2);
-      ctx.fill();
-    }
-
-    // --- Column 2: Energy & Stamina ---
-    const col2X = col1X + colW + gap;
-    const col2Y = col1Y;
-
-    const props = char.properties;
-    const pool = char.energyPool;
-    const maxStamina = pool ? pool.getMaxStamina(props) : 5000;
-    const curStamina = pool ? pool.getCurrentStamina(props) : maxStamina;
-    const isExhausted = pool ? Boolean(pool.isExhausted) : false;
-    const staminaRatio = maxStamina > 0 ? Math.max(0, Math.min(1, curStamina / maxStamina)) : 1;
-
-    let activeWatts = 0;
-    if (pool && pool.enabled) {
-      for (const a of pool.getActiveAllocations(props)) {
-        activeWatts += a.grantedWatts || 0;
-      }
-    }
-
-    // Col 2 Title
-    ctx.font = isQuadrant ? "bold 9px monospace" : "bold 10px monospace";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    if (isExhausted) {
-      ctx.fillStyle = "#ef4444";
-      ctx.fillText("⚠️ EXHAUSTED", col2X, col2Y);
-    } else {
-      ctx.fillStyle = "#86efac";
-      const roundedWatts = Math.round(activeWatts);
-      const suffix = roundedWatts > 0 ? ` (-${roundedWatts}W)` : "";
-      ctx.fillText(`⚡ STAMINA: ${Math.round(curStamina)}J${suffix}`, col2X, col2Y);
-    }
-
-    // Col 2 Bar Track
-    ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
-    ctx.beginPath();
-    ctx.roundRect(col2X, barY, colW, barH, 2);
-    ctx.fill();
-
-    // Stamina Fill
-    if (staminaRatio > 0) {
-      const stamGrad = ctx.createLinearGradient(col2X, barY, col2X + colW * staminaRatio, barY);
-      if (isExhausted) {
-        stamGrad.addColorStop(0, "#991b1b");
-        stamGrad.addColorStop(1, "#dc2626");
-      } else {
-        stamGrad.addColorStop(0, "#15803d");
-        stamGrad.addColorStop(1, "#22c55e");
-      }
-      ctx.fillStyle = stamGrad;
-      ctx.beginPath();
-      ctx.roundRect(col2X, barY, colW * staminaRatio, barH, 2);
-      ctx.fill();
-    }
-
-    // 20% Exhaustion Recovery Tick
-    const tickX = col2X + colW * 0.20;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.65)";
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(tickX, barY - 1);
-    ctx.lineTo(tickX, barY + barH + 1);
-    ctx.stroke();
-
     ctx.restore();
   }
 

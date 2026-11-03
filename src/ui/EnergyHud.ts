@@ -29,10 +29,17 @@ interface VisualHealthBlock {
   stableUnits: number;
 }
 
-export class EnergyHud {
-  private container: HTMLElement | null = null;
-  private gameLoop: GameLoop;
-  private devPanel: DevPanel;
+/**
+ * SinglePlayerHud encapsulates one dual-column HTML status display:
+ * - Left column: Health bar, smooth damage/heal blocks, baseline divider line, mod tags.
+ * - Right column: Stamina bar (emerald/crimson), Energy reservoir (amber), power blocks, baseline divider line, ability tags.
+ * - Optional player header badge for split-screen identification.
+ */
+export class SinglePlayerHud {
+  public rootEl: HTMLElement;
+  public badgeEl: HTMLElement | null = null;
+  public badgeNameEl: HTMLElement | null = null;
+  public badgeDotEl: HTMLElement | null = null;
 
   // DOM Elements - Left Column: Health System
   private healthModTagsEl: HTMLElement | null = null;
@@ -47,15 +54,9 @@ export class EnergyHud {
   private lowerStaminaFillEl: HTMLElement | null = null;
   private flashStaminaEl: HTMLElement | null = null;
   private flashEnergyEl: HTMLElement | null = null;
-  private laserStaminaFillEl: HTMLElement | null = null;
   private staminaCapTickEl: HTMLElement | null = null;
   private exhaustionTickEl: HTMLElement | null = null;
-  private laserExhaustionTickEl: HTMLElement | null = null;
   private energyBaselineLineEl: HTMLElement | null = null;
-
-  public isCollapsed: boolean = false;
-  private lastUpdateTime: number = 0;
-  private lastTargetCharacter: Character | null = null;
 
   // Smooth visual state tracking for status bars (never snaps instantly, lerps down/up smoothly over frames)
   private visualHpPct: number = -1;
@@ -65,51 +66,45 @@ export class EnergyHud {
   // Smooth interpolation tracking: blocks smoothly grow from 0 and shrink back to 0
   private visualBlocks: Map<string, VisualPowerBlock> = new Map();
   private visualHealthBlocks: Map<string, VisualHealthBlock> = new Map();
+  private lastTargetCharacter: Character | null = null;
 
-  constructor(gameLoop: GameLoop, devPanel: DevPanel) {
-    this.gameLoop = gameLoop;
-    this.devPanel = devPanel;
+  constructor(index: number) {
+    this.rootEl = document.createElement("div");
+    this.rootEl.className = "energy-hud-container";
+    this.rootEl.dataset.viewportIndex = index.toString();
+    this.rootEl.innerHTML = this.getTemplateHtml();
 
-    this.mount();
-    this.setupListeners();
+    this.bindDom();
   }
 
-  private mount(): void {
-    const parent = document.querySelector(".canvas-wrapper");
-    if (!parent) return;
-
-    const hudWrapper = document.createElement("div");
-    hudWrapper.id = "energy-hud";
-    hudWrapper.className = "energy-hud-container";
-    hudWrapper.innerHTML = `
-      <!-- Collapsed Mini Pill -->
-      <div id="energy-hud-mini" class="energy-hud-mini hidden" title="Click or press 'U' to expand HUD">
-        <span class="hud-mini-icon" style="color: #ef4444; margin-right: 2px;">❤</span>
-        <span class="hud-mini-icon" style="color: #fbbf24;">⚡</span>
-        <span style="font-size: 0.72rem; font-weight: 700; margin-left: 2px;">Status</span>
-        <button id="btn-energy-hud-expand" class="hud-mini-expand-btn" title="Expand HUD">▲</button>
+  private getTemplateHtml(): string {
+    return `
+      <!-- Player Header Badge (Shown in split screen modes) -->
+      <div class="hud-player-badge hidden">
+        <span class="hud-player-dot"></span>
+        <span class="hud-player-name">P1</span>
       </div>
 
       <!-- Main Game HUD (Dual Column: Health on Left, Energy & Power on Right) -->
-      <div id="energy-hud-body" class="energy-hud-body">
+      <div class="energy-hud-body">
         <div class="hud-columns-container">
           <!-- LEFT COLUMN: HEALTH SYSTEM -->
           <div class="hud-column hud-column-health" title="Health & Modifiers">
             <!-- Active Health Modifier Tags Row (Shows HP/s for continuous, HP for instant) -->
-            <div id="health-hud-mod-tags" class="hud-power-tags-layer hud-health-tags-layer"></div>
+            <div class="hud-power-tags-layer hud-health-tags-layer"></div>
 
             <!-- Unified Track: Health Bar Fill with Heart Symbol & Embedded Modifiers -->
             <div class="energy-hud-track-wrapper hud-track-row" title="Health (HP)">
               <div class="hud-bar-icon-wrap" title="Health">
                 <span class="hud-bar-icon hud-icon-health">❤</span>
               </div>
-              <div class="energy-hud-track energy-hud-track-main energy-hud-track-health" id="health-hud-track-bar">
+              <div class="energy-hud-track energy-hud-track-main energy-hud-track-health">
                 <!-- Current Health Fill (Ruby / Crimson Gradient) -->
-                <div id="bar-hud-health-fill" class="hud-bar-layer hud-bar-health" title="Health"></div>
+                <div class="hud-bar-layer hud-bar-health" title="Health"></div>
                 <!-- Embedded Active Health Modifiers Container -->
-                <div id="hud-health-mods-container" class="hud-power-blocks-container"></div>
+                <div class="hud-power-blocks-container hud-health-blocks"></div>
                 <!-- Clear White Line for Current Health Threshold -->
-                <div id="line-hud-health-baseline" class="hud-baseline-line" style="left: 100%;" title="Current Health Threshold"></div>
+                <div class="hud-baseline-line hud-health-baseline" style="left: 100%;" title="Current Health Threshold"></div>
               </div>
             </div>
           </div>
@@ -117,113 +112,81 @@ export class EnergyHud {
           <!-- RIGHT COLUMN: ENERGY & POWER SYSTEM -->
           <div class="hud-column hud-column-energy" title="Energy & Power">
             <!-- Active Ability Tags Row (Shows energy amount with /s for time-based abilities) -->
-            <div id="energy-hud-power-tags" class="hud-power-tags-layer"></div>
+            <div class="hud-power-tags-layer hud-energy-tags-layer"></div>
 
             <!-- Unified Track: Energy, Multi-Bus Stamina, and Embedded Modifiers -->
             <div class="energy-hud-track-wrapper hud-track-row" title="Energy & Stamina">
               <div class="hud-bar-icon-wrap" title="Energy">
                 <span class="hud-bar-icon hud-icon-energy">⚡</span>
               </div>
-              <div class="energy-hud-track energy-hud-track-main energy-hud-track-reservoir" id="energy-hud-track-reservoir">
+              <div class="energy-hud-track energy-hud-track-main energy-hud-track-reservoir">
                 <!-- Flash Overlays for Denied Actions (Stamina top 6px, Energy bottom 21px) -->
-                <div id="flash-hud-stamina" class="hud-flash-overlay hud-flash-stamina"></div>
-                <div id="flash-hud-energy" class="hud-flash-overlay hud-flash-energy"></div>
+                <div class="hud-flash-overlay hud-flash-stamina"></div>
+                <div class="hud-flash-overlay hud-flash-energy"></div>
 
                 <!-- Row 1: Main Bus Stamina (Emerald, Joules) -->
-                <div id="bar-hud-lower-stamina" class="hud-bar-layer hud-bar-lower-stamina" title="Main Stamina (J)"></div>
+                <div class="hud-bar-layer hud-bar-lower-stamina" title="Main Stamina (J)"></div>
 
                 <!-- Exhaustion Recovery Tick Mark (Red notch shown when exhausted) -->
-                <div id="tick-hud-exhaustion-recovery" class="hud-cap-tick hud-cap-exhaustion" style="left: 10%; display: none;" title="Exhaustion Recovery Threshold">
+                <div class="hud-cap-tick hud-cap-exhaustion" style="left: 10%; display: none;" title="Exhaustion Recovery Threshold">
                   <div class="hud-cap-line hud-cap-exhaustion-line"></div>
                 </div>
 
                 <!-- Stamina Cap Tick Notch (Green) -->
-                <div id="tick-hud-max-stamina" class="hud-cap-tick hud-cap-stamina" style="left: 50%; display: none;">
+                <div class="hud-cap-tick hud-cap-stamina" style="left: 50%; display: none;">
                   <div class="hud-cap-line hud-cap-stamina-line"></div>
                 </div>
 
-                <!-- Row 2: Energy Reservoir Fill (Amber - expanded into space left behind by laser stamina) -->
-                <div id="bar-hud-energy-fill" class="hud-bar-layer hud-bar-energy" title="Energy Reservoir"></div>
+                <!-- Row 2: Energy Reservoir Fill (Amber) -->
+                <div class="hud-bar-layer hud-bar-energy" title="Energy Reservoir"></div>
 
                 <!-- Row 2 Overlay: Active Energy Modifiers Container (Embedded color-coded segments) -->
-                <div id="hud-power-blocks-container" class="hud-power-blocks-container"></div>
+                <div class="hud-power-blocks-container hud-energy-blocks"></div>
 
                 <!-- Clear White Line for Current Energy Threshold -->
-                <div id="line-hud-energy-baseline" class="hud-baseline-line" style="left: 100%;" title="Current Energy Threshold"></div>
+                <div class="hud-baseline-line hud-energy-baseline" style="left: 100%;" title="Current Energy Threshold"></div>
               </div>
             </div>
           </div>
         </div>
       </div>
     `;
-
-    parent.appendChild(hudWrapper);
-    this.container = hudWrapper;
-
-    // Grab element handles - Health System
-    this.healthModTagsEl = hudWrapper.querySelector("#health-hud-mod-tags");
-    this.healthBlocksContainerEl = hudWrapper.querySelector("#hud-health-mods-container");
-    this.healthFillEl = hudWrapper.querySelector("#bar-hud-health-fill");
-    this.healthBaselineLineEl = hudWrapper.querySelector("#line-hud-health-baseline");
-
-    // Grab element handles - Energy & Power System
-    this.powerTagsEl = hudWrapper.querySelector("#energy-hud-power-tags");
-    this.powerBlocksContainerEl = hudWrapper.querySelector("#hud-power-blocks-container");
-    this.energyFillEl = hudWrapper.querySelector("#bar-hud-energy-fill");
-    this.lowerStaminaFillEl = hudWrapper.querySelector("#bar-hud-lower-stamina");
-    this.flashStaminaEl = hudWrapper.querySelector("#flash-hud-stamina");
-    this.flashEnergyEl = hudWrapper.querySelector("#flash-hud-energy");
-    this.laserStaminaFillEl = hudWrapper.querySelector("#bar-hud-laser-stamina");
-    this.staminaCapTickEl = hudWrapper.querySelector("#tick-hud-max-stamina");
-    this.exhaustionTickEl = hudWrapper.querySelector("#tick-hud-exhaustion-recovery");
-    this.laserExhaustionTickEl = hudWrapper.querySelector("#tick-hud-laser-exhaustion-recovery");
-    this.energyBaselineLineEl = hudWrapper.querySelector("#line-hud-energy-baseline");
   }
 
-  private setupListeners(): void {
-    const miniPill = this.container?.querySelector("#energy-hud-mini");
-    miniPill?.addEventListener("click", () => this.toggleCollapse());
+  private bindDom(): void {
+    this.badgeEl = this.rootEl.querySelector(".hud-player-badge");
+    this.badgeNameEl = this.rootEl.querySelector(".hud-player-name");
+    this.badgeDotEl = this.rootEl.querySelector(".hud-player-dot");
 
-    // Hotkey 'U' to toggle HUD collapse
-    window.addEventListener("keydown", (e) => {
-      if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") {
-        return;
-      }
-      if ((e.key === "u" || e.key === "U") && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        this.toggleCollapse();
-      }
-    });
+    this.healthModTagsEl = this.rootEl.querySelector(".hud-health-tags-layer");
+    this.healthBlocksContainerEl = this.rootEl.querySelector(".hud-health-blocks");
+    this.healthFillEl = this.rootEl.querySelector(".hud-bar-health");
+    this.healthBaselineLineEl = this.rootEl.querySelector(".hud-health-baseline");
+
+    this.powerTagsEl = this.rootEl.querySelector(".hud-energy-tags-layer");
+    this.powerBlocksContainerEl = this.rootEl.querySelector(".hud-energy-blocks");
+    this.energyFillEl = this.rootEl.querySelector(".hud-bar-energy");
+    this.lowerStaminaFillEl = this.rootEl.querySelector(".hud-bar-lower-stamina");
+    this.flashStaminaEl = this.rootEl.querySelector(".hud-flash-stamina");
+    this.flashEnergyEl = this.rootEl.querySelector(".hud-flash-energy");
+    this.staminaCapTickEl = this.rootEl.querySelector(".hud-cap-stamina");
+    this.exhaustionTickEl = this.rootEl.querySelector(".hud-cap-exhaustion");
+    this.energyBaselineLineEl = this.rootEl.querySelector(".hud-energy-baseline");
   }
 
-  public toggleCollapse(): void {
-    this.isCollapsed = !this.isCollapsed;
-    const bodyEl = this.container?.querySelector("#energy-hud-body");
-    const miniEl = this.container?.querySelector("#energy-hud-mini");
-    if (bodyEl && miniEl) {
-      if (this.isCollapsed) {
-        bodyEl.classList.add("hidden");
-        miniEl.classList.remove("hidden");
-      } else {
-        bodyEl.classList.remove("hidden");
-        miniEl.classList.add("hidden");
-      }
-    }
+  public reset(): void {
+    this.lastTargetCharacter = null;
+    this.visualBlocks.clear();
+    this.visualHealthBlocks.clear();
+    this.visualHpPct = -1;
+    this.visualEnergyPct = -1;
+    this.visualMainStaminaPct = -1;
+    if (this.healthBlocksContainerEl) this.healthBlocksContainerEl.innerHTML = "";
+    if (this.healthModTagsEl) this.healthModTagsEl.innerHTML = "";
+    if (this.powerBlocksContainerEl) this.powerBlocksContainerEl.innerHTML = "";
+    if (this.powerTagsEl) this.powerTagsEl.innerHTML = "";
   }
 
-  /**
-   * Returns the active character to inspect.
-   */
-  public getTargetCharacter(): Character | null {
-    if (this.devPanel?.selectedEntity instanceof Object && (this.devPanel.selectedEntity as any).isCharacter) {
-      return this.devPanel.selectedEntity as Character;
-    }
-    return this.gameLoop?.playerManager?.primaryCharacter || this.gameLoop?.playerManager?.baseCharacter || this.gameLoop?.allCharacters?.[0] || null;
-  }
-
-  /**
-   * Helper to smoothly interpolate a percentage towards target over frames without instant snaps.
-   */
   private smoothPct(current: number, target: number, rate: number, dt: number): number {
     if (current < 0) return target;
     const diff = target - current;
@@ -231,13 +194,131 @@ export class EnergyHud {
     return current + diff * (1 - Math.exp(-rate * dt));
   }
 
-  /**
-   * Renders color-coded blocks for health modifiers directly embedded inside the Health bar.
-   * - Subtracting modifiers (damage, aura, poison) render ON TOP OF and COMPLETELY WITHIN the health block.
-   * - Their right edge is anchored at visualHpPct, while their inner (left) edge lerps away from and towards that edge.
-   * - Positive modifiers (healing) extend outward to the right of visualHpPct.
-   * - The white baseline line sits precisely at visualHpPct as the divider.
-   */
+  public update(
+    char: Character,
+    dt: number,
+    playerLabel?: string,
+    playerColor?: string,
+    showBadge = false
+  ): void {
+    // 1. Badge visibility
+    if (showBadge && playerLabel) {
+      if (this.badgeEl) {
+        this.badgeEl.classList.remove("hidden");
+        this.badgeEl.style.borderColor = playerColor ? `${playerColor}88` : "rgba(255,255,255,0.2)";
+        this.badgeEl.style.color = playerColor || "#f8fafc";
+      }
+      if (this.badgeNameEl) this.badgeNameEl.textContent = playerLabel;
+      if (this.badgeDotEl && playerColor) this.badgeDotEl.style.backgroundColor = playerColor;
+    } else if (this.badgeEl) {
+      this.badgeEl.classList.add("hidden");
+    }
+
+    // 2. Character change detection
+    if (char !== this.lastTargetCharacter) {
+      this.lastTargetCharacter = char;
+      this.visualBlocks.clear();
+      this.visualHealthBlocks.clear();
+      this.visualHpPct = -1;
+      this.visualEnergyPct = -1;
+      this.visualMainStaminaPct = -1;
+    }
+
+    const props = char.properties;
+    const pool = char.energyPool;
+    const healthMod = char.healthModule;
+
+    const curHp = healthMod ? healthMod.getCurrentHp(props) : 100;
+    const maxHp = healthMod ? healthMod.getMaxHp(props) : 100;
+
+    const curEnergy = pool ? pool.getCurrentEnergy(props) : 10000;
+    const maxEnergy = pool ? pool.getMaxEnergy(props) : 10000;
+    const infiniteEnergy = pool?.infiniteEnergy ?? false;
+
+    const curStamina = pool ? pool.getCurrentStamina(props) : 5000;
+    const maxStamina = pool ? pool.getMaxStamina(props) : 5000;
+    const isExhausted = pool?.isExhausted ?? false;
+
+    const energyCap = Math.max(100, maxEnergy);
+
+    // Compute actual target percentages
+    const targetHpPct = maxHp > 0 ? Math.max(0, Math.min(100, (curHp / maxHp) * 100)) : 0;
+    const targetEnergyPct = infiniteEnergy ? 100 : Math.max(0, Math.min(100, (curEnergy / energyCap) * 100));
+    const targetMainStaminaPct = maxStamina > 0 ? Math.max(0, Math.min(100, (curStamina / maxStamina) * 100)) : 0;
+
+    // Initialize visual percentages on first load so there is no initial false lerp
+    if (this.visualHpPct < 0) this.visualHpPct = targetHpPct;
+    if (this.visualEnergyPct < 0) this.visualEnergyPct = targetEnergyPct;
+    if (this.visualMainStaminaPct < 0) this.visualMainStaminaPct = targetMainStaminaPct;
+
+    // Smooth status bar decays over a couple frames
+    this.visualHpPct = this.smoothPct(this.visualHpPct, targetHpPct, 12.0, dt);
+    this.visualEnergyPct = this.smoothPct(this.visualEnergyPct, targetEnergyPct, 12.0, dt);
+    this.visualMainStaminaPct = this.smoothPct(this.visualMainStaminaPct, targetMainStaminaPct, 14.0, dt);
+
+    // 3. Render Health Modifiers & Base Fill
+    this.renderHealthModBlocks(char, healthMod, maxHp, curHp, dt, this.visualHpPct);
+
+    // 4. Render Power Modifiers & Base Fill
+    this.renderPowerBlocks(char, maxEnergy, curEnergy, dt, infiniteEnergy, this.visualEnergyPct);
+
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const alert = pool?.lastInsufficientAlert;
+    const isAlertActive = Boolean(alert && alert.expiresAt > now);
+    const flashStamina = isAlertActive && (alert?.limitingResource === "stamina" || alert?.limitingResource === "both");
+    const flashEnergy = isAlertActive && (alert?.limitingResource === "energy" || alert?.limitingResource === "both");
+
+    if (this.flashStaminaEl) {
+      if (flashStamina) {
+        this.flashStaminaEl.classList.add("hud-flash-active");
+      } else {
+        this.flashStaminaEl.classList.remove("hud-flash-active");
+      }
+    }
+    if (this.flashEnergyEl) {
+      if (flashEnergy) {
+        this.flashEnergyEl.classList.add("hud-flash-active");
+      } else {
+        this.flashEnergyEl.classList.remove("hud-flash-active");
+      }
+    }
+
+    // Current Stamina Fill (Solid Emerald on Row 1) - tracks visualMainStaminaPct smoothly across full row
+    if (this.lowerStaminaFillEl) {
+      this.lowerStaminaFillEl.style.width = `${this.visualMainStaminaPct.toFixed(2)}%`;
+      if (flashStamina) {
+        this.lowerStaminaFillEl.style.borderRight = "1.5px solid #ffffff";
+        this.lowerStaminaFillEl.style.background = "linear-gradient(90deg, #b91c1c, #ef4444, #f87171)";
+        this.lowerStaminaFillEl.style.boxShadow = "0 0 12px rgba(239, 68, 68, 0.9)";
+      } else if (isExhausted) {
+        this.lowerStaminaFillEl.style.borderRight = "1.5px solid #fca5a5";
+        this.lowerStaminaFillEl.style.background = "linear-gradient(90deg, #991b1b, #dc2626, #ef4444)";
+        this.lowerStaminaFillEl.style.boxShadow = "0 0 6px rgba(239, 68, 68, 0.6)";
+      } else {
+        this.lowerStaminaFillEl.style.borderRight = "1.5px solid #86efac";
+        this.lowerStaminaFillEl.style.background = "linear-gradient(90deg, #15803d, #16a34a, #22c55e)";
+        this.lowerStaminaFillEl.style.boxShadow = "0 0 6px rgba(34, 197, 94, 0.4)";
+      }
+    }
+
+    // Stamina Cap Tick Notch: hidden since main stamina now occupies the full row width
+    if (this.staminaCapTickEl) {
+      this.staminaCapTickEl.style.display = "none";
+    }
+
+    // Exhaustion Recovery Tick Notch (Red tick indicating when player will recover from exhaustion)
+    if (this.exhaustionTickEl) {
+      if (isExhausted) {
+        const recoveryRatio = pool?.recoveryThresholdRatio ?? 0.20;
+        const recoveryPct = recoveryRatio * 100;
+        this.exhaustionTickEl.style.left = `${recoveryPct.toFixed(2)}%`;
+        this.exhaustionTickEl.style.display = "block";
+      } else {
+        this.exhaustionTickEl.style.display = "none";
+      }
+    }
+  }
+
   private renderHealthModBlocks(
     _char: Character,
     healthMod: HealthModule | null,
@@ -257,7 +338,6 @@ export class EnergyHud {
 
       let vb = this.visualHealthBlocks.get(mod.id);
       if (!vb) {
-        // Starts at 0 so the inner edge smoothly expands away from the right edge!
         vb = {
           id: mod.id,
           name: mod.name,
@@ -329,15 +409,13 @@ export class EnergyHud {
       return;
     }
 
-    // Split into negative (subtracting: continuous and instant) and positive (healing)
-    const positiveBlocks = sortedBlocks.filter(b => b.isPositive);
-    const negativeBlocks = sortedBlocks.filter(b => !b.isPositive);
+    const positiveBlocks = sortedBlocks.filter((b) => b.isPositive);
+    const negativeBlocks = sortedBlocks.filter((b) => !b.isPositive);
 
     let blocksHtml = "";
 
     // 1. Subtracting Modifiers (Damage, Aura, Hits):
     // Rendered ON TOP OF and COMPLETELY WITHIN the health block.
-    // Right edge is anchored at visualHpPct, left edge (inside edge) lerps away from and towards that edge!
     let rightAnchorHp = visualHpPct;
     for (const vb of negativeBlocks) {
       if (vb.currentUnits <= 0.01) continue;
@@ -353,7 +431,7 @@ export class EnergyHud {
     }
 
     // 2. Positive Modifiers (Healing):
-    // Placed extending OUTWARD to the right of visualHpPct (outside the health block)
+    // Placed extending OUTWARD to the right of visualHpPct
     let posLeftPct = visualHpPct;
     for (const vb of positiveBlocks) {
       if (vb.currentUnits <= 0.01) continue;
@@ -387,13 +465,6 @@ export class EnergyHud {
     this.healthModTagsEl.innerHTML = tagsHtml;
   }
 
-  /**
-   * Renders color-coded blocks for energy modifiers directly embedded inside the Energy reservoir bar.
-   * - Subtracting modifiers (burst jump/throw, continuous power draws) render ON TOP OF and COMPLETELY WITHIN the energy block.
-   * - Their right edge is anchored at visualEnergyPct, while their inner (left) edge lerps away from and towards that edge.
-   * - Positive modifiers (nutrition from food) extend outward to the right of visualEnergyPct.
-   * - The white baseline line sits precisely at visualEnergyPct as the divider.
-   */
   private renderPowerBlocks(
     _char: Character,
     maxEnergy: number,
@@ -405,14 +476,11 @@ export class EnergyHud {
     if (!this.powerBlocksContainerEl || !this.powerTagsEl) return;
 
     const energyCap = Math.max(100, maxEnergy);
-
-    // Collect allocations across ALL active busses on the character (Main Bus, Laser Bus, etc.)
     const allocations: any[] = [];
     const activeAbilityKeys = new Set<string>();
 
     if (_char.energyPool && _char.energyPool.enabled) {
       for (const a of _char.energyPool.getActiveAllocations(_char.properties)) {
-        // For instant bursts, use demandedJoules/demandedWatts so full reservoir cost is visualized
         const watts = a.isBurst ? (a.demandedWatts || a.grantedWatts) : a.grantedWatts;
         allocations.push({
           key: a.id,
@@ -430,7 +498,7 @@ export class EnergyHud {
       }
     }
 
-    // If character is actively consuming an item, register an incoming positive energy modifier (+Watts)
+    // Active item consumption (+Watts)
     if (_char.isUsingItem && _char.canConsumeHeldObject() && _char.heldObject?.consumableModule) {
       const cMod = _char.heldObject.consumableModule;
       const consumeWatts = cMod.getConsumeRate(_char.heldObject.properties);
@@ -449,11 +517,10 @@ export class EnergyHud {
       activeAbilityKeys.add("consumable_nutrition");
     }
 
-    // Anticipated Modifiers: Preview energy costs for uncommitted actions (e.g. Throw trajectory preview, Laser aiming)
+    // Anticipated Modifiers (Throw preview, laser aiming)
     const anticipatedMods = _char.getAnticipatedModifiers ? _char.getAnticipatedModifiers() : [];
     for (const ant of anticipatedMods) {
       const canonicalKey = ant.abilityId || ant.id;
-      // If the ability is ALREADY actively drawing power, ignore anticipated preview to avoid duplication/spikes!
       if (activeAbilityKeys.has(canonicalKey)) continue;
 
       allocations.push({
@@ -470,7 +537,6 @@ export class EnergyHud {
       });
     }
 
-    // Track active allocations using canonical key
     const activeKeys = new Set<string>();
     for (const alloc of allocations) {
       if (alloc.grantedWatts <= 0.001) continue;
@@ -478,7 +544,6 @@ export class EnergyHud {
 
       let vb = this.visualBlocks.get(alloc.key);
       if (!vb) {
-        // Starts at 0 so its inner edge smoothly lerps away from the right edge!
         vb = {
           id: alloc.key,
           name: alloc.name,
@@ -506,7 +571,7 @@ export class EnergyHud {
       }
     }
 
-    // Deactivated blocks target 0 so their inner edge smoothly shrinks back towards the right edge
+    // Inactive blocks target 0 so their inner edge smoothly shrinks towards the right edge
     for (const [key, vb] of this.visualBlocks.entries()) {
       if (!activeKeys.has(key)) {
         vb.targetWatts = 0;
@@ -581,15 +646,12 @@ export class EnergyHud {
       return;
     }
 
-    // Split into negative (subtracting: bursts, draws, anticipated) and positive (eating/generation)
-    const positiveBlocks = sortedBlocks.filter(b => b.isPositive);
-    const negativeBlocks = sortedBlocks.filter(b => !b.isPositive);
+    const positiveBlocks = sortedBlocks.filter((b) => b.isPositive);
+    const negativeBlocks = sortedBlocks.filter((b) => !b.isPositive);
 
     let blocksHtml = "";
 
-    // 1. Subtracting Modifiers (Bursts, Power Draws, Anticipated Costs):
-    // Rendered ON TOP OF and COMPLETELY WITHIN the energy block.
-    // Right edge is anchored at visualEnergyPct, left edge (inside edge) lerps away from and towards that edge!
+    // 1. Subtracting Modifiers (Bursts, Power Draws, Anticipated Costs)
     let rightAnchorEnergy = visualEnergyPct;
     for (const vb of negativeBlocks) {
       if (vb.currentWatts <= 0.01) continue;
@@ -610,8 +672,7 @@ export class EnergyHud {
       rightAnchorEnergy = leftPct;
     }
 
-    // 2. Positive Modifiers (Energy Generation, e.g. Eating food):
-    // Placed extending OUTWARD to the right of visualEnergyPct (outside the energy block)
+    // 2. Positive Modifiers (Nutrition)
     let posLeftPct = visualEnergyPct;
     for (const vb of positiveBlocks) {
       if (vb.currentWatts <= 0.01) continue;
@@ -653,7 +714,8 @@ export class EnergyHud {
     if (isAlertActive && alert) {
       const rateSuffix = alert.isBurst ? "" : "/s";
       const amountStr = `-${alert.cost}${rateSuffix}`;
-      tagsHtml = `
+      tagsHtml =
+        `
         <div class="hud-power-tag hud-tag-denied" title="${alert.abilityName}: ${amountStr} (${alert.reason})">
           <span class="hud-tag-icon">⚠️</span>
           <span class="hud-tag-name">${alert.abilityName}</span>
@@ -665,143 +727,249 @@ export class EnergyHud {
     this.powerBlocksContainerEl.innerHTML = blocksHtml;
     this.powerTagsEl.innerHTML = tagsHtml;
   }
+}
+
+/**
+ * EnergyHud orchestrates 1–4 SinglePlayerHud views across active viewports:
+ * - Single player: 1 HUD centered at bottom, full width.
+ * - 2 Players: 2 HUDs, left and right halves, scaled cleanly.
+ * - 3–4 Players: 4 Quadrants (2x2 grid), with Q3 hidden in 3P mode for waiting minimap.
+ */
+export class EnergyHud {
+  private overlay: HTMLElement | null = null;
+  private miniPill: HTMLElement | null = null;
+  private slots: { slotEl: HTMLElement; hud: SinglePlayerHud }[] = [];
+  private gameLoop: GameLoop;
+  private devPanel: DevPanel;
+
+  public isCollapsed: boolean = false;
+  private lastUpdateTime: number = 0;
+
+  constructor(gameLoop: GameLoop, devPanel: DevPanel) {
+    this.gameLoop = gameLoop;
+    this.devPanel = devPanel;
+
+    this.mount();
+    this.setupListeners();
+  }
+
+  private mount(): void {
+    const parent = document.querySelector(".canvas-wrapper");
+    if (!parent) return;
+
+    const overlay = document.createElement("div");
+    overlay.id = "hud-split-overlay";
+    overlay.className = "hud-split-overlay";
+
+    // Collapsed Mini Pill
+    const miniPill = document.createElement("div");
+    miniPill.id = "energy-hud-mini";
+    miniPill.className = "energy-hud-mini hidden";
+    miniPill.title = "Click or press 'U' to expand HUD";
+    miniPill.innerHTML = `
+      <span class="hud-mini-icon" style="color: #ef4444; margin-right: 2px;">❤</span>
+      <span class="hud-mini-icon" style="color: #fbbf24;">⚡</span>
+      <span style="font-size: 0.72rem; font-weight: 700; margin-left: 2px;">Status</span>
+      <button id="btn-energy-hud-expand" class="hud-mini-expand-btn" title="Expand HUD">▲</button>
+    `;
+    overlay.appendChild(miniPill);
+
+    // Create 4 Viewport Slots
+    for (let i = 0; i < 4; i++) {
+      const slotEl = document.createElement("div");
+      slotEl.className = "hud-viewport-slot";
+      slotEl.dataset.slotIndex = i.toString();
+
+      const hud = new SinglePlayerHud(i);
+      slotEl.appendChild(hud.rootEl);
+      overlay.appendChild(slotEl);
+
+      this.slots.push({ slotEl, hud });
+    }
+
+    parent.appendChild(overlay);
+    this.overlay = overlay;
+    this.miniPill = miniPill;
+  }
+
+  private setupListeners(): void {
+    this.miniPill?.addEventListener("click", () => this.toggleCollapse());
+
+    // Hotkey 'U' to toggle HUD collapse
+    window.addEventListener("keydown", (e) => {
+      if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") {
+        return;
+      }
+      if ((e.key === "u" || e.key === "U") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        this.toggleCollapse();
+      }
+    });
+  }
+
+  public toggleCollapse(): void {
+    this.isCollapsed = !this.isCollapsed;
+    if (this.isCollapsed) {
+      this.miniPill?.classList.remove("hidden");
+      for (const slot of this.slots) {
+        slot.slotEl.style.display = "none";
+      }
+    } else {
+      this.miniPill?.classList.add("hidden");
+    }
+  }
+
+  /**
+   * Returns the primary character to inspect in single-player mode.
+   */
+  public getTargetCharacter(): Character | null {
+    if (this.devPanel?.selectedEntity instanceof Object && (this.devPanel.selectedEntity as any).isCharacter) {
+      return this.devPanel.selectedEntity as Character;
+    }
+    return (
+      this.gameLoop?.playerManager?.primaryCharacter ||
+      this.gameLoop?.playerManager?.baseCharacter ||
+      this.gameLoop?.allCharacters?.[0] ||
+      null
+    );
+  }
 
   /**
    * Main 60 FPS update loop.
    */
   public update(deltaSeconds?: number): void {
-    if (!this.container) return;
+    if (!this.overlay) return;
 
-    const char = this.getTargetCharacter();
-    if (!char) {
-      this.container.style.display = "none";
-      return;
+    // 1. Precisely align the overlay with the displayed canvas bounds
+    const canvas = document.getElementById("game-canvas") as HTMLCanvasElement | null;
+    if (canvas) {
+      this.overlay.style.left = `${canvas.offsetLeft}px`;
+      this.overlay.style.top = `${canvas.offsetTop}px`;
+      this.overlay.style.width = `${canvas.offsetWidth}px`;
+      this.overlay.style.height = `${canvas.offsetHeight}px`;
     }
-    this.container.style.display = "block";
+
+    const overlayW = this.overlay.offsetWidth || 1000;
 
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    let dt = deltaSeconds !== undefined && deltaSeconds > 0
-      ? deltaSeconds
-      : (this.lastUpdateTime > 0 ? (now - this.lastUpdateTime) / 1000 : 0.016);
+    let dt =
+      deltaSeconds !== undefined && deltaSeconds > 0
+        ? deltaSeconds
+        : this.lastUpdateTime > 0
+          ? (now - this.lastUpdateTime) / 1000
+          : 0.016;
     if (dt > 0.1) dt = 0.1;
     if (dt < 0.001) dt = 0.016;
     this.lastUpdateTime = now;
 
-    if (char !== this.lastTargetCharacter) {
-      this.lastTargetCharacter = char;
-      this.visualBlocks.clear();
-      this.visualHealthBlocks.clear();
-      this.visualHpPct = -1;
-      this.visualEnergyPct = -1;
-      this.visualMainStaminaPct = -1;
-    }
-
-    const props = char.properties;
-    const pool = char.energyPool;
-    const healthMod = char.healthModule;
-
-    const curHp = healthMod ? healthMod.getCurrentHp(props) : 100;
-    const maxHp = healthMod ? healthMod.getMaxHp(props) : 100;
-
-    const curEnergy = pool ? pool.getCurrentEnergy(props) : 10000;
-    const maxEnergy = pool ? pool.getMaxEnergy(props) : 10000;
-    const infiniteEnergy = pool?.infiniteEnergy ?? false;
-
-    const curStamina = pool ? pool.getCurrentStamina(props) : 5000;
-    const maxStamina = pool ? pool.getMaxStamina(props) : 5000;
-    const isExhausted = pool?.isExhausted ?? false;
-
-    const energyCap = Math.max(100, maxEnergy);
-
-    // Compute actual target percentages
-    const targetHpPct = maxHp > 0 ? Math.max(0, Math.min(100, (curHp / maxHp) * 100)) : 0;
-    const targetEnergyPct = infiniteEnergy ? 100 : Math.max(0, Math.min(100, (curEnergy / energyCap) * 100));
-
-    // Main Stamina now takes up the whole width (100% of row represents maxStamina)
-    const targetMainStaminaPct = maxStamina > 0 ? Math.max(0, Math.min(100, (curStamina / maxStamina) * 100)) : 0;
-
-    // Initialize visual percentages on first load so there is no initial false lerp
-    if (this.visualHpPct < 0) this.visualHpPct = targetHpPct;
-    if (this.visualEnergyPct < 0) this.visualEnergyPct = targetEnergyPct;
-    if (this.visualMainStaminaPct < 0) this.visualMainStaminaPct = targetMainStaminaPct;
-
-    // Smooth status bar decays over a couple frames (rate ~12.0 = ~8-14 frames smooth decay)
-    this.visualHpPct = this.smoothPct(this.visualHpPct, targetHpPct, 12.0, dt);
-    this.visualEnergyPct = this.smoothPct(this.visualEnergyPct, targetEnergyPct, 12.0, dt);
-    this.visualMainStaminaPct = this.smoothPct(this.visualMainStaminaPct, targetMainStaminaPct, 14.0, dt);
-
-    if (this.isCollapsed) return;
-
-    // =========================================================================
-    // 1. LEFT COLUMN: HEALTH SYSTEM
-    // =========================================================================
-    this.renderHealthModBlocks(char, healthMod, maxHp, curHp, dt, this.visualHpPct);
-
-    // =========================================================================
-    // 2. RIGHT COLUMN: ENERGY & POWER SYSTEM
-    // =========================================================================
-    this.renderPowerBlocks(char, maxEnergy, curEnergy, dt, infiniteEnergy, this.visualEnergyPct);
-
-    const alert = pool?.lastInsufficientAlert;
-    const isAlertActive = Boolean(alert && alert.expiresAt > now);
-    const flashStamina = isAlertActive && (alert?.limitingResource === "stamina" || alert?.limitingResource === "both");
-    const flashEnergy = isAlertActive && (alert?.limitingResource === "energy" || alert?.limitingResource === "both");
-
-    if (this.flashStaminaEl) {
-      if (flashStamina) {
-        this.flashStaminaEl.classList.add("hud-flash-active");
-      } else {
-        this.flashStaminaEl.classList.remove("hud-flash-active");
+    if (this.isCollapsed) {
+      if (this.miniPill) this.miniPill.classList.remove("hidden");
+      for (const slot of this.slots) {
+        slot.slotEl.style.display = "none";
       }
+      return;
+    } else {
+      if (this.miniPill) this.miniPill.classList.add("hidden");
     }
-    if (this.flashEnergyEl) {
-      if (flashEnergy) {
-        this.flashEnergyEl.classList.add("hud-flash-active");
-      } else {
-        this.flashEnergyEl.classList.remove("hud-flash-active");
+
+    const isSplit = this.gameLoop.isSplitScreen && this.gameLoop.playerManager.players.size >= 2;
+    const activePlayerEntries = Array.from(this.gameLoop.playerManager.players.values()).sort(
+      (a, b) => a.playerNumber - b.playerNumber
+    );
+
+    if (!isSplit || activePlayerEntries.length <= 1) {
+      // =======================================================================
+      // MODE 1: SINGLE PLAYER (Full Screen)
+      // =======================================================================
+      const char = this.getTargetCharacter();
+      if (!char) {
+        for (const slot of this.slots) slot.slotEl.style.display = "none";
+        return;
       }
-    }
 
-    // Current Stamina Fill (Solid Emerald on Row 1) - tracks visualMainStaminaPct smoothly across full row
-    if (this.lowerStaminaFillEl) {
-      this.lowerStaminaFillEl.style.width = `${this.visualMainStaminaPct.toFixed(2)}%`;
-      if (flashStamina) {
-        this.lowerStaminaFillEl.style.borderRight = "1.5px solid #ffffff";
-        this.lowerStaminaFillEl.style.background = "linear-gradient(90deg, #b91c1c, #ef4444, #f87171)";
-        this.lowerStaminaFillEl.style.boxShadow = "0 0 12px rgba(239, 68, 68, 0.9)";
-      } else if (isExhausted) {
-        this.lowerStaminaFillEl.style.borderRight = "1.5px solid #fca5a5";
-        this.lowerStaminaFillEl.style.background = "linear-gradient(90deg, #991b1b, #dc2626, #ef4444)";
-        this.lowerStaminaFillEl.style.boxShadow = "0 0 6px rgba(239, 68, 68, 0.6)";
-      } else {
-        this.lowerStaminaFillEl.style.borderRight = "1.5px solid #86efac";
-        this.lowerStaminaFillEl.style.background = "linear-gradient(90deg, #15803d, #16a34a, #22c55e)";
-        this.lowerStaminaFillEl.style.boxShadow = "0 0 6px rgba(34, 197, 94, 0.4)";
+      const s0 = this.slots[0];
+      s0.slotEl.style.display = "block";
+      s0.slotEl.style.left = "0px";
+      s0.slotEl.style.top = "0px";
+      s0.slotEl.style.width = "100%";
+      s0.slotEl.style.height = "100%";
+
+      const baseW = 820;
+      const availW = overlayW - 24;
+      const scale = Math.min(1.0, Math.max(0.4, availW / baseW));
+
+      s0.hud.rootEl.style.transform = `translateX(-50%) scale(${scale.toFixed(3)})`;
+      s0.hud.rootEl.style.bottom = "16px";
+      s0.hud.update(char, dt, undefined, undefined, false);
+
+      // Hide remaining slots
+      for (let i = 1; i < 4; i++) {
+        this.slots[i].slotEl.style.display = "none";
+        this.slots[i].hud.reset();
       }
-    }
+    } else if (activePlayerEntries.length === 2) {
+      // =======================================================================
+      // MODE 2: 2 PLAYERS (Left and Right Halves)
+      // =======================================================================
+      const baseW = 820;
+      const halfW = overlayW * 0.5;
+      const availW = halfW - 16;
+      const scale = Math.min(0.85, Math.max(0.35, availW / baseW));
 
-    // Stamina Cap Tick Notch: hidden since main stamina now occupies the full row width
-    if (this.staminaCapTickEl) {
-      this.staminaCapTickEl.style.display = "none";
-    }
+      for (let i = 0; i < 2; i++) {
+        const pe = activePlayerEntries[i];
+        const s = this.slots[i];
+        s.slotEl.style.display = "block";
+        s.slotEl.style.top = "0px";
+        s.slotEl.style.height = "100%";
+        s.slotEl.style.width = "50%";
+        s.slotEl.style.left = i === 0 ? "0px" : "50%";
 
-    // Exhaustion Recovery Tick Notch (Red tick indicating when player will not be exhausted anymore)
-    if (this.exhaustionTickEl) {
-      if (isExhausted) {
-        const recoveryRatio = pool?.recoveryThresholdRatio ?? 0.20;
-        const recoveryPct = recoveryRatio * 100;
-        this.exhaustionTickEl.style.left = `${recoveryPct.toFixed(2)}%`;
-        this.exhaustionTickEl.style.display = "block";
-      } else {
-        this.exhaustionTickEl.style.display = "none";
+        s.hud.rootEl.style.transform = `translateX(-50%) scale(${scale.toFixed(3)})`;
+        s.hud.rootEl.style.bottom = "12px";
+        s.hud.update(pe.character, dt, `P${pe.playerNumber}: ${pe.name}`, pe.color, true);
       }
-    }
 
-    if (this.laserStaminaFillEl) {
-      this.laserStaminaFillEl.style.display = "none";
-    }
-    if (this.laserExhaustionTickEl) {
-      this.laserExhaustionTickEl.style.display = "none";
+      // Hide slots 2, 3
+      for (let i = 2; i < 4; i++) {
+        this.slots[i].slotEl.style.display = "none";
+        this.slots[i].hud.reset();
+      }
+    } else {
+      // =======================================================================
+      // MODE 3: 3–4 PLAYERS (4 Quadrants)
+      // =======================================================================
+      const baseW = 820;
+      const quadW = overlayW * 0.5;
+      const availW = quadW - 16;
+      const scale = Math.min(0.62, Math.max(0.3, availW / baseW));
+
+      const quadCoords = [
+        { left: "0px", top: "0px" }, // Q0: Top-Left (P1)
+        { left: "50%", top: "0px" }, // Q1: Top-Right (P2)
+        { left: "0px", top: "50%" }, // Q2: Bottom-Left (P3)
+        { left: "50%", top: "50%" }, // Q3: Bottom-Right (P4)
+      ];
+
+      for (let i = 0; i < 4; i++) {
+        const s = this.slots[i];
+        if (i < activePlayerEntries.length) {
+          const pe = activePlayerEntries[i];
+          s.slotEl.style.display = "block";
+          s.slotEl.style.left = quadCoords[i].left;
+          s.slotEl.style.top = quadCoords[i].top;
+          s.slotEl.style.width = "50%";
+          s.slotEl.style.height = "50%";
+
+          s.hud.rootEl.style.transform = `translateX(-50%) scale(${scale.toFixed(3)})`;
+          s.hud.rootEl.style.bottom = "8px";
+          s.hud.update(pe.character, dt, `P${pe.playerNumber}: ${pe.name}`, pe.color, true);
+        } else {
+          // If only 3 players, Q3 is hidden so overview minimap is clean
+          s.slotEl.style.display = "none";
+          s.hud.reset();
+        }
+      }
     }
   }
 }

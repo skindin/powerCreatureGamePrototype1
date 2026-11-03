@@ -4739,14 +4739,71 @@ body.fullscreen-active .mobile-reload-btn:not(.hidden) {
 /* ==========================================================================
    STATUS SCREEN HUD (HEALTH & ENERGY DUAL GAUGES)
    ========================================================================== */
+.hud-split-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 55;
+  overflow: hidden;
+}
+
+.hud-viewport-slot {
+  position: absolute;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.hud-viewport-slot.hidden {
+  display: none !important;
+}
+
+.hud-player-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  margin-left: 2px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.hud-player-badge.hidden {
+  display: none !important;
+}
+
+.hud-player-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.hud-split-overlay .hud-columns-container {
+  grid-template-columns: 1fr 1fr !important;
+  gap: 16px !important;
+}
+
+.hud-split-overlay .energy-hud-container {
+  width: 820px !important;
+  max-width: none !important;
+}
+
 .energy-hud-container {
   position: absolute;
   bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
+  transform-origin: bottom center;
   z-index: 55;
-  width: 860px;
-  max-width: calc(100% - 24px);
+  width: 820px;
+  max-width: none;
   pointer-events: none;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   user-select: none;
