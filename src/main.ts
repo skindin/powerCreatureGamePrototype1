@@ -769,21 +769,28 @@ async function bootstrap(): Promise<void> {
       relayStatusPill?.classList.add("hidden");
 
       gameLoop?.playerManager.clearRemoteCharacters();
-      const hero = gameLoop?.players.get("keyboard")?.character || character;
-      if (hero) {
-        hero.color = PLAYER_COLORS[0];
-        hero.playerColor = PLAYER_COLORS[0];
-        hero.playerNumber = 1;
-        hero.playerId = "keyboard";
-        hero.name = "Player 1";
-      }
-      if (gameLoop?.playerManager?.baseCharacter) {
-        const base = gameLoop.playerManager.baseCharacter;
-        base.color = PLAYER_COLORS[0];
-        base.playerColor = PLAYER_COLORS[0];
-        base.playerNumber = 1;
-        base.playerId = "keyboard";
-        base.name = "Player 1";
+      if (gameLoop?.playerManager) {
+        // In local mode, ensure all active local players retain their distinct slot numbers & colors
+        for (const p of gameLoop.playerManager.players.values()) {
+          const expectedNum = p.playerNumber || 1;
+          const expectedColor = PLAYER_COLORS[(expectedNum - 1) % PLAYER_COLORS.length];
+          p.color = expectedColor;
+          p.character.playerNumber = expectedNum;
+          p.character.playerColor = expectedColor;
+          p.character.color = expectedColor;
+          if (!p.character.hasCustomName || /^Player(\s+\d+)?$/i.test(p.character.name.trim())) {
+            p.character.name = `Player ${expectedNum}`;
+            p.name = `Player ${expectedNum}`;
+          }
+        }
+        if (gameLoop.playerManager.players.size === 0 && gameLoop.playerManager.baseCharacter) {
+          const base = gameLoop.playerManager.baseCharacter;
+          base.color = PLAYER_COLORS[0];
+          base.playerColor = PLAYER_COLORS[0];
+          base.playerNumber = 1;
+          base.playerId = "";
+          base.name = localStorage.getItem("pcg_player_handle") || "Player 1";
+        }
       }
     } else if (mode === "boomerang") {
       persistentPingHud?.classList.remove("hidden");

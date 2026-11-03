@@ -341,15 +341,12 @@ export class PlayerManager {
       if (!char.prefabId) {
         char.prefabId = "prefab_player";
       }
-      if (!char.playerNumber) {
-        char.playerNumber = 1;
-      }
-      if (!char.playerColor) {
-        char.playerColor = char.color || PLAYER_COLORS[0];
-      }
+      char.playerNumber = 1;
+      char.playerColor = PLAYER_COLORS[0];
       char.color = char.playerColor;
-      if (!char.name) {
-        char.name = `Player ${char.playerNumber}`;
+      if (!char.name || /^Player(\s+\d+)?$/i.test(char.name.trim())) {
+        char.name = "Player 1";
+        char.hasCustomName = false;
       }
     } else {
       const playerNum = this.getNextPlayerNumber();
@@ -358,6 +355,7 @@ export class PlayerManager {
       const targetPrefabId = this.baseCharacter?.prefabId || "prefab_player";
       const targetPrefab = prefabManager.get(targetPrefabId);
 
+      const defaultName = `Player ${playerNum}`;
       char = new Character({
         x: slotSpawn.x,
         y: slotSpawn.y,
@@ -367,9 +365,15 @@ export class PlayerManager {
         strength: this.baseCharacter.strength ?? 1.0,
         playerId: "keyboard",
         playerNumber: playerNum,
-        name: `Player ${playerNum}`,
+        name: defaultName,
+        hasCustomName: false,
       });
       char.position.z = slotSpawn.z ?? 0;
+      char.playerNumber = playerNum;
+      char.playerColor = color;
+      char.color = color;
+      char.name = defaultName;
+      char.hasCustomName = false;
       char.prefabId = targetPrefabId;
 
       if (this.baseCharacter.laserModule) {
@@ -473,15 +477,11 @@ export class PlayerManager {
       if (!char.prefabId) {
         char.prefabId = "prefab_player";
       }
-      if (!char.playerNumber) {
-        char.playerNumber = 1;
-      }
-      if (!char.playerColor) {
-        char.playerColor = char.color || PLAYER_COLORS[0];
-      }
+      char.playerNumber = 1;
+      char.playerColor = PLAYER_COLORS[0];
       char.color = char.playerColor;
       if (!char.hasCustomName || !char.name || /^Player(\s+\d+)?$/i.test(char.name.trim()) || /Xbox|Controller|Gamepad|DualShock|DualSense/i.test(char.name)) {
-        char.name = `Player ${char.playerNumber}`;
+        char.name = "Player 1";
         char.hasCustomName = false;
       }
     } else {
@@ -505,6 +505,10 @@ export class PlayerManager {
         hasCustomName: false,
       });
       char.position.z = slotSpawn.z ?? 0;
+      char.playerNumber = playerNum;
+      char.playerColor = color;
+      char.color = color;
+      char.name = defaultName;
       char.hasCustomName = false;
       char.prefabId = targetPrefabId;
 

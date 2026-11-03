@@ -664,6 +664,15 @@ export class Renderer {
       return Boolean(remoteOverrides && remoteOverrides.has(char.playerId));
     };
 
+    // Helper to evaluate if a character is an actual network-remote player (NEVER true for local split-screen players)
+    const isNetworkRemote = (char: Character): boolean => {
+      return Boolean(
+        (remoteOverrides && remoteOverrides.has(char.playerId)) ||
+        (char.playerId && (char.playerId.startsWith("remote") || char.playerId.startsWith("client-"))) ||
+        char.controllerType === "remote"
+      );
+    };
+
     // Apply remote player state overrides if present, saving original transforms
     const savedTransforms: { char: Character; x: number; y: number; z: number; angle: number; climb: boolean }[] = [];
     if (remoteOverrides) {
@@ -968,7 +977,7 @@ export class Renderer {
 
       // 12. Player Name Tags & Overhead Health Bars — drawn LAST so they are always above walls, entities, and everything else
       for (const char of characters) {
-        const isRemote = isRemoteForThisView(char);
+        const isRemote = isNetworkRemote(char);
         HudOverlayPass.drawCharacterNameTag(ctx, char, arena, ppu, this.viewSettings, Renderer.getAltitudeScale, isRemote);
       }
 
