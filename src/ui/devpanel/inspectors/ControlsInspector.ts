@@ -1427,7 +1427,8 @@ export class ControlsInspector {
       slotName === "forwardTrigger" ||
       slotName === "sprint" ||
       slotName === "aimTrigger" ||
-      slotName === "consume"
+      slotName === "consume" ||
+      slotName === "jump"
     ) {
       return false;
     }
@@ -2782,7 +2783,7 @@ export class ControlsInspector {
               enabled: true,
               mode: "wasd",
               moveKeys: { upKey: "GamepadDpadUp", downKey: "GamepadDpadDown", leftKey: "GamepadDpadLeft", rightKey: "GamepadDpadRight", requireCleanPress: false },
-              jump: { code: "GamepadA", requireCleanPress: true },
+              jump: { code: "GamepadA", requireCleanPress: false },
               sprint: { code: "GamepadLS", mode: "hold", requireCleanPress: false },
             } : {
               type: "locomotion",

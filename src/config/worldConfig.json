@@ -2211,11 +2211,11 @@
           },
           {
             "id": "tag-kbm-scjxrr",
-            "name": "Jump",
-            "trigger": {
-              "device": "keyboard",
-              "code": "Space",
-              "mode": "press"
+              "name": "Jump",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Space",
+                "mode": "hold"
             }
           },
           {
@@ -2905,11 +2905,11 @@
           },
           {
             "id": "tag-pad-i8r8qh",
-            "name": "Jump",
-            "trigger": {
-              "device": "gamepad",
-              "code": "GamepadA",
-              "mode": "press"
+              "name": "Jump",
+              "trigger": {
+                "device": "gamepad",
+                "code": "GamepadA",
+                "mode": "hold"
             }
           },
           {
@@ -2946,9 +2946,9 @@
               "requireCleanPress": false
             },
             "jump": {
-              "code": "GamepadA",
-              "requireCleanPress": true
-            },
+                "code": "GamepadA",
+                "requireCleanPress": false
+              },
             "sprint": {
               "code": "GamepadLS",
               "mode": "toggle",
@@ -5692,7 +5692,7 @@
               "trigger": {
                 "device": "keyboard",
                 "code": "Space",
-                "mode": "press"
+                "mode": "hold"
               }
             },
             {
@@ -6386,7 +6386,7 @@
               "trigger": {
                 "device": "gamepad",
                 "code": "GamepadA",
-                "mode": "press"
+                "mode": "hold"
               }
             },
             {
@@ -6424,7 +6424,7 @@
               },
               "jump": {
                 "code": "GamepadA",
-                "requireCleanPress": true
+                "requireCleanPress": false
               },
               "sprint": {
                 "code": "GamepadLS",

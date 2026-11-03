@@ -34,7 +34,7 @@ export class ControlActionCatalog {
           id: "jump",
           label: "Jump (Impulse)",
           description: "Performs a vertical physical takeoff jump",
-          recommendedMode: "press",
+          recommendedMode: "hold",
           execute: (ctx) => {
             if (ctx.character.jumpModule) {
               ctx.character.jump();

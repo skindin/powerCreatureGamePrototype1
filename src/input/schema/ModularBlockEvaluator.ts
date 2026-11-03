@@ -88,7 +88,8 @@ export class ModularBlockEvaluator {
         intent.includes("sprint") ||
         intent.includes("aim") ||
         intent.includes("consume") ||
-        intent.includes("laser.fire")
+        intent.includes("laser.fire") ||
+        intent.includes("jump")
       ) {
         return false;
       }
@@ -513,10 +514,19 @@ export class ModularBlockEvaluator {
           }
           (char as any)._prevSteerCursorActive = isSteerCursorActive;
 
-          // Jump
-          if (isSlotActive(b.jump, "down", true, b.id, "locomotion.jump")) {
-            isJumpHeld = true;
-            claimSlot(b.jump, b.id, "locomotion.jump", true);
+          // Jump: continuous jumping while button is held once touching ground,
+          // unless explicitly configured with requireCleanPress: true in control schema.
+          const jumpRequiresClean = b.jump?.requireCleanPress === true;
+          if (jumpRequiresClean) {
+            if (isSlotActive(b.jump, "down", true, b.id, "locomotion.jump")) {
+              isJumpHeld = true;
+              claimSlot(b.jump, b.id, "locomotion.jump", true);
+            }
+          } else {
+            if (isSlotActive(b.jump, "hold", false, b.id, "locomotion.jump")) {
+              isJumpHeld = true;
+              claimSlot(b.jump, b.id, "locomotion.jump", false);
+            }
           }
 
           // Sprint
