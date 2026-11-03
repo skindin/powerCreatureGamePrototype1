@@ -125,7 +125,7 @@ export class EntityPass {
     // Gun Weapon Rendering: simple directional rectangle aligned with character aim/facing angle
     if (obj.gunModule) {
       const holder = obj.heldBy || allCharacters.find((c) => c.heldObject === obj);
-      const angle = holder ? holder.facingAngle : 0;
+      const angle = (holder as any)?.facingAngle ?? 0;
       const gunLength = Math.max(16, renderRadius * 2.2);
       const gunWidth = Math.max(8, renderRadius * 0.85);
 

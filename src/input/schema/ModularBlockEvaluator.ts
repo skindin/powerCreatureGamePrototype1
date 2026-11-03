@@ -2,7 +2,6 @@ import type {
   ControlBlock,
   ControlExecutionContext,
   BlockInputSlot,
-  LocomotionControlBlock,
   WalkSprintControlBlock,
   JumpControlBlock,
   MeleeControlBlock,
@@ -688,6 +687,8 @@ export class ModularBlockEvaluator {
             char.isTriggerPullThrowing = false;
             char.activeTrajectory = null;
             (char as any)._pickupPressCode = null;
+            (char as any)._throwRequiresFreshPress = false;
+            (char as any)._fireRequiresFreshPress = false;
             break;
           }
 
@@ -1045,7 +1046,11 @@ export class ModularBlockEvaluator {
           if (isSlotActive(b.pickup, "down", true, b.id, "pickup.grab")) {
             if (!execCtx.isHoldingItem && grabTargetObjectId) {
               isGrabHeld = true;
-              if (b.pickup?.code) { (char as any)._pickupPressCode = b.pickup.code; (char as any)._throwRequiresFreshPress = true; }
+              if (b.pickup?.code) {
+                (char as any)._pickupPressCode = b.pickup.code;
+                (char as any)._throwRequiresFreshPress = true;
+                (char as any)._fireRequiresFreshPress = true;
+              }
               claimSlot(b.pickup, b.id, "pickup.grab", true);
             }
           }
@@ -1054,7 +1059,11 @@ export class ModularBlockEvaluator {
           if (b.additionalPickup && isSlotActive(b.additionalPickup, "down", true, b.id, "pickup.grab")) {
             if (!execCtx.isHoldingItem && grabTargetObjectId) {
               isGrabHeld = true;
-              if (b.additionalPickup?.code) { (char as any)._pickupPressCode = b.additionalPickup.code; (char as any)._throwRequiresFreshPress = true; }
+              if (b.additionalPickup?.code) {
+                (char as any)._pickupPressCode = b.additionalPickup.code;
+                (char as any)._throwRequiresFreshPress = true;
+                (char as any)._fireRequiresFreshPress = true;
+              }
               claimSlot(b.additionalPickup, b.id, "pickup.grab", true);
             }
           }
@@ -1063,6 +1072,8 @@ export class ModularBlockEvaluator {
           if (execCtx.isHoldingItem && isSlotActive(b.drop, "down", true, b.id, "pickup.drop")) {
             isDrop = true;
             (char as any)._pickupPressCode = null;
+            (char as any)._throwRequiresFreshPress = false;
+            (char as any)._fireRequiresFreshPress = false;
             claimSlot(b.drop, b.id, "pickup.drop", true);
           }
 
@@ -1074,13 +1085,21 @@ export class ModularBlockEvaluator {
               // Swap key must NOT drop or trigger unless another object is near enough to swap it with!
               if (grabTargetObjectId) {
                 isSwap = true;
-                if (b.swap?.code) { (char as any)._pickupPressCode = b.swap.code; (char as any)._throwRequiresFreshPress = true; }
+                if (b.swap?.code) {
+                  (char as any)._pickupPressCode = b.swap.code;
+                  (char as any)._throwRequiresFreshPress = true;
+                  (char as any)._fireRequiresFreshPress = true;
+                }
                 claimSlot(b.swap, b.id, "pickup.swap", true);
               }
             } else if (b.triggerPickupWhenEmptyHanded && grabTargetObjectId) {
               isSwap = true;
               isGrabHeld = true;
-              if (b.swap?.code) { (char as any)._pickupPressCode = b.swap.code; (char as any)._throwRequiresFreshPress = true; }
+              if (b.swap?.code) {
+                (char as any)._pickupPressCode = b.swap.code;
+                (char as any)._throwRequiresFreshPress = true;
+                (char as any)._fireRequiresFreshPress = true;
+              }
               claimSlot(b.swap, b.id, "pickup.swap", true);
             }
           }
@@ -1102,8 +1121,63 @@ export class ModularBlockEvaluator {
              getSlotAnalogValue(throwBlock.throwOverrideTrigger) > 0.15)
           );
 
+          // If the button pressed to pick up or swap this item is STILL held down,
+          // firing is strictly locked out until that button is fully released!
+          const pickupCode = (char as any)._pickupPressCode;
+          if (pickupCode) {
+            let isPickupDown = tokens.isDown(pickupCode);
+            let analogVal = 0;
+            if (pickupCode.startsWith("Gamepad")) {
+              const btn = ControlSchemaArbiter.parseGamepadButtonCode(pickupCode);
+              if (btn >= 0) {
+                if (execCtx.gamepadStates?.getValue) {
+                  analogVal = execCtx.gamepadStates.getValue(btn);
+                } else if (execCtx.getGamepadButtonValue) {
+                  analogVal = execCtx.getGamepadButtonValue(execCtx.gamepadStates?.slotIndex ?? 0, btn);
+                } else if (execCtx.gamepadStates?.isDown) {
+                  isPickupDown = isPickupDown || execCtx.gamepadStates.isDown(btn);
+                }
+              }
+            } else if (pickupCode.startsWith("Mouse")) {
+              const idx = pickupCode === "MouseLeft" ? 0 : pickupCode === "MouseMiddle" ? 1 : pickupCode === "MouseRight" ? 2 : -1;
+              if (idx >= 0 && execCtx.mouseStates?.isDown(idx)) {
+                isPickupDown = true;
+                analogVal = 1.0;
+              }
+            }
+
+            if (isPickupDown || analogVal > 0.05) {
+              (char as any)._fireRequiresFreshPress = true;
+              (char as any)._throwRequiresFreshPress = true;
+            } else {
+              // Physical release detected: clear the pickup lockout
+              (char as any)._pickupPressCode = null;
+            }
+          }
+
+          let isFireBlockedByCleaning = false;
+          if ((char as any)._pickupPressCode && b.fireWeapon && b.fireWeapon.code === (char as any)._pickupPressCode) {
+            isFireBlockedByCleaning = true;
+          }
+
+          if ((char as any)._fireRequiresFreshPress) {
+            if (b.fireWeapon && b.fireWeapon.code) {
+              const fireTriggerVal = getSlotAnalogValue(b.fireWeapon);
+              const isFireDown = isSlotActive(b.fireWeapon, "down", false, b.id, "check");
+              const isFireHold = isSlotActive(b.fireWeapon, "hold", false, b.id, "check");
+              if (fireTriggerVal > 0.05 || isFireDown || isFireHold) {
+                isFireBlockedByCleaning = true;
+              } else {
+                (char as any)._fireRequiresFreshPress = false;
+              }
+            } else {
+              (char as any)._fireRequiresFreshPress = false;
+            }
+          }
+
           const isFireSlotActive = Boolean(
             !isThrowOverrideActive &&
+            !isFireBlockedByCleaning &&
             b.fireWeapon && (
               isSlotActive(b.fireWeapon, "hold", false, b.id, "gun.fire") ||
               isSlotActive(b.fireWeapon, "down", false, b.id, "gun.fire") ||

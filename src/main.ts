@@ -7,7 +7,7 @@ import { InputManager } from "./ui/InputManager.js";
 import { DevPanel } from "./ui/DevPanel.js";
 import { PlayersPanel } from "./ui/PlayersPanel.js";
 import { FeedbackPanel } from "./ui/FeedbackPanel.js";
-import { GameLoop, PLAYER_COLORS } from "./engine/GameLoop.js";
+import { GameLoop } from "./engine/GameLoop.js";
 import { RelayClient } from "./network/RelayClient.js";
 import { OnlineRoomClient } from "./network/OnlineRoomClient.js";
 import { OnlineSessionManager } from "./network/OnlineSessionManager.js";

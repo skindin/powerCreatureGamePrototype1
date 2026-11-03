@@ -173,8 +173,6 @@ export class BulletManager {
       curVz -= g * dt;
       curZ += curVz * dt;
 
-      const tileX = Math.floor(curX);
-      const tileY = Math.floor(curY);
       const wall = arena.getWallAt(curX, curY);
 
       if (wall && curZ < wall.wallHeight) {
@@ -374,7 +372,7 @@ export class BulletManager {
   public render(
     ctx: CanvasRenderingContext2D,
     ppu: number,
-    arena: Arena,
+    _arena: Arena,
     viewSettings: ViewSettings
   ): void {
     if (this.bullets.length === 0) return;
