@@ -53,14 +53,16 @@ export class ModularBlockEvaluator {
     // Gamepad button edge registration
     if (execCtx.gamepadStates) {
       for (let b = 0; b <= 16; b++) {
-        if (execCtx.gamepadStates.isDown(b)) {
+        const val = execCtx.gamepadStates.getValue ? execCtx.gamepadStates.getValue(b) : 0;
+        if (execCtx.gamepadStates.isDown(b) || val > 0.15) {
           const gpCode = ControlSchemaArbiter.formatGamepadButtonIndex(b);
           currentDownKeys.add(gpCode);
         }
       }
     } else if (execCtx.isGamepadButtonDown) {
       for (let b = 0; b <= 16; b++) {
-        if (execCtx.isGamepadButtonDown(0, b)) {
+        const val = execCtx.getGamepadButtonValue ? execCtx.getGamepadButtonValue(0, b) : 0;
+        if (execCtx.isGamepadButtonDown(0, b) || val > 0.15) {
           const gpCode = ControlSchemaArbiter.formatGamepadButtonIndex(b);
           currentDownKeys.add(gpCode);
         }
@@ -117,8 +119,18 @@ export class ModularBlockEvaluator {
       // Analog trigger detection (GamepadLT / GamepadRT)
       const isAnalogTrigger = slot.code === "GamepadLT" || slot.code === "GamepadRT";
       const analogVal = isAnalogTrigger ? getSlotAnalogValue(slot) : 0;
-      const isAnalogPulled = analogVal > 0.2;
+      const isAnalogPulled = analogVal > 0.15;
       const isCodeDown = tokens.isDown(slot.code) || isAnalogPulled;
+
+      // Track analog trigger transition cleanly across all frames
+      let isAnalogJustPulled = false;
+      let isAnalogJustReleased = false;
+      if (isAnalogTrigger) {
+        const prevAnalog = (char as any)[`_prevAnalog_${slot.code}`] ?? 0;
+        (char as any)[`_prevAnalog_${slot.code}`] = analogVal;
+        isAnalogJustPulled = prevAnalog <= 0.15 && isAnalogPulled;
+        isAnalogJustReleased = prevAnalog > 0.15 && !isAnalogPulled;
+      }
 
       // If the button press was consumed by another module (e.g. pickup claimed LMB),
       // no other block can hold or trigger on it until physically released!
@@ -135,19 +147,15 @@ export class ModularBlockEvaluator {
       } else if (triggerMode === "down") {
         if (!isCodeDown) return false;
         if (requireClean) {
-          if (isAnalogTrigger && isAnalogPulled) {
-            const prevAnalog = (char as any)[`_prevAnalog_${slot.code}`] ?? 0;
-            (char as any)[`_prevAnalog_${slot.code}`] = analogVal;
-            if (prevAnalog <= 0.2) return true;
+          if (isAnalogTrigger && isAnalogJustPulled && !tokens.isConsumed(slot.code)) {
+            return true;
           }
           return tokens.canExecute(slot.code, "requireCleanPress", blockId, intent);
         }
         return true;
       } else if (triggerMode === "up") {
-        if (isAnalogTrigger) {
-          const prevAnalog = (char as any)[`_prevAnalog_${slot.code}`] ?? 0;
-          (char as any)[`_prevAnalog_${slot.code}`] = analogVal;
-          if (prevAnalog > 0.2 && !isAnalogPulled) return true;
+        if (isAnalogTrigger && isAnalogJustReleased) {
+          return true;
         }
         if (!isCodeJustReleased(slot.code) && !tokens.wasReleased(slot.code)) return false;
         if (requireClean) {
@@ -241,24 +249,41 @@ export class ModularBlockEvaluator {
         }
       }
 
-      const isCursorArmed =
-        (locoBlock.cursorSteerMode === "cursorWhenIdle") ||
-        (locoBlock.cursorSteerMode === "toggleButton" && Boolean(char.isCursorModeActive)) ||
-        (locoBlock.cursorSteerMode === "whenHoldingButton" && isSlotActive(locoBlock.cursorSteerTrigger, "hold", false, locoBlock.id, "locomotion.cursorSteer")) ||
-        (locoBlock.cursorSteerMode === "whenAiming" && isAimingTrajectory);
+      const isHoldMode = locoBlock.cursorSteerMode === "whenHoldingButton";
+      const isHoldActive = isHoldMode && isSlotActive(locoBlock.cursorSteerTrigger, "hold", false, locoBlock.id, "locomotion.cursorSteer");
+
+      const isDriveButtonMode = locoBlock.mode === "stickDirectionDriveButton";
+      const isSameTrigger = Boolean(
+        locoBlock.forwardTrigger?.code &&
+        locoBlock.cursorSteerTrigger?.code &&
+        locoBlock.forwardTrigger.code === locoBlock.cursorSteerTrigger.code
+      );
+
+      // In analogStick or wasd mode, forwardTrigger does not drive locomotion
+      const fwdActive = isDriveButtonMode
+        ? isSlotActive(locoBlock.forwardTrigger, "hold", false, locoBlock.id, "locomotion.forwardDrive")
+        : false;
 
       const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
       const stickMag = gpLeftStick ? Math.hypot(gpLeftStick.x, gpLeftStick.y) : 0;
       const isPushingStick = stickMag > 0.08;
-      const fwdActive = isSlotActive(locoBlock.forwardTrigger, "hold", false, locoBlock.id, "locomotion.forwardDrive");
-      const rawWhileWalking = Boolean(locoBlock.rawDirectionWhileWalking || locoBlock.cursorSteerMode === "cursorWhenIdle");
-      const isWalking = fwdActive && isPushingStick;
 
-      if (rawWhileWalking && isWalking) {
-        // While walking (forward button held + joystick pushed): forward switch overrides to raw direction!
-        isSteerCursorActive = false;
+      if (isHoldActive) {
+        // Holding cursor steer modifier button directly engages cursor mode!
+        isSteerCursorActive = true;
+      } else if (isToggleMode && Boolean(char.isCursorModeActive)) {
+        if (locoBlock.rawDirectionWhileWalking && isDriveButtonMode && fwdActive && isPushingStick && !isSameTrigger) {
+          isSteerCursorActive = false;
+        } else {
+          isSteerCursorActive = true;
+        }
+      } else if (locoBlock.cursorSteerMode === "cursorWhenIdle") {
+        const isLocomoting = isDriveButtonMode ? (fwdActive && isPushingStick) : isPushingStick;
+        isSteerCursorActive = !isLocomoting;
+      } else if (locoBlock.cursorSteerMode === "whenAiming") {
+        isSteerCursorActive = isAimingTrajectory;
       } else {
-        isSteerCursorActive = isCursorArmed;
+        isSteerCursorActive = false;
       }
 
       char.isSteeringCursor = isSteerCursorActive;
@@ -333,7 +358,13 @@ export class ModularBlockEvaluator {
 
             // In cursor mode: walk forward button only drives toward cursor if also pushing joystick
             const stickMag = gpLeftStick ? Math.hypot(gpLeftStick.x, gpLeftStick.y) : 0;
-            if (fwdActive && stickMag > 0.08) {
+            const isSameTrigger = Boolean(
+              b.forwardTrigger?.code &&
+              b.cursorSteerTrigger?.code &&
+              b.forwardTrigger.code === b.cursorSteerTrigger.code
+            );
+            const canDriveFwd = fwdActive && (!isSameTrigger || b.cursorSteerMode !== "whenHoldingButton");
+            if (canDriveFwd && stickMag > 0.08) {
               moveX += Math.cos(char.facingAngle);
               moveY += Math.sin(char.facingAngle);
               claimSlot(b.forwardTrigger, b.id, "locomotion.forwardDrive", false);
