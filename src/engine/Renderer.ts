@@ -160,8 +160,14 @@ export class Renderer {
     if (!currentCam || Math.hypot(clampedCamX - currentCam.x, clampedCamY - currentCam.y) > 12) {
       currentCam = { x: clampedCamX, y: clampedCamY };
     } else if (advanceSmoother) {
-      currentCam.x += (clampedCamX - currentCam.x) * 0.22;
-      currentCam.y += (clampedCamY - currentCam.y) * 0.22;
+      const dist = Math.hypot(clampedCamX - currentCam.x, clampedCamY - currentCam.y);
+      if (dist < 0.002) {
+        currentCam.x = clampedCamX;
+        currentCam.y = clampedCamY;
+      } else {
+        currentCam.x += (clampedCamX - currentCam.x) * 0.22;
+        currentCam.y += (clampedCamY - currentCam.y) * 0.22;
+      }
     }
     this.cameraSmoothedPositions.set(camKey, currentCam);
 

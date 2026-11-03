@@ -209,11 +209,10 @@ export class GameLoop {
 
   public stepIfBackgrounded(nowMs: number = performance.now()): void {
     if (!this.isRunning || this.isPhysicsPaused) return;
-    const elapsedMs = nowMs - this.lastTime;
     const isHidden = typeof document !== "undefined" && document.hidden;
-    if (!isHidden && elapsedMs < 24) return;
+    if (!isHidden) return;
 
-    let deltaSeconds = elapsedMs / 1000;
+    let deltaSeconds = (nowMs - this.lastTime) / 1000;
     this.lastTime = nowMs;
     if (deltaSeconds <= 0) return;
     if (deltaSeconds > 0.2) {
@@ -227,6 +226,9 @@ export class GameLoop {
     }
 
     this.accumulator += deltaSeconds * this.timeDilation;
+    if (this.accumulator > this.fixedDt * 4) {
+      this.accumulator = this.fixedDt * 4;
+    }
     while (this.accumulator >= this.fixedDt) {
       this.syncKeyboardViewport(false);
       this.updatePhysics(this.fixedDt);
@@ -234,12 +236,6 @@ export class GameLoop {
         this.onPhysicsTick(this.fixedDt, nowMs);
       }
       this.accumulator -= this.fixedDt;
-    }
-
-    if (!isHidden) {
-      this.renderFrame(deltaSeconds);
-      this.devPanel.updateInspector();
-      this.energyHud?.update(deltaSeconds);
     }
   }
 
@@ -512,9 +508,13 @@ export class GameLoop {
       }
 
       this.accumulator += deltaSeconds * this.timeDilation;
+      if (this.accumulator > this.fixedDt * 4) {
+        this.accumulator = this.fixedDt * 4;
+      }
 
       // Fixed timestep simulation updates
       while (this.accumulator >= this.fixedDt) {
+        this.syncKeyboardViewport(false);
         this.updatePhysics(this.fixedDt);
         if (this.onPhysicsTick) {
           this.onPhysicsTick(this.fixedDt, currentTime);
