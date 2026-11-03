@@ -667,9 +667,12 @@ export class Renderer {
 
     // Helper to evaluate if a character is an actual network-remote player (NEVER true for local split-screen players)
     const isNetworkRemote = (char: Character): boolean => {
+      if (isSplitScreenViewport) {
+        return char.controllerType === "remote" || Boolean(char.playerId && (char.playerId.startsWith("remote-") || char.playerId.startsWith("client-")));
+      }
       return Boolean(
-        (remoteOverrides && remoteOverrides.has(char.playerId)) ||
-        (char.playerId && (char.playerId.startsWith("remote") || char.playerId.startsWith("client-"))) ||
+        (remoteOverrides && remoteOverrides.has(char.playerId) && (char.controllerType === "remote" || char.playerId.startsWith("remote-") || char.playerId.startsWith("client-"))) ||
+        (char.playerId && (char.playerId.startsWith("remote-") || char.playerId.startsWith("client-"))) ||
         char.controllerType === "remote"
       );
     };

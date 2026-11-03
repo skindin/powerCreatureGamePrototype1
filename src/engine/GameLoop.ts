@@ -407,14 +407,17 @@ export class GameLoop {
         };
       });
 
-      // Sample remote player interpolated states
+      // Sample remote player interpolated states for all non-local characters
       const remoteOverrides = new Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>();
       const now = performance.now();
       const rttMs = ghostData?.rttMs ?? 0;
-      for (const pe of activeEntries) {
-        const interp = this.interpolator.getInterpolatedState(pe.character.playerId, now, rttMs);
+      for (const char of this.allCharacters) {
+        if (char.isDummy || char.characterModule?.role === "dummy") continue;
+        const isLocalChar = Array.from(this.playerManager.players.values()).some((p) => p.character === char);
+        if (isLocalChar && !this.splitClientSimsEnabled) continue;
+        const interp = this.interpolator.getInterpolatedState(char.playerId, now, rttMs);
         if (interp) {
-          remoteOverrides.set(pe.character.playerId, {
+          remoteOverrides.set(char.playerId, {
             x: interp.x,
             y: interp.y,
             z: interp.z,

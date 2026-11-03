@@ -1093,7 +1093,17 @@ export class ModularBlockEvaluator {
 
           // Fire Weapon / Shoot Gun
           const isHoldingGunItem = Boolean(char.heldObject?.gunModule && char.heldObject.gunModule.enabled);
+          const throwBlock = blocks.find((blk) => blk.enabled && blk.type === "throw") as ThrowControlBlock | undefined;
+          const isThrowOverrideActive = isHoldingGunItem && Boolean(
+            throwBlock?.throwOverrideTrigger &&
+            throwBlock.throwOverrideTrigger.code &&
+            (isSlotActive(throwBlock.throwOverrideTrigger, "hold", false, throwBlock.id, "check") ||
+             isSlotActive(throwBlock.throwOverrideTrigger, "down", false, throwBlock.id, "check") ||
+             getSlotAnalogValue(throwBlock.throwOverrideTrigger) > 0.15)
+          );
+
           const isFireSlotActive = Boolean(
+            !isThrowOverrideActive &&
             b.fireWeapon && (
               isSlotActive(b.fireWeapon, "hold", false, b.id, "gun.fire") ||
               isSlotActive(b.fireWeapon, "down", false, b.id, "gun.fire") ||

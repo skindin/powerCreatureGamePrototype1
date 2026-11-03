@@ -57,6 +57,9 @@ export class SinglePlayerHud {
   private staminaCapTickEl: HTMLElement | null = null;
   private exhaustionTickEl: HTMLElement | null = null;
   private energyBaselineLineEl: HTMLElement | null = null;
+  private gunTrackWrapperEl: HTMLElement | null = null;
+  private gunFillEl: HTMLElement | null = null;
+  private gunTextEl: HTMLElement | null = null;
 
   // Smooth visual state tracking for status bars (never snaps instantly, lerps down/up smoothly over frames)
   private visualHpPct: number = -1;
@@ -147,6 +150,17 @@ export class SinglePlayerHud {
                 <div class="hud-baseline-line hud-energy-baseline" style="left: 100%;" title="Current Energy Threshold"></div>
               </div>
             </div>
+
+            <!-- Gun Fire Time / Overheat Cooldown Stat Bar (Visible when holding a gun) -->
+            <div class="hud-gun-track-wrapper hud-track-row" style="display: none; margin-top: 4px;" title="Gun Firing Time & Overheat Cooldown">
+              <div class="hud-bar-icon-wrap" title="Gun Heat">
+                <span class="hud-bar-icon hud-icon-gun" style="color: #f59e0b; font-size: 11px;">🔫</span>
+              </div>
+              <div class="energy-hud-track" style="position: relative; height: 13px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 4px; overflow: hidden; flex: 1; display: flex; align-items: center;">
+                <div class="hud-bar-gun-fill" style="position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: linear-gradient(90deg, #f59e0b, #ef4444); transition: width 0.05s linear;"></div>
+                <div class="hud-gun-text" style="position: absolute; width: 100%; text-align: center; font-size: 8.5px; font-weight: 700; color: #ffffff; text-shadow: 0 1px 2px #000; z-index: 2; pointer-events: none; letter-spacing: 0.3px;">FIRE TIME</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -172,6 +186,10 @@ export class SinglePlayerHud {
     this.staminaCapTickEl = this.rootEl.querySelector(".hud-cap-stamina");
     this.exhaustionTickEl = this.rootEl.querySelector(".hud-cap-exhaustion");
     this.energyBaselineLineEl = this.rootEl.querySelector(".hud-energy-baseline");
+
+    this.gunTrackWrapperEl = this.rootEl.querySelector(".hud-gun-track-wrapper");
+    this.gunFillEl = this.rootEl.querySelector(".hud-bar-gun-fill");
+    this.gunTextEl = this.rootEl.querySelector(".hud-gun-text");
   }
 
   public reset(): void {
@@ -315,6 +333,45 @@ export class SinglePlayerHud {
         this.exhaustionTickEl.style.display = "block";
       } else {
         this.exhaustionTickEl.style.display = "none";
+      }
+    }
+
+    // 5. Update Gun Fire Time & Overheat Cooldown stat bar on the right
+    const heldGun = char.heldObject?.gunModule;
+    if (this.gunTrackWrapperEl) {
+      if (heldGun && heldGun.enabled) {
+        this.gunTrackWrapperEl.style.display = "flex";
+        const heat = Math.min(1.0, Math.max(0.0, heldGun.heat));
+        const firingSec = heldGun.getFiringSeconds(props);
+        const cooldownSec = heldGun.getCooldownTime(props);
+
+        if (this.gunFillEl) {
+          this.gunFillEl.style.width = `${(heat * 100).toFixed(1)}%`;
+          if (heldGun.isOverheated) {
+            this.gunFillEl.style.background = "linear-gradient(90deg, #b91c1c, #ef4444, #f87171)";
+            this.gunFillEl.style.boxShadow = "0 0 10px rgba(239, 68, 68, 0.8)";
+          } else {
+            this.gunFillEl.style.background = "linear-gradient(90deg, #f59e0b, #ef4444)";
+            this.gunFillEl.style.boxShadow = "0 0 6px rgba(245, 158, 11, 0.4)";
+          }
+        }
+
+        if (this.gunTextEl) {
+          if (heldGun.isOverheated) {
+            const coolRemain = heat * cooldownSec;
+            this.gunTextEl.textContent = `OVERHEAT COOLDOWN: ${coolRemain.toFixed(1)}s`;
+            this.gunTextEl.style.color = "#fca5a5";
+          } else if (heat > 0.01) {
+            const fireRemain = Math.max(0, (1.0 - heat) * firingSec);
+            this.gunTextEl.textContent = `FIRE TIME: ${fireRemain.toFixed(1)}s / ${firingSec.toFixed(1)}s (${(heat * 100).toFixed(0)}% heat)`;
+            this.gunTextEl.style.color = "#ffffff";
+          } else {
+            this.gunTextEl.textContent = `FIRE TIME: ${firingSec.toFixed(1)}s (READY)`;
+            this.gunTextEl.style.color = "#fde68a";
+          }
+        }
+      } else {
+        this.gunTrackWrapperEl.style.display = "none";
       }
     }
   }
@@ -927,7 +984,8 @@ export class EnergyHud {
 
         s.hud.rootEl.style.transform = `translateX(-50%) scale(${scale.toFixed(3)})`;
         s.hud.rootEl.style.bottom = "12px";
-        s.hud.update(pe.character, dt, `P${pe.playerNumber}: ${pe.name}`, pe.color, true);
+        const displayName = pe.character.hasCustomName && pe.character.name ? pe.character.name : `Player ${pe.playerNumber}`;
+        s.hud.update(pe.character, dt, `P${pe.playerNumber}: ${displayName}`, pe.color, true);
       }
 
       // Hide slots 2, 3
@@ -963,7 +1021,8 @@ export class EnergyHud {
 
           s.hud.rootEl.style.transform = `translateX(-50%) scale(${scale.toFixed(3)})`;
           s.hud.rootEl.style.bottom = "8px";
-          s.hud.update(pe.character, dt, `P${pe.playerNumber}: ${pe.name}`, pe.color, true);
+          const displayName = pe.character.hasCustomName && pe.character.name ? pe.character.name : `Player ${pe.playerNumber}`;
+          s.hud.update(pe.character, dt, `P${pe.playerNumber}: ${displayName}`, pe.color, true);
         } else {
           // If only 3 players, Q3 is hidden so overview minimap is clean
           s.slotEl.style.display = "none";

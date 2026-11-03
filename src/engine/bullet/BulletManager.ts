@@ -392,8 +392,8 @@ export class BulletManager {
     for (const b of this.bullets) {
       const head = toScreen(b.x, b.y, b.z);
 
-      // 1. Draw fading trail streaks
-      if (b.trail.length >= 2) {
+      // 1. Draw bullet purely as a fading streak / trail (no head circle)
+      if (b.trail.length >= 1) {
         for (let i = 0; i < b.trail.length - 1; i++) {
           const p1 = b.trail[i];
           const p2 = b.trail[i + 1];
@@ -411,29 +411,19 @@ export class BulletManager {
           ctx.stroke();
         }
 
-        // Connect latest trail point to current head
+        // Leading bright streak connecting to current bullet position
         const lastP = b.trail[b.trail.length - 1];
         const lastS = toScreen(lastP.x, lastP.y, lastP.z);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.strokeStyle = b.color || "#ffffff";
+        ctx.shadowColor = b.color || "#fbbf24";
+        ctx.shadowBlur = 6;
         ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
         ctx.beginPath();
         ctx.moveTo(lastS.x, lastS.y);
         ctx.lineTo(head.x, head.y);
         ctx.stroke();
       }
-
-      // 2. Draw luminous bullet projectile tip
-      ctx.fillStyle = "#ffffff";
-      ctx.shadowColor = b.color || "#fbbf24";
-      ctx.shadowBlur = 6;
-      ctx.beginPath();
-      ctx.arc(head.x, head.y, 2.8, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = b.color || "#f59e0b";
-      ctx.beginPath();
-      ctx.arc(head.x, head.y, 1.8, 0, Math.PI * 2);
-      ctx.fill();
     }
 
     ctx.restore();

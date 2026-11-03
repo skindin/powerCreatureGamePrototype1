@@ -324,6 +324,36 @@ export class PlayerManager {
     return Math.min(PlayerManager.MAX_LOCAL_PLAYERS, this.players.size + 1);
   }
 
+  /**
+   * Enforces sequential player slot numbers (P1, P2, P3, P4) and distinct theme colors
+   * across all active local player devices, keeping character colors and name tags in sync.
+   */
+  public syncLocalPlayerSlots(): void {
+    if (this.isOnlineMode) return;
+    const entries = Array.from(this.players.values()).sort((a, b) => a.playerNumber - b.playerNumber);
+    entries.forEach((p, index) => {
+      const slotNum = index + 1;
+      const slotColor = PLAYER_COLORS[(slotNum - 1) % PLAYER_COLORS.length];
+      p.playerNumber = slotNum;
+      p.color = slotColor;
+      p.character.playerNumber = slotNum;
+      p.character.playerColor = slotColor;
+      p.character.color = slotColor;
+      if (!p.character.hasCustomName || /^Player(\s+\d+)?$/i.test(p.character.name.trim())) {
+        p.character.name = `Player ${slotNum}`;
+        p.name = `Player ${slotNum}`;
+      }
+    });
+    if (this.players.size === 0 && this.baseCharacter) {
+      this.baseCharacter.playerNumber = 1;
+      this.baseCharacter.playerColor = PLAYER_COLORS[0];
+      this.baseCharacter.color = PLAYER_COLORS[0];
+      if (!this.baseCharacter.hasCustomName || /^Player(\s+\d+)?$/i.test(this.baseCharacter.name.trim())) {
+        this.baseCharacter.name = "Player 1";
+      }
+    }
+  }
+
   public spawnKeyboardPlayer(): Character {
     const current = this.players.get("keyboard");
     if (current) return current.character;
@@ -416,6 +446,7 @@ export class PlayerManager {
       }
     };
     this.players.set("keyboard", entry);
+    this.syncLocalPlayerSlots();
 
     this.onPlayersChanged?.();
     this.onPlayerJoined?.(entry);
@@ -446,6 +477,7 @@ export class PlayerManager {
 
     this.players.delete("keyboard");
     this.inputManager.isKeyboardActive = false;
+    this.syncLocalPlayerSlots();
     this.onPlayersChanged?.();
     this.onPlayerRemoved?.("keyboard");
   }
@@ -552,6 +584,7 @@ export class PlayerManager {
       }
     };
     this.players.set(key, entry);
+    this.syncLocalPlayerSlots();
 
     const slot = this.inputManager.gamepadSlots.get(slotIndex);
     if (slot) {
@@ -594,6 +627,7 @@ export class PlayerManager {
       slot.isActive = false;
     }
 
+    this.syncLocalPlayerSlots();
     this.onPlayersChanged?.();
     this.onPlayerRemoved?.(key);
   }

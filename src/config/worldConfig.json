@@ -1,6 +1,6 @@
 {
-  "version": 265,
-  "lastSaved": "2026-11-03T19:49:50.323Z",
+  "version": 267,
+  "lastSaved": "2026-11-03T20:42:10.003Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -2568,19 +2568,15 @@
         ],
         "blocks": [
           {
-            "type": "locomotion",
-            "id": "block-locomotion",
-            "name": "Locomotion",
+            "type": "walkSprint",
+            "id": "block-walk",
+            "name": "Walk & Sprint",
             "enabled": true,
             "moveKeys": {
               "upKey": "KeyW",
               "downKey": "KeyS",
               "leftKey": "KeyA",
               "rightKey": "MouseLeft"
-            },
-            "jump": {
-              "code": "Space",
-              "requireCleanPress": false
             },
             "sprint": {
               "code": "ShiftLeft",
@@ -2597,6 +2593,17 @@
               "code": "GamepadLB"
             },
             "cursorSteerMode": "whenHoldingButton"
+          },
+          {
+            "type": "jump",
+            "id": "block-jump",
+            "name": "Jump",
+            "enabled": true,
+            "jump": {
+              "code": "Space",
+              "requireCleanPress": false
+            },
+            "requireCleanPress": false
           },
           {
             "type": "itemInteraction",
@@ -2621,6 +2628,9 @@
             "additionalPickup": {
               "code": "MouseRight",
               "gateButtons": []
+            },
+            "fireWeapon": {
+              "code": "MouseRight"
             }
           },
           {
@@ -2655,7 +2665,10 @@
             },
             "enableProximityCancel": true,
             "cancelRadius": 1.5,
-            "triggerMargin": 0.15
+            "triggerMargin": 0.15,
+            "throwOverrideTrigger": {
+              "code": "KeyT"
+            }
           },
           {
             "type": "melee",
@@ -2938,9 +2951,9 @@
         ],
         "blocks": [
           {
-            "type": "locomotion",
-            "id": "block-locomotion-gp",
-            "name": "Locomotion",
+            "type": "walkSprint",
+            "id": "block-walk-gp",
+            "name": "Walk & Sprint",
             "enabled": true,
             "mode": "analogStick",
             "moveKeys": {
@@ -2948,10 +2961,6 @@
               "downKey": "GamepadDpadDown",
               "leftKey": "GamepadDpadLeft",
               "rightKey": "GamepadDpadRight",
-              "requireCleanPress": false
-            },
-            "jump": {
-              "code": "GamepadA",
               "requireCleanPress": false
             },
             "sprint": {
@@ -2973,6 +2982,17 @@
             "stickCursorInFront": true,
             "cursorMaxDistance": 4,
             "lockCursorDistanceToMax": true
+          },
+          {
+            "type": "jump",
+            "id": "block-jump-gp",
+            "name": "Jump",
+            "enabled": true,
+            "jump": {
+              "code": "GamepadA",
+              "requireCleanPress": false
+            },
+            "requireCleanPress": false
           },
           {
             "type": "itemInteraction",
@@ -4637,6 +4657,7 @@
         "hasGravity": true,
         "hasRollModule": false,
         "hasConsumableModule": false,
+        "hasGunModule": false,
         "hasHealthModule": true,
         "hasDamageAuraModule": false,
         "hasDamageSolverModule": true,
@@ -6254,6 +6275,9 @@
               "additionalPickup": {
                 "code": "MouseRight",
                 "gateButtons": []
+              },
+              "fireWeapon": {
+                "code": "MouseRight"
               }
             },
             {
@@ -6288,7 +6312,10 @@
               },
               "enableProximityCancel": true,
               "cancelRadius": 1.5,
-              "triggerMargin": 0.15
+              "triggerMargin": 0.15,
+              "throwOverrideTrigger": {
+                "code": "KeyT"
+              }
             },
             {
               "type": "melee",

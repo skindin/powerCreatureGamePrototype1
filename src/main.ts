@@ -771,26 +771,7 @@ async function bootstrap(): Promise<void> {
       gameLoop?.playerManager.clearRemoteCharacters();
       if (gameLoop?.playerManager) {
         // In local mode, ensure all active local players retain their distinct slot numbers & colors
-        for (const p of gameLoop.playerManager.players.values()) {
-          const expectedNum = p.playerNumber || 1;
-          const expectedColor = PLAYER_COLORS[(expectedNum - 1) % PLAYER_COLORS.length];
-          p.color = expectedColor;
-          p.character.playerNumber = expectedNum;
-          p.character.playerColor = expectedColor;
-          p.character.color = expectedColor;
-          if (!p.character.hasCustomName || /^Player(\s+\d+)?$/i.test(p.character.name.trim())) {
-            p.character.name = `Player ${expectedNum}`;
-            p.name = `Player ${expectedNum}`;
-          }
-        }
-        if (gameLoop.playerManager.players.size === 0 && gameLoop.playerManager.baseCharacter) {
-          const base = gameLoop.playerManager.baseCharacter;
-          base.color = PLAYER_COLORS[0];
-          base.playerColor = PLAYER_COLORS[0];
-          base.playerNumber = 1;
-          base.playerId = "";
-          base.name = localStorage.getItem("pcg_player_handle") || "Player 1";
-        }
+        gameLoop.playerManager.syncLocalPlayerSlots();
       }
     } else if (mode === "boomerang") {
       persistentPingHud?.classList.remove("hidden");
