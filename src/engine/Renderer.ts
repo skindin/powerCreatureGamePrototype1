@@ -69,6 +69,7 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private trajectoryRenderer: TrajectoryRenderer;
   private laserRenderer: LaserRenderer;
+  public cameraSmoothedPositions: Map<string, { x: number; y: number }> = new Map();
 
   public viewSettings: ViewSettings = {
     verticalVisuals: "hover",
@@ -136,17 +137,59 @@ export class Renderer {
     isPaused = false,
     localHeroCharacter?: Character | null,
     remoteOverrides?: Map<string, { x: number; y: number; z: number; facingAngle?: number; isClimbing?: boolean }>
-  ): void {
+  ): CanvasViewport {
     const ctx = this.ctx;
-    const ppu = ctx.canvas.width / arena.width; // Pixels per unit (e.g. 1000 / 20 = 50 px/u)
-
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const canvasW = ctx.canvas.width;
+    const canvasH = ctx.canvas.height;
 
     const characters: Character[] = Array.isArray(characterInput)
       ? characterInput
       : (characterInput ? [characterInput] : []);
 
     const hero = localHeroCharacter !== undefined ? localHeroCharacter : (characters[0] || null);
+
+    // Zoom level: comfortable view showing ~20 units horizontally
+    const ppu = Math.max(30, Math.min(60, canvasW / 20));
+    const viewWorldW = canvasW / ppu;
+    const viewWorldH = canvasH / ppu;
+    const halfViewW = viewWorldW / 2;
+    const halfViewH = viewWorldH / 2;
+
+    let targetCamX = arena.width / 2;
+    let targetCamY = arena.height / 2;
+    if (hero) {
+      targetCamX = hero.position.x;
+      targetCamY = hero.position.y;
+    }
+
+    // Border-clamping: camera stops at arena edge so void outside map is hidden
+    const clampedCamX = arena.width > viewWorldW
+      ? Math.max(halfViewW, Math.min(arena.width - halfViewW, targetCamX))
+      : arena.width / 2;
+    const clampedCamY = arena.height > viewWorldH
+      ? Math.max(halfViewH, Math.min(arena.height - halfViewH, targetCamY))
+      : arena.height / 2;
+
+    // Smooth camera lerp
+    const camKey = hero?.playerId || "single-cam";
+    let currentCam = this.cameraSmoothedPositions.get(camKey);
+    if (!currentCam || Math.hypot(clampedCamX - currentCam.x, clampedCamY - currentCam.y) > 12) {
+      currentCam = { x: clampedCamX, y: clampedCamY };
+    } else {
+      currentCam.x += (clampedCamX - currentCam.x) * 0.16;
+      currentCam.y += (clampedCamY - currentCam.y) * 0.16;
+    }
+    this.cameraSmoothedPositions.set(camKey, currentCam);
+
+    const offsetX = canvasW / 2 - currentCam.x * ppu;
+    const offsetY = canvasH / 2 - currentCam.y * ppu;
+
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    ctx.fillStyle = "#090d16";
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    ctx.save();
+    ctx.translate(offsetX, offsetY);
 
     this.renderArenaScene(
       arena,
@@ -167,13 +210,26 @@ export class Renderer {
       remoteOverrides,
       false
     );
+
+    ctx.restore();
+
+    return {
+      x: 0,
+      y: 0,
+      width: canvasW,
+      height: canvasH,
+      scale: ppu,
+      offsetX,
+      offsetY,
+    };
   }
 
   /**
-   * Phase 9: Side-by-Side Split Screen Renderer for Multi-Client Simulation Test
-   * Renders an isolated client view for each local player simultaneously side-by-side on the canvas.
-   * Both viewports render the Server Ghost Clones for real-time comparison.
-   * Returns CanvasViewport[] for precise mouse coordinate transformation across any split screen index.
+   * Split Screen Renderer for 2–4 Local Players:
+   * - 2 Players: Left and Right halves (vertical divider)
+   * - 3–4 Players: 4 Quadrants in a 2x2 grid (P1 top-left, P2 top-right, P3 bottom-left, Q4 overview/waiting or P4)
+   * Camera follows each character smoothly with arena border clamping.
+   * Dedicated HP and Energy HUD is rendered directly inside each player's viewport.
    */
   public renderSplitScreen(
     arena: Arena,
@@ -195,125 +251,111 @@ export class Renderer {
     ctx.fillStyle = "#090d16";
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    const count = Math.max(2, playerViews.length);
-    const vpW = canvasW / count;
-    const vpH = canvasH;
-
-    // Determine scale to fit arena in each viewport with comfortable padding
-    const horizPadding = 24;
-    const topMargin = 44; // Space for the client header badge
-    const bottomMargin = 16;
-    const availW = vpW - horizPadding;
-    const availH = vpH - topMargin - bottomMargin;
-    const scale = Math.min(availW / arena.width, availH / arena.height);
-
+    const isQuadrantMode = playerViews.length >= 3;
     const viewports: CanvasViewport[] = [];
     const allCharacters = playerViews.map((pv) => pv.character);
 
-    for (let i = 0; i < playerViews.length; i++) {
-      const pv = playerViews[i];
-      const vpX = i * vpW;
-      const vpY = 0;
+    if (!isQuadrantMode) {
+      // --- 2 Players: Left and Right Halves ---
+      const vpW = canvasW / 2;
+      const vpH = canvasH;
+      const ppu = 44; // Pixels per unit for 2-player split
 
-      const arenaPxW = arena.width * scale;
-      const arenaPxH = arena.height * scale;
-      const offsetX = vpX + (vpW - arenaPxW) / 2;
-      const offsetY = topMargin + (availH - arenaPxH) / 2;
+      for (let i = 0; i < 2; i++) {
+        const pv = playerViews[i];
+        if (!pv) continue;
+        const vpX = i * vpW;
+        const vpY = 0;
 
-      viewports.push({
-        x: vpX,
-        y: vpY,
-        width: vpW,
-        height: vpH,
-        scale,
-        offsetX,
-        offsetY,
-      });
+        const viewWorldW = vpW / ppu;
+        const viewWorldH = vpH / ppu;
+        const halfViewW = viewWorldW / 2;
+        const halfViewH = viewWorldH / 2;
 
-      // 1. Clip and Render Arena
+        const targetCamX = pv.character.position.x;
+        const targetCamY = pv.character.position.y;
+
+        const clampedCamX = arena.width > viewWorldW
+          ? Math.max(halfViewW, Math.min(arena.width - halfViewW, targetCamX))
+          : arena.width / 2;
+        const clampedCamY = arena.height > viewWorldH
+          ? Math.max(halfViewH, Math.min(arena.height - halfViewH, targetCamY))
+          : arena.height / 2;
+
+        const camKey = pv.character.playerId || `p-${pv.playerNumber}`;
+        let currentCam = this.cameraSmoothedPositions.get(camKey);
+        if (!currentCam || Math.hypot(clampedCamX - currentCam.x, clampedCamY - currentCam.y) > 12) {
+          currentCam = { x: clampedCamX, y: clampedCamY };
+        } else {
+          currentCam.x += (clampedCamX - currentCam.x) * 0.16;
+          currentCam.y += (clampedCamY - currentCam.y) * 0.16;
+        }
+        this.cameraSmoothedPositions.set(camKey, currentCam);
+
+        const offsetX = vpX + vpW / 2 - currentCam.x * ppu;
+        const offsetY = vpY + vpH / 2 - currentCam.y * ppu;
+
+        const vp: CanvasViewport = {
+          x: vpX,
+          y: vpY,
+          width: vpW,
+          height: vpH,
+          scale: ppu,
+          offsetX,
+          offsetY,
+        };
+        viewports.push(vp);
+
+        // 1. Clip and Render Viewport
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(vpX, vpY, vpW, vpH);
+        ctx.clip();
+
+        ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
+        ctx.fillRect(vpX, vpY, vpW, vpH);
+
+        ctx.translate(offsetX, offsetY);
+        const activeAimCursors: ActiveAimCursor[] = pv.activeAimCursor ? [pv.activeAimCursor] : [];
+
+        this.renderArenaScene(
+          arena,
+          allCharacters,
+          objects,
+          ppu,
+          selectedEntity,
+          isEditMode,
+          hoverEntity,
+          targetGrabEntities,
+          false,
+          null,
+          ghostSnapshot,
+          activeAimCursors,
+          null,
+          false,
+          pv.character,
+          remoteOverrides,
+          true
+        );
+        ctx.restore();
+
+        // 2. Viewport Header Overlay
+        this.drawViewportHeader(ctx, vp, pv, ghostSnapshot);
+
+        // 3. Viewport HP & Energy HUD connected to focused character
+        this.drawViewportHud(ctx, vp, pv.character, pv.playerColor, false);
+      }
+
+      // Vertical Divider Line
       ctx.save();
-      ctx.beginPath();
-      ctx.rect(vpX, vpY, vpW, vpH);
-      ctx.clip();
-
-      // Subtle viewport background scrim
-      ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
-      ctx.fillRect(vpX, vpY, vpW, vpH);
-
-      // Translate context to center the arena within this split view
-      ctx.translate(offsetX, offsetY);
-
-      // Only pass aim cursor relevant for this client view
-      const activeAimCursors: ActiveAimCursor[] = pv.activeAimCursor ? [pv.activeAimCursor] : [];
-
-      this.renderArenaScene(
-        arena,
-        allCharacters,
-        objects,
-        scale,
-        selectedEntity,
-        isEditMode,
-        hoverEntity,
-        targetGrabEntities,
-        false,
-        null,
-        ghostSnapshot,
-        activeAimCursors,
-        null,
-        false,
-        pv.character,
-        remoteOverrides,
-        true
-      );
-
-      ctx.restore();
-
-      // 2. Viewport Header Overlay
-      ctx.save();
-      const badgeW = vpW - 24;
-      const badgeH = 28;
-      const badgeX = vpX + 12;
-      const badgeY = 8;
-
-      ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
-      ctx.beginPath();
-      ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
-      ctx.fill();
-
-      ctx.strokeStyle = `${pv.playerColor}88`;
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-
-      // Left Title: Icon + CLIENT 1 / 2 + Name
-      const icon = pv.isKeyboard ? "⌨️" : "🎮";
-      ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-      ctx.fillStyle = pv.playerColor;
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      ctx.fillText(`${icon} CLIENT ${pv.playerNumber}: ${pv.playerName} View`, badgeX + 10, badgeY + badgeH / 2);
-
-      // Right Pill: Telemetry Status
-      ctx.font = "9px monospace";
-      ctx.fillStyle = "#94a3b8";
-      ctx.textAlign = "right";
-      const latencyStr = ghostSnapshot ? `${Math.round(ghostSnapshot.rttMs)}ms` : "--ms";
-      ctx.fillText(`0ms Prediction • Server RTT: ${latencyStr}`, badgeX + badgeW - 10, badgeY + badgeH / 2);
-
-      ctx.restore();
-    }
-
-    // 3. Central Vertical Divider Line between viewports
-    ctx.save();
-    for (let i = 1; i < count; i++) {
-      const divX = i * vpW;
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+      const divX = canvasW / 2;
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(divX, 0);
       ctx.lineTo(divX, canvasH);
       ctx.stroke();
 
-      // Small central badge at bottom
       const cBadgeW = 140;
       const cBadgeH = 20;
       const cBadgeX = divX - cBadgeW / 2;
@@ -332,11 +374,421 @@ export class Renderer {
       ctx.fillStyle = "#38bdf8";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("⚡ DUAL CLIENT SIMS", divX, cBadgeY + cBadgeH / 2);
+      ctx.fillText("⚡ 2-PLAYER SPLIT", divX, cBadgeY + cBadgeH / 2);
+      ctx.restore();
+
+    } else {
+      // --- 3–4 Players: 4 Quadrants (2x2 Grid) ---
+      const vpW = canvasW / 2;
+      const vpH = canvasH / 2;
+      const ppu = 38; // Pixels per unit for quadrant view
+
+      const quadOffsets = [
+        { x: 0, y: 0 },         // Q0: Top-Left (P1)
+        { x: vpW, y: 0 },       // Q1: Top-Right (P2)
+        { x: 0, y: vpH },       // Q2: Bottom-Left (P3)
+        { x: vpW, y: vpH },     // Q3: Bottom-Right (P4 or Overview/Waiting)
+      ];
+
+      for (let i = 0; i < 4; i++) {
+        const vpX = quadOffsets[i].x;
+        const vpY = quadOffsets[i].y;
+
+        if (i < playerViews.length) {
+          const pv = playerViews[i];
+          const viewWorldW = vpW / ppu;
+          const viewWorldH = vpH / ppu;
+          const halfViewW = viewWorldW / 2;
+          const halfViewH = viewWorldH / 2;
+
+          const targetCamX = pv.character.position.x;
+          const targetCamY = pv.character.position.y;
+
+          const clampedCamX = arena.width > viewWorldW
+            ? Math.max(halfViewW, Math.min(arena.width - halfViewW, targetCamX))
+            : arena.width / 2;
+          const clampedCamY = arena.height > viewWorldH
+            ? Math.max(halfViewH, Math.min(arena.height - halfViewH, targetCamY))
+            : arena.height / 2;
+
+          const camKey = pv.character.playerId || `p-${pv.playerNumber}`;
+          let currentCam = this.cameraSmoothedPositions.get(camKey);
+          if (!currentCam || Math.hypot(clampedCamX - currentCam.x, clampedCamY - currentCam.y) > 12) {
+            currentCam = { x: clampedCamX, y: clampedCamY };
+          } else {
+            currentCam.x += (clampedCamX - currentCam.x) * 0.16;
+            currentCam.y += (clampedCamY - currentCam.y) * 0.16;
+          }
+          this.cameraSmoothedPositions.set(camKey, currentCam);
+
+          const offsetX = vpX + vpW / 2 - currentCam.x * ppu;
+          const offsetY = vpY + vpH / 2 - currentCam.y * ppu;
+
+          const vp: CanvasViewport = {
+            x: vpX,
+            y: vpY,
+            width: vpW,
+            height: vpH,
+            scale: ppu,
+            offsetX,
+            offsetY,
+          };
+          viewports.push(vp);
+
+          // 1. Clip and Render
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(vpX, vpY, vpW, vpH);
+          ctx.clip();
+
+          ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
+          ctx.fillRect(vpX, vpY, vpW, vpH);
+
+          ctx.translate(offsetX, offsetY);
+          const activeAimCursors: ActiveAimCursor[] = pv.activeAimCursor ? [pv.activeAimCursor] : [];
+
+          this.renderArenaScene(
+            arena,
+            allCharacters,
+            objects,
+            ppu,
+            selectedEntity,
+            isEditMode,
+            hoverEntity,
+            targetGrabEntities,
+            false,
+            null,
+            ghostSnapshot,
+            activeAimCursors,
+            null,
+            false,
+            pv.character,
+            remoteOverrides,
+            true
+          );
+          ctx.restore();
+
+          // 2. Viewport Header
+          this.drawViewportHeader(ctx, vp, pv, ghostSnapshot);
+
+          // 3. Viewport HP & Energy HUD
+          this.drawViewportHud(ctx, vp, pv.character, pv.playerColor, true);
+
+        } else if (i === 3 && playerViews.length === 3) {
+          // Q3: 3-Player mode - overview minimap & waiting banner
+          const vp: CanvasViewport = {
+            x: vpX,
+            y: vpY,
+            width: vpW,
+            height: vpH,
+            scale: ppu,
+            offsetX: vpX,
+            offsetY: vpY,
+          };
+          viewports.push(vp);
+          this.renderWaitingQuadrant(arena, vp, allCharacters);
+        }
+      }
+
+      // 4-Quadrant Divider Lines (Cross)
+      ctx.save();
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+      ctx.lineWidth = 2;
+
+      // Vertical line
+      ctx.beginPath();
+      ctx.moveTo(canvasW / 2, 0);
+      ctx.lineTo(canvasW / 2, canvasH);
+      ctx.stroke();
+
+      // Horizontal line
+      ctx.beginPath();
+      ctx.moveTo(0, canvasH / 2);
+      ctx.lineTo(canvasW, canvasH / 2);
+      ctx.stroke();
+
+      // Central glowing cross badge
+      const cBadgeW = 140;
+      const cBadgeH = 22;
+      const cBadgeX = canvasW / 2 - cBadgeW / 2;
+      const cBadgeY = canvasH / 2 - cBadgeH / 2;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+      ctx.beginPath();
+      ctx.roundRect(cBadgeX, cBadgeY, cBadgeW, cBadgeH, 999);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.75)";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.font = "bold 9px monospace";
+      ctx.fillStyle = "#38bdf8";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("⚡ 4-PLAYER ARENA", canvasW / 2, canvasH / 2);
+      ctx.restore();
     }
-    ctx.restore();
 
     return viewports;
+  }
+
+  private drawViewportHeader(
+    ctx: CanvasRenderingContext2D,
+    vp: CanvasViewport,
+    pv: SplitScreenPlayerView,
+    ghostSnapshot?: GhostSnapshot | null
+  ): void {
+    ctx.save();
+    const badgeW = vp.width - 24;
+    const badgeH = 24;
+    const badgeX = vp.x + 12;
+    const badgeY = vp.y + 6;
+
+    ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 5);
+    ctx.fill();
+
+    ctx.strokeStyle = `${pv.playerColor}88`;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    const icon = pv.isKeyboard ? "⌨️" : "🎮";
+    ctx.font = "bold 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillStyle = pv.playerColor;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${icon} P${pv.playerNumber}: ${pv.playerName}`, badgeX + 8, badgeY + badgeH / 2);
+
+    if (ghostSnapshot) {
+      ctx.font = "9px monospace";
+      ctx.fillStyle = "#94a3b8";
+      ctx.textAlign = "right";
+      const latencyStr = `${Math.round(ghostSnapshot.rttMs)}ms`;
+      ctx.fillText(`RTT: ${latencyStr}`, badgeX + badgeW - 8, badgeY + badgeH / 2);
+    }
+    ctx.restore();
+  }
+
+  private drawViewportHud(
+    ctx: CanvasRenderingContext2D,
+    vp: CanvasViewport,
+    char: Character,
+    playerColor: string,
+    isQuadrant: boolean
+  ): void {
+    ctx.save();
+
+    const hudW = Math.min(vp.width - 24, isQuadrant ? 380 : 440);
+    const hudH = isQuadrant ? 36 : 42;
+    const hudX = vp.x + (vp.width - hudW) / 2;
+    const hudY = vp.y + vp.height - hudH - 8;
+
+    // Glass panel background
+    ctx.fillStyle = "rgba(10, 15, 26, 0.88)";
+    ctx.beginPath();
+    ctx.roundRect(hudX, hudY, hudW, hudH, 6);
+    ctx.fill();
+
+    ctx.strokeStyle = `${playerColor}66`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Two columns: Left (Health), Right (Energy & Stamina)
+    const colPad = 8;
+    const gap = 10;
+    const colW = (hudW - colPad * 2 - gap) / 2;
+
+    // --- Column 1: Health ---
+    const col1X = hudX + colPad;
+    const col1Y = hudY + (isQuadrant ? 4 : 6);
+
+    const maxHp = char.healthModule ? char.healthModule.maxHpProp.literalValue : 100;
+    const curHp = char.healthModule ? char.healthModule.currentHp : maxHp;
+    const hpRatio = Math.max(0, Math.min(1, curHp / maxHp));
+
+    // Col 1 Title
+    ctx.font = isQuadrant ? "bold 9px monospace" : "bold 10px monospace";
+    ctx.fillStyle = "#fca5a5";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(`❤️ HP: ${Math.round(curHp)}/${maxHp}`, col1X, col1Y);
+
+    // Col 1 Bar Track
+    const barH = isQuadrant ? 8 : 10;
+    const barY = col1Y + (isQuadrant ? 13 : 16);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+    ctx.beginPath();
+    ctx.roundRect(col1X, barY, colW, barH, 2);
+    ctx.fill();
+
+    // Health Fill
+    if (hpRatio > 0) {
+      const hpGrad = ctx.createLinearGradient(col1X, barY, col1X + colW * hpRatio, barY);
+      hpGrad.addColorStop(0, "#b91c1c");
+      hpGrad.addColorStop(1, "#ef4444");
+      ctx.fillStyle = hpGrad;
+      ctx.beginPath();
+      ctx.roundRect(col1X, barY, colW * hpRatio, barH, 2);
+      ctx.fill();
+    }
+
+    // --- Column 2: Energy & Stamina ---
+    const col2X = col1X + colW + gap;
+    const col2Y = col1Y;
+
+    const props = char.properties;
+    const pool = char.energyPool;
+    const maxStamina = pool ? pool.getMaxStamina(props) : 5000;
+    const curStamina = pool ? pool.getCurrentStamina(props) : maxStamina;
+    const isExhausted = pool ? Boolean(pool.isExhausted) : false;
+    const staminaRatio = maxStamina > 0 ? Math.max(0, Math.min(1, curStamina / maxStamina)) : 1;
+
+    let activeWatts = 0;
+    if (pool && pool.enabled) {
+      for (const a of pool.getActiveAllocations(props)) {
+        activeWatts += a.grantedWatts || 0;
+      }
+    }
+
+    // Col 2 Title
+    ctx.font = isQuadrant ? "bold 9px monospace" : "bold 10px monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    if (isExhausted) {
+      ctx.fillStyle = "#ef4444";
+      ctx.fillText("⚠️ EXHAUSTED", col2X, col2Y);
+    } else {
+      ctx.fillStyle = "#86efac";
+      const roundedWatts = Math.round(activeWatts);
+      const suffix = roundedWatts > 0 ? ` (-${roundedWatts}W)` : "";
+      ctx.fillText(`⚡ STAMINA: ${Math.round(curStamina)}J${suffix}`, col2X, col2Y);
+    }
+
+    // Col 2 Bar Track
+    ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+    ctx.beginPath();
+    ctx.roundRect(col2X, barY, colW, barH, 2);
+    ctx.fill();
+
+    // Stamina Fill
+    if (staminaRatio > 0) {
+      const stamGrad = ctx.createLinearGradient(col2X, barY, col2X + colW * staminaRatio, barY);
+      if (isExhausted) {
+        stamGrad.addColorStop(0, "#991b1b");
+        stamGrad.addColorStop(1, "#dc2626");
+      } else {
+        stamGrad.addColorStop(0, "#15803d");
+        stamGrad.addColorStop(1, "#22c55e");
+      }
+      ctx.fillStyle = stamGrad;
+      ctx.beginPath();
+      ctx.roundRect(col2X, barY, colW * staminaRatio, barH, 2);
+      ctx.fill();
+    }
+
+    // 20% Exhaustion Recovery Tick
+    const tickX = col2X + colW * 0.20;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.65)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(tickX, barY - 1);
+    ctx.lineTo(tickX, barY + barH + 1);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  private renderWaitingQuadrant(
+    arena: Arena,
+    vp: CanvasViewport,
+    allCharacters: Character[]
+  ): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(vp.x, vp.y, vp.width, vp.height);
+    ctx.clip();
+
+    // Dark sleek background
+    ctx.fillStyle = "#070b14";
+    ctx.fillRect(vp.x, vp.y, vp.width, vp.height);
+
+    // Subtle radial gradient in center
+    const cx = vp.x + vp.width / 2;
+    const cy = vp.y + vp.height / 2;
+    const bgGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, vp.width / 2);
+    bgGrad.addColorStop(0, "rgba(56, 189, 248, 0.08)");
+    bgGrad.addColorStop(1, "rgba(15, 23, 42, 0)");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(vp.x, vp.y, vp.width, vp.height);
+
+    // Minimap in upper area
+    const mapPadding = 16;
+    const mapAvailH = vp.height - 80;
+    const mapAvailW = vp.width - mapPadding * 2;
+    const mapScale = Math.min(mapAvailW / arena.width, mapAvailH / arena.height);
+    const mapW = arena.width * mapScale;
+    const mapH = arena.height * mapScale;
+    const mapX = vp.x + (vp.width - mapW) / 2;
+    const mapY = vp.y + 16;
+
+    // Minimap border & floor
+    ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+    ctx.fillRect(mapX, mapY, mapW, mapH);
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.35)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mapX, mapY, mapW, mapH);
+
+    // Minimap walls
+    ctx.fillStyle = "#334155";
+    for (const w of arena.walls) {
+      ctx.fillRect(mapX + w.x * mapScale, mapY + w.y * mapScale, w.width * mapScale, w.height * mapScale);
+    }
+
+    // Moving player dots on minimap
+    for (const char of allCharacters) {
+      const dotX = mapX + char.position.x * mapScale;
+      const dotY = mapY + char.position.y * mapScale;
+      const col = char.playerColor || char.color || "#ffffff";
+
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Waiting Card Banner
+    const bannerH = 46;
+    const bannerY = vp.y + vp.height - bannerH - 12;
+    const bannerW = Math.min(vp.width - 32, 380);
+    const bannerX = vp.x + (vp.width - bannerW) / 2;
+
+    ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+    ctx.beginPath();
+    ctx.roundRect(bannerX, bannerY, bannerW, bannerH, 6);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.5)";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillStyle = "#38bdf8";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("👥 PLAYER 4 READY TO JOIN", cx, bannerY + 16);
+
+    ctx.font = "10px monospace";
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText("Press Space on Keyboard or A on Gamepad", cx, bannerY + 32);
+
+    ctx.restore();
   }
 
   /**

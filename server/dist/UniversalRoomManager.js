@@ -3873,22 +3873,22 @@ class HealthModule {
  * Open clearings safely away from arena cover walls.
  */
 __publicField(HealthModule, "RESPAWN_SPAWNS", [
-  { x: 3.5, y: 7, z: 0 },
-  // Slot 1 (West open midfield)
-  { x: 17, y: 3.5, z: 0 },
-  // Slot 2 (East open clearing)
-  { x: 3.5, y: 11, z: 0 },
-  // Slot 3 (Southwest open clearing)
-  { x: 17, y: 11, z: 0 },
-  // Slot 4 (Southeast open clearing)
-  { x: 10, y: 2.2, z: 0 },
-  // Slot 5 (North open clearing)
-  { x: 10, y: 11.8, z: 0 },
-  // Slot 6 (South open clearing)
-  { x: 5.5, y: 7, z: 0 },
-  // Slot 7 (West-central clearing)
-  { x: 14.5, y: 7, z: 0 }
-  // Slot 8 (East-central clearing)
+  { x: 7.5, y: 7.5, z: 0 },
+  // Slot 1 (Northwest quadrant)
+  { x: 22.5, y: 7.5, z: 0 },
+  // Slot 2 (Northeast quadrant)
+  { x: 7.5, y: 22.5, z: 0 },
+  // Slot 3 (Southwest quadrant)
+  { x: 22.5, y: 22.5, z: 0 },
+  // Slot 4 (Southeast quadrant)
+  { x: 15, y: 7, z: 0 },
+  // Slot 5 (North midfield clearing)
+  { x: 15, y: 23, z: 0 },
+  // Slot 6 (South midfield clearing)
+  { x: 7, y: 15, z: 0 },
+  // Slot 7 (West midfield clearing)
+  { x: 23, y: 15, z: 0 }
+  // Slot 8 (East midfield clearing)
 ]);
 class DamageSolverModule {
   // 60ms ~ 3-4 frames
@@ -8718,6 +8718,51 @@ const quarryPreset = {
   description: "Natural quarry ridges and elevated rock ramparts ideal for stone throwing, vertical climbs, and physical cover.",
   generate: (cols, rows) => {
     const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
+    if (cols >= 24 && rows >= 24) {
+      for (let r = 3; r <= 6; r++) {
+        for (let c = 3; c <= 6; c++) {
+          if (!(r === 6 && c === 6)) grid[r][c] = 1;
+        }
+      }
+      for (let r = 3; r <= 6; r++) {
+        for (let c = cols - 7; c <= cols - 4; c++) {
+          if (!(r === 6 && c === cols - 7)) grid[r][c] = 1;
+        }
+      }
+      for (let r = rows - 7; r <= rows - 4; r++) {
+        for (let c = 3; c <= 6; c++) {
+          if (!(r === rows - 7 && c === 6)) grid[r][c] = 1;
+        }
+      }
+      for (let r = rows - 7; r <= rows - 4; r++) {
+        for (let c = cols - 7; c <= cols - 4; c++) {
+          if (!(r === rows - 7 && c === cols - 7)) grid[r][c] = 1;
+        }
+      }
+      const midR = Math.floor(rows / 2);
+      const midC = Math.floor(cols / 2);
+      for (let r = midR - 4; r <= midR - 2; r++) {
+        for (let c = midC - 4; c <= midC - 2; c++) grid[r][c] = 1;
+      }
+      for (let r = midR - 4; r <= midR - 2; r++) {
+        for (let c = midC + 2; c <= midC + 4; c++) grid[r][c] = 1;
+      }
+      for (let r = midR + 2; r <= midR + 4; r++) {
+        for (let c = midC - 4; c <= midC - 2; c++) grid[r][c] = 1;
+      }
+      for (let r = midR + 2; r <= midR + 4; r++) {
+        for (let c = midC + 2; c <= midC + 4; c++) grid[r][c] = 1;
+      }
+      for (let r = midR - 1; r <= midR + 1; r++) {
+        grid[r][4] = 1;
+        grid[r][cols - 5] = 1;
+      }
+      for (let c = midC - 1; c <= midC + 1; c++) {
+        grid[4][c] = 1;
+        grid[rows - 5][c] = 1;
+      }
+      return grid;
+    }
     for (let c = 4; c <= 7; c++) grid[2][c] = 1;
     for (let c = 5; c <= 8; c++) grid[3][c] = 1;
     for (let c = 12; c <= 15; c++) grid[2][c] = 1;
@@ -8747,18 +8792,18 @@ if (!Arena.WALL_PRESETS.some((p) => p.id === quarryPreset.id)) {
   Arena.WALL_PRESETS.unshift(quarryPreset);
 }
 const QUARRY_APPLE_SPAWN_POINTS = [
-  { x: 10, y: 2.2, z: 0 },
+  { x: 15, y: 7, z: 0 },
   // North clearing
-  { x: 10, y: 11.8, z: 0 },
+  { x: 15, y: 23, z: 0 },
   // South clearing
-  { x: 3.5, y: 7, z: 0 },
+  { x: 7, y: 15, z: 0 },
   // West clearing
-  { x: 16.5, y: 7, z: 0 },
+  { x: 23, y: 15, z: 0 },
   // East clearing
-  { x: 10, y: 7, z: 0 }
+  { x: 15, y: 15, z: 0 }
   // Center gateway
 ];
-const QUARRY_DUMMY_SPAWN = { x: 14.5, y: 7 };
+const QUARRY_DUMMY_SPAWN = { x: 15, y: 10 };
 function createQuarryStones() {
   return [
     // --- King of the Hill: Central Super Apple ---
@@ -8766,7 +8811,7 @@ function createQuarryStones() {
       id: "super-apple-center",
       name: "Super Apple",
       prefabId: "prefab_super_apple",
-      position: { x: 10, y: 7, z: 0 },
+      position: { x: 15, y: 15, z: 0 },
       mass: 0.45,
       colliderRadius: 0.3,
       color: "#ff1493",
@@ -8784,12 +8829,13 @@ function createQuarryStones() {
         minRadiusFloor: 0.3
       })
     }),
-    // --- Ground Level Throwing Stones ---
+    // --- Ground Level Throwing Stones (Distributed across all 4 Quadrants) ---
+    // Northwest Quadrant (P1 area)
     new GameObject({
-      id: "stone-ground-1",
+      id: "stone-nw-1",
       name: "Small Throwing Stone",
       prefabId: "prefab_stone",
-      position: { x: 4.2, y: 5.8, z: 0 },
+      position: { x: 6.2, y: 6.8, z: 0 },
       mass: 0.65,
       colliderRadius: 0.18,
       color: "#a8a29e",
@@ -8799,10 +8845,24 @@ function createQuarryStones() {
       rollModule: new RollModule({ rollResistance: 0.45 })
     }),
     new GameObject({
-      id: "stone-ground-2",
+      id: "stone-nw-2",
       name: "Throwing Stone",
       prefabId: "prefab_stone",
-      position: { x: 4.8, y: 8.5, z: 0 },
+      position: { x: 8.8, y: 8.5, z: 0 },
+      mass: 0.85,
+      colliderRadius: 0.22,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
+    }),
+    // Northeast Quadrant (P2 area)
+    new GameObject({
+      id: "stone-ne-1",
+      name: "Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 21.2, y: 6.8, z: 0 },
       mass: 0.85,
       colliderRadius: 0.22,
       color: "#78716c",
@@ -8812,10 +8872,10 @@ function createQuarryStones() {
       rollModule: new RollModule({ rollResistance: 0.45 })
     }),
     new GameObject({
-      id: "stone-ground-3",
+      id: "stone-ne-2",
       name: "Heavy Stone",
       prefabId: "prefab_stone",
-      position: { x: 8.2, y: 4.5, z: 0 },
+      position: { x: 23.5, y: 8.5, z: 0 },
       mass: 1.25,
       colliderRadius: 0.28,
       color: "#57534e",
@@ -8824,24 +8884,12 @@ function createQuarryStones() {
       hasVerticalPosition: true,
       rollModule: new RollModule({ rollResistance: 0.5 })
     }),
+    // Southwest Quadrant (P3 area)
     new GameObject({
-      id: "stone-ground-4",
-      name: "Throwing Stone",
-      prefabId: "prefab_stone",
-      position: { x: 11.8, y: 9.5, z: 0 },
-      mass: 0.85,
-      colliderRadius: 0.22,
-      color: "#78716c",
-      bounceMod: 0.15,
-      hasGravity: true,
-      hasVerticalPosition: true,
-      rollModule: new RollModule({ rollResistance: 0.45 })
-    }),
-    new GameObject({
-      id: "stone-ground-5",
+      id: "stone-sw-1",
       name: "Small Throwing Stone",
       prefabId: "prefab_stone",
-      position: { x: 15.2, y: 5.8, z: 0 },
+      position: { x: 6.5, y: 21.5, z: 0 },
       mass: 0.65,
       colliderRadius: 0.18,
       color: "#a8a29e",
@@ -8851,10 +8899,37 @@ function createQuarryStones() {
       rollModule: new RollModule({ rollResistance: 0.45 })
     }),
     new GameObject({
-      id: "stone-ground-6",
+      id: "stone-sw-2",
+      name: "Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 8.8, y: 23.2, z: 0 },
+      mass: 0.85,
+      colliderRadius: 0.22,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
+    }),
+    // Southeast Quadrant (P4 area)
+    new GameObject({
+      id: "stone-se-1",
+      name: "Small Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 21.5, y: 21.5, z: 0 },
+      mass: 0.65,
+      colliderRadius: 0.18,
+      color: "#a8a29e",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
+    }),
+    new GameObject({
+      id: "stone-se-2",
       name: "Heavy Stone",
       prefabId: "prefab_stone",
-      position: { x: 15.8, y: 8.5, z: 0 },
+      position: { x: 23.8, y: 23.2, z: 0 },
       mass: 1.25,
       colliderRadius: 0.28,
       color: "#57534e",
@@ -8862,13 +8937,40 @@ function createQuarryStones() {
       hasGravity: true,
       hasVerticalPosition: true,
       rollModule: new RollModule({ rollResistance: 0.5 })
+    }),
+    // Central Tactical Ammunition
+    new GameObject({
+      id: "stone-center-1",
+      name: "Central Heavy Boulder",
+      prefabId: "prefab_stone",
+      position: { x: 15, y: 13.2, z: 0 },
+      mass: 1.5,
+      colliderRadius: 0.32,
+      color: "#57534e",
+      bounceMod: 0.1,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.5 })
+    }),
+    new GameObject({
+      id: "stone-center-2",
+      name: "Central Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 15, y: 16.8, z: 0 },
+      mass: 0.85,
+      colliderRadius: 0.22,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
     }),
     // --- Elevated Stones on Rock Ramparts (Climb to access high-ground ammunition!) ---
     new GameObject({
-      id: "stone-elevated-1",
-      name: "Rampart Stone",
+      id: "stone-elevated-nw",
+      name: "Rampart Stone NW",
       prefabId: "prefab_stone",
-      position: { x: 6.5, y: 2.5, z: 1 },
+      position: { x: 4.5, y: 4.5, z: 1 },
       mass: 0.9,
       colliderRadius: 0.23,
       color: "#78716c",
@@ -8878,10 +8980,36 @@ function createQuarryStones() {
       rollModule: new RollModule({ rollResistance: 0.45 })
     }),
     new GameObject({
-      id: "stone-elevated-2",
-      name: "Rampart Stone",
+      id: "stone-elevated-ne",
+      name: "Rampart Stone NE",
       prefabId: "prefab_stone",
-      position: { x: 13.5, y: 11.5, z: 1 },
+      position: { x: 24.5, y: 4.5, z: 1 },
+      mass: 0.9,
+      colliderRadius: 0.23,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
+    }),
+    new GameObject({
+      id: "stone-elevated-sw",
+      name: "Rampart Stone SW",
+      prefabId: "prefab_stone",
+      position: { x: 4.5, y: 24.5, z: 1 },
+      mass: 0.9,
+      colliderRadius: 0.23,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 })
+    }),
+    new GameObject({
+      id: "stone-elevated-se",
+      name: "Rampart Stone SE",
+      prefabId: "prefab_stone",
+      position: { x: 24.5, y: 24.5, z: 1 },
       mass: 0.9,
       colliderRadius: 0.23,
       color: "#78716c",
@@ -18782,7 +18910,7 @@ const PLAYER_COLORS = [
 ];
 const version = 258;
 const lastSaved = "2026-11-03T09:00:12.260Z";
-const arena = { "width": 20, "height": 14, "wallHeight": 1, "presetId": "standard", "tileGrid": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]] };
+const arena = { "width": 30, "height": 30, "wallHeight": 1, "presetId": "quarry", "tileGrid": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]] };
 const globalPhysics = { "gravity": 30, "collisionDamageScale": 0.1, "collisionMode": "dynamic" };
 const player = /* @__PURE__ */ JSON.parse('{"name":"Player 1","prefabId":"prefab_player","color":"#f59e0b","mass":1.2,"colliderRadius":0.44,"hasWalking":true,"walkingModule":{"walkInAir":true,"canSprint":true,"maxWalkForce":35,"maxWalkSpeed":5.2,"sprintSpeed":8.06,"walkPowerCapacity":400,"sprintPowerCapacity":1200,"airFriction":1,"walkConsumesEnergy":false,"walkAllowPartialPower":false,"sprintConsumesEnergy":true,"sprintAllowPartialPower":true,"maxWalkPower":400,"maxSprintPower":1200},"hasJump":true,"jumpModule":{"jumpImpulse":16.5,"maxInitialSpeed":8.8,"jumpPowerCapacity":1200,"jumpConsumesEnergy":true,"jumpAllowPartialPower":true},"hasThrow":true,"throwModule":{"throwPowerCapacity":1200,"maxPower":1200,"maxThrowSpeed":69,"throwForce":69,"maxThrowHeight":5,"consumesEnergy":true},"hasHealth":true,"healthModule":{"maxHp":100,"naturalHealRate":2,"joulesPerHp":80,"maxPower":500,"currentHp":100,"hpPerJoule":80,"consumesEnergy":true,"allowPartialPower":true},"hasEnergyPool":true,"energyPool":{"staminaCapacity":5000,"staminaRegenRate":500,"energyPoolCapacity":10000,"currentStamina":5000,"currentEnergy":10000,"muscleEfficiency":0.25,"infiniteEnergy":false,"debugAutoRefillOnEmpty":false},"hasMelee":true,"meleeModule":{"impactForce":350,"maxPower":500,"allowPartialPower":true,"punchFrequency":4,"reach":1.2,"width":0.8},"hasLaser":true,"laserModule":{"maxPower":2000,"maxRange":15,"damageRate":50,"thickness":0.35,"allowPartialPower":true},"damageSolverModule":{"selfImpactWeight":0,"minShockThreshold":0,"enabled":true,"impactSusceptibility":1},"id":"obj-a0git3s","controlSchema":{"id":"default","name":"Default (Action Context)","description":"Standard twin-stick and WASD setup with smart contextual action triggers.","activeDevice":"keyboardMouse","keyboardMouse":{"aiming":{"mode":"faceMouseCursor"},"locomotion":{"mode":"forwardFacingDrive","forwardTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"}},"rules":[{"id":"rule-mvutadk33p6","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutadk3","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingPlainObject"}],"condition":{"type":"holdingPlainObject"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvutfwetv21","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"throw","stageGroup":"action"},{"type":"tagPressed","param":"tag-kbm-ffc1ts"}],"condition":{"type":"stagedActionIs","param":"throw","stageGroup":"action"},"actions":[{"moduleId":"throw","intent":"releaseThrow"}],"action":{"moduleId":"throw","intent":"releaseThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"releaseThrow"}}],"children":[]},{"id":"rule-mvutbcys4cb","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagHeld","param":"tag-kbm-ffc1ts"},"actions":[],"body":[{"type":"nestedThread","threadId":"subthread-mvutc9vqisq","rules":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"stagedActionIs","param":"laser","stageGroup":"action"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"itemAbility","stageGroup":"action"}]}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"},{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"grab","stageGroup":"action"}]}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"},{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}}],"children":[]}]}],"children":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser"}],"condition":{"type":"stagedActionIs","param":"laser"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]}]},{"id":"rule-mvuxjb3jumc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuxjb3j","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagReleased","param":"tag-kbm-ffc1ts"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyuaktqyz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyuakt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-scjxrr"}],"condition":{"type":"tagHeld","param":"tag-kbm-scjxrr"},"actions":[{"moduleId":"locomotion","intent":"jump"}],"action":{"moduleId":"locomotion","intent":"jump"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"jump"}}],"children":[]},{"id":"rule-mvuyukiqe8r","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyukiq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-i3csb0"}],"condition":{"type":"tagPressed","param":"tag-kbm-i3csb0"},"actions":[{"moduleId":"melee","intent":"punch"}],"action":{"moduleId":"melee","intent":"punch"},"body":[{"type":"action","action":{"moduleId":"melee","intent":"punch"}}],"children":[]},{"id":"rule-mvuyutgqxj8","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-mxj04b"}],"condition":{"type":"tagHeld","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},{"moduleId":"laser","intent":"aimLaser"}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}}},{"type":"action","action":{"moduleId":"laser","intent":"aimLaser"}}],"children":[]},{"id":"rule-mvuz1v84zsz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-mxj04b"},{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyy7gta43","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-5ftccu"}],"condition":{"type":"tagHeld","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvuyzn14ezj","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-5ftccu"},{"type":"stagedActionIs","param":"throw","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuz2yjunae","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz2yju","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-6o3l7h"}],"condition":{"type":"tagHeld","param":"tag-kbm-6o3l7h"},"actions":[{"moduleId":"locomotion","intent":"holdSprint"}],"action":{"moduleId":"locomotion","intent":"holdSprint"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"holdSprint"}}],"children":[]},{"id":"rule-mvuz5lavrjc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz5lav","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"emptyHanded"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]},{"id":"rule-mvuz7b3sp8t","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz7b3s","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"holdingObject"},{"type":"targetInReach"},{"type":"stagedActionIs","stageGroup":"interact","param":"none"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"swap"},{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}],"action":{"moduleId":"pickup","intent":"swap"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"swap"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}}],"children":[]},{"id":"rule-mvuz63kzy0m","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz63kz","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-5j0zp9"}],"condition":{"type":"tagPressed","param":"tag-kbm-5j0zp9"},"actions":[{"moduleId":"pickup","intent":"dropItem"}],"action":{"moduleId":"pickup","intent":"dropItem"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"dropItem"}}],"children":[]},{"id":"rule-mvv00aqr8yr","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvv00aqr","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-tn6irx"}],"condition":{"type":"tagReleased","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}}],"children":[]}],"tags":[{"id":"tag-kbm-ffc1ts","name":"Action","trigger":{"device":"mouse","code":"MouseRight","mode":"hold"}},{"id":"tag-kbm-5j0zp9","name":"Drop Item","trigger":{"device":"keyboard","code":"KeyQ","mode":"press"}},{"id":"tag-kbm-5ftccu","name":" Throw Mode","trigger":{"device":"keyboard","code":"KeyA","mode":"hold"}},{"id":"tag-kbm-tn6irx","name":"Interact","trigger":{"device":"keyboard","code":"KeyF","mode":"press"}},{"id":"tag-kbm-scjxrr","name":"Jump","trigger":{"device":"keyboard","code":"Space","mode":"press"}},{"id":"tag-kbm-6o3l7h","name":"Sprint","trigger":{"device":"keyboard","code":"ShiftLeft","mode":"press"}},{"id":"tag-kbm-i3csb0","name":"Melee","trigger":{"device":"keyboard","code":"KeyD","mode":"press"}},{"id":"tag-kbm-mxj04b","name":"Laser","trigger":{"device":"keyboard","code":"KeyS","mode":"press"}}],"channels":{"locomotion":{"mode":"forwardFacingDrive","upKeys":["KeyW","ArrowUp"],"downKeys":["KeyS","ArrowDown"],"leftKeys":["KeyA","ArrowLeft"],"rightKeys":["KeyD","ArrowRight"],"sprintKey":"ShiftLeft","sprintMode":"hold","jumpKey":"Space"},"aiming":{"mode":"faceMouseCursor","rawMouseDragEnabled":true},"interaction":{"enabled":true,"trigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"claimPolicy":"requireCleanPress","allowSwapWhenHolding":true},"throw":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"fireOnReleaseAim":false,"arcModulationSource":"mouseDragY","arcDragHoldThresholdMs":200,"claimPolicy":"requireCleanPress"},"consume":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyE","mode":"hold"},"claimPolicy":"requireCleanPress"},"melee":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyF","mode":"press"},"claimPolicy":"requireCleanPress"},"laser":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","chordModifiers":["AltLeft"],"mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"},"powerModulationSource":"mouseWheel"}},"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}],"blocks":[{"type":"locomotion","id":"block-locomotion","name":"Locomotion","enabled":true,"moveKeys":{"upKey":"KeyW","downKey":"KeyS","leftKey":"KeyA","rightKey":"MouseLeft"},"jump":{"code":"Space"},"sprint":{"code":"ShiftLeft","mode":"hold"},"mode":"walkToMouse","forwardTrigger":{"code":"MouseLeft"},"reverseKey":null,"strafeLeftKey":null,"strafeRightKey":null,"cursorSteerTrigger":{"code":"GamepadLB"},"cursorSteerMode":"whenHoldingButton"},{"type":"itemInteraction","id":"block-items","name":"Item Interaction","enabled":true,"pickup":{"code":null},"drop":{"code":"KeyQ"},"swap":{"code":"KeyF"},"consume":{"code":"KeyE","requireCleanPress":true},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"MouseRight","gateButtons":[]}},{"type":"throw","id":"block-throw","name":"Throwing & Ballistics","enabled":true,"mode":"aimWallClear","chargeTrigger":{"code":"MouseRight","requireCleanPress":false},"aimTrigger":{"code":"MouseRight","requireCleanPress":false},"fireTrigger":{"code":"MouseLeft","requireCleanPress":true},"quickTrigger":{"code":"MouseRight"},"arcModulation":{"source":"mouseDeltaY","autoCursorLock":true,"sensitivity":0.005},"enableProximityCancel":true,"cancelRadius":1.5,"triggerMargin":0.15},{"type":"melee","id":"block-melee","name":"Melee Combat","enabled":true,"punch":{"code":"KeyS"}},{"type":"laser","id":"block-laser","name":"Laser Beam","enabled":true,"aimTrigger":{"code":"KeyD","gateButtons":[]},"aimMode":"mouseWorldPos","fireTrigger":{"code":"MouseRight","autoFireWhenAiming":false},"powerLevel":{"source":"mouseWheel","sensitivity":1}},{"type":"facing","id":"block-facing","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"gamepad":{"leftStick":{"primaryMode":"directLocomotion","dynamicOverride":{"triggerCondition":"whenLtHeld","overrideMode":"cursorSteer"},"cursorSteerSpeed":14,"cursorClampRadius":7.5},"rightStick":{"mode":"twinStickAim"},"rules":[{"id":"pad-laser-aim-lt","name":"Aim Laser (LT)","enabled":true,"priority":105,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"aimLaser"},"tagId":"tag-pad-qq9kph"},{"id":"pad-laser-fire","name":"Fire Laser (RT)","enabled":true,"priority":100,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"fireLaser"},"tagId":"tag-pad-yg4ita"},{"id":"pad-throw-aim-lt","name":"Aim Throw Trajectory (LT)","enabled":true,"priority":95,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"aimThrow"},"tagId":"tag-pad-qq9kph"},{"id":"pad-throw-release","name":"Throw Held Item (RT)","enabled":true,"priority":90,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"release"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"releaseThrow"},"tagId":"tag-pad-yg4ita"},{"id":"pad-pickup-rt","name":"Pick Up Object (RT)","enabled":true,"priority":80,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"press"},"condition":{"type":"targetInReach"},"action":{"moduleId":"throwPickup","intent":"pickupReach"},"tagId":"tag-pad-yg4ita"},{"id":"pad-melee-b","name":"Melee Punch (B)","enabled":true,"priority":75,"trigger":{"device":"gamepad","code":"GamepadB","mode":"press"},"condition":{"type":"emptyHanded"},"action":{"moduleId":"melee","intent":"punch"},"tagId":"tag-pad-wbxscb"},{"id":"pad-jump","name":"Jump (A)","enabled":true,"priority":70,"trigger":{"device":"gamepad","code":"GamepadA","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"jump"},"tagId":"tag-pad-i8r8qh"},{"id":"pad-sprint-toggle","name":"Toggle Sprint (LS)","enabled":true,"priority":60,"trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"toggleSprint"},"tagId":"tag-pad-r7p78d"},{"id":"pad-drop","name":"Drop Item (X)","enabled":true,"priority":50,"trigger":{"device":"gamepad","code":"GamepadX","mode":"press"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"dropItem"},"tagId":"tag-pad-1wlz43"}],"tags":[{"id":"tag-pad-qq9kph","name":"Aim Laser","trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"}},{"id":"tag-pad-yg4ita","name":"Fire Laser","trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"}},{"id":"tag-pad-wbxscb","name":"Melee Punch","trigger":{"device":"gamepad","code":"GamepadB","mode":"press"}},{"id":"tag-pad-i8r8qh","name":"Jump","trigger":{"device":"gamepad","code":"GamepadA","mode":"press"}},{"id":"tag-pad-r7p78d","name":"Toggle Sprint","trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"}},{"id":"tag-pad-1wlz43","name":"Drop Item","trigger":{"device":"gamepad","code":"GamepadX","mode":"press"}}],"blocks":[{"type":"locomotion","id":"block-locomotion-gp","name":"Locomotion","enabled":true,"mode":"analogStick","moveKeys":{"upKey":"GamepadDpadUp","downKey":"GamepadDpadDown","leftKey":"GamepadDpadLeft","rightKey":"GamepadDpadRight","requireCleanPress":false},"jump":{"code":"GamepadA","requireCleanPress":true},"sprint":{"code":"GamepadLS","mode":"toggle","requireCleanPress":true},"forwardTrigger":{"code":"GamepadLT"},"cursorSteerTrigger":{"code":"GamepadLT"},"cursorSteerMode":"whenHoldingButton","reverseKey":"KeyS","strafeLeftKey":"KeyA","strafeRightKey":"KeyD","rawDirectionWhileWalking":true,"stickCursorInFront":true,"cursorMaxDistance":4,"lockCursorDistanceToMax":true},{"type":"itemInteraction","id":"block-items-gp","name":"Item Interaction","enabled":true,"pickup":{"code":null,"requireCleanPress":true},"drop":{"code":"GamepadY","requireCleanPress":true},"swap":{"code":"GamepadB","requireCleanPress":true},"consume":{"code":"GamepadRB","requireCleanPress":false},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"GamepadRT"}},{"type":"throw","id":"block-throw-gp","name":"Throwing & Ballistics","enabled":true,"mode":"triggerPullForce","chargeTrigger":{"code":"GamepadRT","requireCleanPress":true},"aimTrigger":{"code":"GamepadLT","requireCleanPress":false},"fireTrigger":{"code":"GamepadRT","requireCleanPress":true},"quickTrigger":{"code":"GamepadRT","requireCleanPress":true},"triggerMargin":0.15,"arcModulation":{"source":"none","autoCursorLock":false,"sensitivity":0.005},"enableProximityCancel":true,"cancelRadius":1.5},{"type":"melee","id":"block-melee-gp","name":"Melee Combat","enabled":true,"punch":{"code":"GamepadX","requireCleanPress":true}},{"type":"laser","id":"block-laser-gp","name":"Laser Beam","enabled":true,"aimTrigger":{"code":null,"requireCleanPress":false},"aimMode":"mouseWorldPos","fireTrigger":{"code":"GamepadRT","autoFireWhenAiming":false,"requireCleanPress":false},"powerLevel":{"source":"none","sensitivity":1}},{"type":"facing","id":"block-facing-gp","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"touch":{"widgets":[{"id":"touch-move-stick","type":"joystick","label":"Move","anchor":"bottomLeft","offset":{"x":90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[{"id":"deadzone","minDeflection":0,"maxDeflection":0.15,"signalId":"idle"},{"id":"walk","minDeflection":0.15,"maxDeflection":0.65,"signalId":"walk"},{"id":"sprint","minDeflection":0.65,"maxDeflection":1,"signalId":"sprint"}]},{"id":"touch-aim-stick","type":"joystick","label":"Aim","anchor":"bottomRight","offset":{"x":-90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[]},{"id":"touch-jump-btn","type":"actionButton","label":"JUMP","anchor":"bottomRight","offset":{"x":-80,"y":190},"radius":35,"centering":"fixed","snapBackOnRelease":true,"rings":[],"tapAction":"jump"}],"rules":[],"tags":[]},"stages":["none","laser","throw","itemAbility","grab"],"stageGroups":[{"name":"action","stages":["none","laser","throw","itemAbility","grab"]},{"name":"interact","stages":["none","dirty"]}],"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}]},"strength":1,"hasPickup":true,"pickupModule":{"pickupReach":1.3,"maxPower":250,"consumesEnergy":false,"allowPartialPower":false},"hasClimbing":false,"wallEdgeAssistModule":{"hangDistance":0.1,"preventWalkOff":false},"hasDamageSolverModule":true}');
 const objects = /* @__PURE__ */ JSON.parse('[{"id":"stone-ground-1","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":4.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":101}},{"id":"stone-ground-2","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":4.8,"y":8.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0.45},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":102}},{"id":"stone-ground-3","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":8.2,"y":4.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":103}},{"id":"stone-ground-4","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":11.8,"y":9.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":104}},{"id":"stone-ground-5","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":15.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":105}},{"id":"stone-ground-6","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":15.8,"y":8.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":106}},{"id":"stone-elevated-1","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":6.5,"y":2.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":107}},{"id":"stone-elevated-2","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":13.5,"y":11.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":108}},{"id":"obj-u5fhrng","name":"Apple","prefabId":"prefab_apple","position":{"x":10,"y":2.2,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"super-apple-center","name":"Super Apple","prefabId":"prefab_super_apple","position":{"x":10,"y":7,"z":0},"color":"#ff1493","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.45,"colliderRadius":0.3,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.45,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.3},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","unlimited":true,"totalEnergyJoules":10000,"remainingEnergyJoules":10000,"consumeRateWatts":2000,"healRate":0,"minScaleFloor":1,"minRadiusFloor":0.3}},{"id":"obj-zblid1b","name":"Apple","prefabId":"prefab_apple","position":{"x":3.5,"y":7,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-3veyg9h","name":"Apple","prefabId":"prefab_apple","position":{"x":16.5,"y":7,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-mcnn4yg","name":"Apple","prefabId":"prefab_apple","position":{"x":10,"y":11.8,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}}]');

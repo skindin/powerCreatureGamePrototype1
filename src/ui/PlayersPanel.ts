@@ -173,18 +173,18 @@ export class PlayersPanel {
 
     // 1. Update Header badge and button texts
     if (this.badgeTextElement) {
-      this.badgeTextElement.textContent = `Players (${count})`;
+      this.badgeTextElement.textContent = `Players (${count}/4)`;
     }
     const countPill = document.getElementById("players-count-pill");
     if (countPill) {
-      countPill.textContent = count.toString();
+      countPill.textContent = `${count}/4`;
     }
     if (this.quickButton) {
-      this.quickButton.textContent = `👥 ${count} PLAYER${count === 1 ? "" : "S"}`;
+      this.quickButton.textContent = `👥 ${count}/4 PLAYERS`;
       this.quickButton.classList.toggle("has-players", count > 0);
     }
     if (this.headerCountElement) {
-      this.headerCountElement.textContent = `${count} Active`;
+      this.headerCountElement.textContent = `${count}/4 Active`;
     }
 
     // 2. Render Active Players list
@@ -238,6 +238,16 @@ export class PlayersPanel {
 
     // 3. Render Inactive / Available Slots list
     if (this.inactiveListElement) {
+      if (count >= 4) {
+        this.inactiveListElement.innerHTML = `
+          <div class="player-empty-state">
+            <p style="color: #38bdf8; font-weight: 600;">⚡ Maximum 4 local players reached.</p>
+            <p class="sub-hint">Remove an active player above to make room for another controller or device.</p>
+          </div>
+        `;
+        return;
+      }
+
       const inactiveItems: string[] = [];
 
       // Keyboard option if removed

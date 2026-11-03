@@ -103,7 +103,7 @@ export class GameLoop {
   public energyHud?: { update: (deltaSeconds?: number) => void };
 
   public get isSplitScreen(): boolean {
-    return this.splitClientSimsEnabled && this.isMultiplayerMode && this.playerManager.players.size >= 2;
+    return this.playerManager.players.size >= 2;
   }
 
   public renamePlayer(playerId: string, newName: string): boolean {
@@ -429,7 +429,7 @@ export class GameLoop {
 
       const renderGhostData = this.activeMode === "online" ? null : ghostData;
 
-      this.renderer.render(
+      const singleVp = this.renderer.render(
         this.arena,
         this.allCharacters,
         this.objects,
@@ -446,6 +446,7 @@ export class GameLoop {
         localHeroChar,
         remoteOverrides
       );
+      this.inputManager.setKeyboardViewport(singleVp);
     }
   }
 

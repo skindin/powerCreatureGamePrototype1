@@ -87,9 +87,9 @@ async function bootstrap(): Promise<void> {
     const padY = (parseFloat(s.paddingTop) || 0) + (parseFloat(s.paddingBottom) || 0);
     const availW = Math.max(100, wrapper.clientWidth - padX);
     const availH = Math.max(70, wrapper.clientHeight - padY);
-    const scale = Math.max(0.1, Math.min(availW / arena.width, availH / arena.height));
-    canvas.style.width  = `${Math.floor(arena.width  * scale)}px`;
-    canvas.style.height = `${Math.floor(arena.height * scale)}px`;
+    const scale = Math.max(0.1, Math.min(availW / canvas.width, availH / canvas.height));
+    canvas.style.width  = `${Math.floor(canvas.width  * scale)}px`;
+    canvas.style.height = `${Math.floor(canvas.height * scale)}px`;
   };
   const canvasResizeObserver = new ResizeObserver(fitCanvas);
   canvasResizeObserver.observe(canvas.parentElement!);

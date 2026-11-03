@@ -17,6 +17,68 @@ export const quarryPreset: WallMapPreset = {
   generate: (cols: number, rows: number): number[][] => {
     const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
 
+    // Dynamic scale for larger square maps (e.g. 30x30) or classic 20x14
+    if (cols >= 24 && rows >= 24) {
+      // 1. Four Corner Rock Ramparts (elevated climbing shelves at wallHeight 1.0)
+      // Northwest Rampart
+      for (let r = 3; r <= 6; r++) {
+        for (let c = 3; c <= 6; c++) {
+          if (!(r === 6 && c === 6)) grid[r][c] = 1;
+        }
+      }
+      // Northeast Rampart
+      for (let r = 3; r <= 6; r++) {
+        for (let c = cols - 7; c <= cols - 4; c++) {
+          if (!(r === 6 && c === cols - 7)) grid[r][c] = 1;
+        }
+      }
+      // Southwest Rampart
+      for (let r = rows - 7; r <= rows - 4; r++) {
+        for (let c = 3; c <= 6; c++) {
+          if (!(r === rows - 7 && c === 6)) grid[r][c] = 1;
+        }
+      }
+      // Southeast Rampart
+      for (let r = rows - 7; r <= rows - 4; r++) {
+        for (let c = cols - 7; c <= cols - 4; c++) {
+          if (!(r === rows - 7 && c === cols - 7)) grid[r][c] = 1;
+        }
+      }
+
+      // 2. Central Monolith Pillars with tactical 4-way cross corridor (center at ~15, 15)
+      const midR = Math.floor(rows / 2);
+      const midC = Math.floor(cols / 2);
+
+      // Northwest monolith
+      for (let r = midR - 4; r <= midR - 2; r++) {
+        for (let c = midC - 4; c <= midC - 2; c++) grid[r][c] = 1;
+      }
+      // Northeast monolith
+      for (let r = midR - 4; r <= midR - 2; r++) {
+        for (let c = midC + 2; c <= midC + 4; c++) grid[r][c] = 1;
+      }
+      // Southwest monolith
+      for (let r = midR + 2; r <= midR + 4; r++) {
+        for (let c = midC - 4; c <= midC - 2; c++) grid[r][c] = 1;
+      }
+      // Southeast monolith
+      for (let r = midR + 2; r <= midR + 4; r++) {
+        for (let c = midC + 2; c <= midC + 4; c++) grid[r][c] = 1;
+      }
+
+      // 3. Midfield Flank Cover Boulders
+      for (let r = midR - 1; r <= midR + 1; r++) {
+        grid[r][4] = 1;
+        grid[r][cols - 5] = 1;
+      }
+      for (let c = midC - 1; c <= midC + 1; c++) {
+        grid[4][c] = 1;
+        grid[rows - 5][c] = 1;
+      }
+
+      return grid;
+    }
+
     // 1. North Rock Ramparts (elevated climbing shelves)
     for (let c = 4; c <= 7; c++) grid[2][c] = 1;
     for (let c = 5; c <= 8; c++) grid[3][c] = 1;
@@ -58,15 +120,15 @@ if (!Arena.WALL_PRESETS.some((p) => p.id === quarryPreset.id)) {
 
 /** Designated open ground spawn locations for apples in the Quarry */
 export const QUARRY_APPLE_SPAWN_POINTS: { x: number; y: number; z?: number }[] = [
-  { x: 10.0, y: 2.2, z: 0 },   // North clearing
-  { x: 10.0, y: 11.8, z: 0 },  // South clearing
-  { x: 3.5, y: 7.0, z: 0 },    // West clearing
-  { x: 16.5, y: 7.0, z: 0 },   // East clearing
-  { x: 10.0, y: 7.0, z: 0 },   // Center gateway
+  { x: 15.0, y: 7.0, z: 0 },   // North clearing
+  { x: 15.0, y: 23.0, z: 0 },  // South clearing
+  { x: 7.0, y: 15.0, z: 0 },   // West clearing
+  { x: 23.0, y: 15.0, z: 0 },  // East clearing
+  { x: 15.0, y: 15.0, z: 0 },  // Center gateway
 ];
 
-export const QUARRY_PLAYER_SPAWN = { x: 5.5, y: 7.0 };
-export const QUARRY_DUMMY_SPAWN = { x: 14.5, y: 7.0 };
+export const QUARRY_PLAYER_SPAWN = { x: 7.5, y: 7.5 };
+export const QUARRY_DUMMY_SPAWN = { x: 15.0, y: 10.0 };
 
 /**
  * Creates the initial scene freebodies for the Quarry map:
@@ -79,7 +141,7 @@ export function createQuarryStones(): GameObject[] {
       id: "super-apple-center",
       name: "Super Apple",
       prefabId: "prefab_super_apple",
-      position: { x: 10.0, y: 7.0, z: 0 },
+      position: { x: 15.0, y: 15.0, z: 0 },
       mass: 0.45,
       colliderRadius: 0.30,
       color: "#ff1493",
@@ -98,12 +160,13 @@ export function createQuarryStones(): GameObject[] {
       }),
     }),
 
-    // --- Ground Level Throwing Stones ---
+    // --- Ground Level Throwing Stones (Distributed across all 4 Quadrants) ---
+    // Northwest Quadrant (P1 area)
     new GameObject({
-      id: "stone-ground-1",
+      id: "stone-nw-1",
       name: "Small Throwing Stone",
       prefabId: "prefab_stone",
-      position: { x: 4.2, y: 5.8, z: 0 },
+      position: { x: 6.2, y: 6.8, z: 0 },
       mass: 0.65,
       colliderRadius: 0.18,
       color: "#a8a29e",
@@ -113,10 +176,25 @@ export function createQuarryStones(): GameObject[] {
       rollModule: new RollModule({ rollResistance: 0.45 }),
     }),
     new GameObject({
-      id: "stone-ground-2",
+      id: "stone-nw-2",
       name: "Throwing Stone",
       prefabId: "prefab_stone",
-      position: { x: 4.8, y: 8.5, z: 0 },
+      position: { x: 8.8, y: 8.5, z: 0 },
+      mass: 0.85,
+      colliderRadius: 0.22,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
+    }),
+
+    // Northeast Quadrant (P2 area)
+    new GameObject({
+      id: "stone-ne-1",
+      name: "Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 21.2, y: 6.8, z: 0 },
       mass: 0.85,
       colliderRadius: 0.22,
       color: "#78716c",
@@ -126,49 +204,10 @@ export function createQuarryStones(): GameObject[] {
       rollModule: new RollModule({ rollResistance: 0.45 }),
     }),
     new GameObject({
-      id: "stone-ground-3",
+      id: "stone-ne-2",
       name: "Heavy Stone",
       prefabId: "prefab_stone",
-      position: { x: 8.2, y: 4.5, z: 0 },
-      mass: 1.25,
-      colliderRadius: 0.28,
-      color: "#57534e",
-      bounceMod: 0.10,
-      hasGravity: true,
-      hasVerticalPosition: true,
-      rollModule: new RollModule({ rollResistance: 0.50 }),
-    }),
-    new GameObject({
-      id: "stone-ground-4",
-      name: "Throwing Stone",
-      prefabId: "prefab_stone",
-      position: { x: 11.8, y: 9.5, z: 0 },
-      mass: 0.85,
-      colliderRadius: 0.22,
-      color: "#78716c",
-      bounceMod: 0.15,
-      hasGravity: true,
-      hasVerticalPosition: true,
-      rollModule: new RollModule({ rollResistance: 0.45 }),
-    }),
-    new GameObject({
-      id: "stone-ground-5",
-      name: "Small Throwing Stone",
-      prefabId: "prefab_stone",
-      position: { x: 15.2, y: 5.8, z: 0 },
-      mass: 0.65,
-      colliderRadius: 0.18,
-      color: "#a8a29e",
-      bounceMod: 0.15,
-      hasGravity: true,
-      hasVerticalPosition: true,
-      rollModule: new RollModule({ rollResistance: 0.45 }),
-    }),
-    new GameObject({
-      id: "stone-ground-6",
-      name: "Heavy Stone",
-      prefabId: "prefab_stone",
-      position: { x: 15.8, y: 8.5, z: 0 },
+      position: { x: 23.5, y: 8.5, z: 0 },
       mass: 1.25,
       colliderRadius: 0.28,
       color: "#57534e",
@@ -178,12 +217,96 @@ export function createQuarryStones(): GameObject[] {
       rollModule: new RollModule({ rollResistance: 0.50 }),
     }),
 
+    // Southwest Quadrant (P3 area)
+    new GameObject({
+      id: "stone-sw-1",
+      name: "Small Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 6.5, y: 21.5, z: 0 },
+      mass: 0.65,
+      colliderRadius: 0.18,
+      color: "#a8a29e",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
+    }),
+    new GameObject({
+      id: "stone-sw-2",
+      name: "Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 8.8, y: 23.2, z: 0 },
+      mass: 0.85,
+      colliderRadius: 0.22,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
+    }),
+
+    // Southeast Quadrant (P4 area)
+    new GameObject({
+      id: "stone-se-1",
+      name: "Small Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 21.5, y: 21.5, z: 0 },
+      mass: 0.65,
+      colliderRadius: 0.18,
+      color: "#a8a29e",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
+    }),
+    new GameObject({
+      id: "stone-se-2",
+      name: "Heavy Stone",
+      prefabId: "prefab_stone",
+      position: { x: 23.8, y: 23.2, z: 0 },
+      mass: 1.25,
+      colliderRadius: 0.28,
+      color: "#57534e",
+      bounceMod: 0.10,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.50 }),
+    }),
+
+    // Central Tactical Ammunition
+    new GameObject({
+      id: "stone-center-1",
+      name: "Central Heavy Boulder",
+      prefabId: "prefab_stone",
+      position: { x: 15.0, y: 13.2, z: 0 },
+      mass: 1.5,
+      colliderRadius: 0.32,
+      color: "#57534e",
+      bounceMod: 0.10,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.50 }),
+    }),
+    new GameObject({
+      id: "stone-center-2",
+      name: "Central Throwing Stone",
+      prefabId: "prefab_stone",
+      position: { x: 15.0, y: 16.8, z: 0 },
+      mass: 0.85,
+      colliderRadius: 0.22,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
+    }),
+
     // --- Elevated Stones on Rock Ramparts (Climb to access high-ground ammunition!) ---
     new GameObject({
-      id: "stone-elevated-1",
-      name: "Rampart Stone",
+      id: "stone-elevated-nw",
+      name: "Rampart Stone NW",
       prefabId: "prefab_stone",
-      position: { x: 6.5, y: 2.5, z: 1.0 },
+      position: { x: 4.5, y: 4.5, z: 1.0 },
       mass: 0.90,
       colliderRadius: 0.23,
       color: "#78716c",
@@ -193,10 +316,36 @@ export function createQuarryStones(): GameObject[] {
       rollModule: new RollModule({ rollResistance: 0.45 }),
     }),
     new GameObject({
-      id: "stone-elevated-2",
-      name: "Rampart Stone",
+      id: "stone-elevated-ne",
+      name: "Rampart Stone NE",
       prefabId: "prefab_stone",
-      position: { x: 13.5, y: 11.5, z: 1.0 },
+      position: { x: 24.5, y: 4.5, z: 1.0 },
+      mass: 0.90,
+      colliderRadius: 0.23,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
+    }),
+    new GameObject({
+      id: "stone-elevated-sw",
+      name: "Rampart Stone SW",
+      prefabId: "prefab_stone",
+      position: { x: 4.5, y: 24.5, z: 1.0 },
+      mass: 0.90,
+      colliderRadius: 0.23,
+      color: "#78716c",
+      bounceMod: 0.15,
+      hasGravity: true,
+      hasVerticalPosition: true,
+      rollModule: new RollModule({ rollResistance: 0.45 }),
+    }),
+    new GameObject({
+      id: "stone-elevated-se",
+      name: "Rampart Stone SE",
+      prefabId: "prefab_stone",
+      position: { x: 24.5, y: 24.5, z: 1.0 },
       mass: 0.90,
       colliderRadius: 0.23,
       color: "#78716c",

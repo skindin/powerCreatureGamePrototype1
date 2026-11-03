@@ -110,6 +110,9 @@ export class InputManager {
   public keyboardViewport: CanvasViewport | null = null;
 
   public get pixelsPerUnit(): number {
+    if (this.keyboardViewport) {
+      return this.keyboardViewport.scale;
+    }
     return this.canvas && this.arena?.width ? this.canvas.width / this.arena.width : 50;
   }
   private keysPressed: Set<string> = new Set();

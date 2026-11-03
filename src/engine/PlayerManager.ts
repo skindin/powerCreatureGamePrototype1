@@ -311,20 +311,25 @@ export class PlayerManager {
     this.onPlayersChanged?.();
   }
 
+  public static readonly MAX_LOCAL_PLAYERS = 4;
+
   public getNextPlayerNumber(): number {
     const used = new Set<number>();
     for (const p of this.players.values()) {
       used.add(p.playerNumber);
     }
-    for (let num = 1; num <= 8; num++) {
+    for (let num = 1; num <= PlayerManager.MAX_LOCAL_PLAYERS; num++) {
       if (!used.has(num)) return num;
     }
-    return this.players.size + 1;
+    return Math.min(PlayerManager.MAX_LOCAL_PLAYERS, this.players.size + 1);
   }
 
   public spawnKeyboardPlayer(): Character {
     const current = this.players.get("keyboard");
     if (current) return current.character;
+    if (this.players.size >= PlayerManager.MAX_LOCAL_PLAYERS) {
+      return this.primaryCharacter || this.baseCharacter;
+    }
 
     // Check if baseCharacter is currently unassigned (no player device controlling it)
     const isBaseUnassigned = !Array.from(this.players.values()).some((p) => p.character === this.baseCharacter);
@@ -445,6 +450,9 @@ export class PlayerManager {
     const key = `gamepad-${slotIndex}`;
     const existing = this.players.get(key);
     if (existing) return existing.character;
+    if (this.players.size >= PlayerManager.MAX_LOCAL_PLAYERS) {
+      return this.primaryCharacter || this.baseCharacter;
+    }
 
     const cleanName = gamepadName
       ? (gamepadName.length > 28 ? gamepadName.slice(0, 28) + "…" : gamepadName)
