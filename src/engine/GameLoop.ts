@@ -203,6 +203,7 @@ export class GameLoop {
     this.backgroundTimerId = setInterval(() => this.stepIfBackgrounded(performance.now()), 16);
     this.isRunning = true;
     this.lastTime = performance.now();
+    this.syncKeyboardViewport(false);
     requestAnimationFrame((t) => this.tick(t));
   }
 
@@ -227,6 +228,7 @@ export class GameLoop {
 
     this.accumulator += deltaSeconds * this.timeDilation;
     while (this.accumulator >= this.fixedDt) {
+      this.syncKeyboardViewport(false);
       this.updatePhysics(this.fixedDt);
       if (this.onPhysicsTick) {
         this.onPhysicsTick(this.fixedDt, nowMs);
@@ -249,8 +251,7 @@ export class GameLoop {
     this.isRunning = false;
   }
 
-  private renderFrame(deltaSeconds: number): void {
-    // 1. Advance camera viewports and update keyboard viewport BEFORE computing aim cursors so the mouse is 100% in sync with camera!
+  public syncKeyboardViewport(advanceSmoother = false): void {
     if (this.isSplitScreen) {
       const activeEntries = Array.from(this.playerManager.players.values())
         .sort((a, b) => a.playerNumber - b.playerNumber);
@@ -271,7 +272,7 @@ export class GameLoop {
         const entry = activeEntries[i];
         const vpX = isQuadrant ? quadOffsets[i].x : i * vpW;
         const vpY = isQuadrant ? quadOffsets[i].y : 0;
-        const vp = this.renderer.computeCameraViewport(this.arena, entry.character, vpX, vpY, vpW, vpH, ppu, true);
+        const vp = this.renderer.computeCameraViewport(this.arena, entry.character, vpX, vpY, vpW, vpH, ppu, advanceSmoother);
         if (entry.isKeyboard) {
           kbVp = vp;
         }
@@ -290,10 +291,15 @@ export class GameLoop {
         this.inputManager.canvas.width,
         this.inputManager.canvas.height,
         undefined,
-        true
+        advanceSmoother
       );
       this.inputManager.setKeyboardViewport(singleVp);
     }
+  }
+
+  private renderFrame(deltaSeconds: number): void {
+    // 1. Advance camera viewports and update keyboard viewport BEFORE computing aim cursors so the mouse is 100% in sync with camera!
+    this.syncKeyboardViewport(true);
 
     const { targetGrabEntities, activeAimCursors } = this.playerManager.computeAimCursorsAndGrabTargets(
       this.objects,
@@ -437,9 +443,6 @@ export class GameLoop {
 
       // Keyboard viewport was already set at start of frame for 0-lag cursor sync
     } else {
-      // Revert to full-canvas mouse coordinate mapping
-      this.inputManager.setKeyboardViewport(null);
-
       const localHeroChar = this.playerManager.players.get("keyboard")?.character
         || Array.from(this.playerManager.players.values())[0]?.character
         || this.playerManager.baseCharacter

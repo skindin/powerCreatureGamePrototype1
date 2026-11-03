@@ -1,6 +1,6 @@
 {
-  "version": 258,
-  "lastSaved": "2026-11-03T09:00:12.260Z",
+  "version": 260,
+  "lastSaved": "2026-11-03T11:44:13.701Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -2211,11 +2211,11 @@
           },
           {
             "id": "tag-kbm-scjxrr",
-              "name": "Jump",
-              "trigger": {
-                "device": "keyboard",
-                "code": "Space",
-                "mode": "hold"
+            "name": "Jump",
+            "trigger": {
+              "device": "keyboard",
+              "code": "Space",
+              "mode": "hold"
             }
           },
           {
@@ -2579,7 +2579,8 @@
               "rightKey": "MouseLeft"
             },
             "jump": {
-              "code": "Space"
+              "code": "Space",
+              "requireCleanPress": false
             },
             "sprint": {
               "code": "ShiftLeft",
@@ -2905,11 +2906,11 @@
           },
           {
             "id": "tag-pad-i8r8qh",
-              "name": "Jump",
-              "trigger": {
-                "device": "gamepad",
-                "code": "GamepadA",
-                "mode": "hold"
+            "name": "Jump",
+            "trigger": {
+              "device": "gamepad",
+              "code": "GamepadA",
+              "mode": "hold"
             }
           },
           {
@@ -2946,9 +2947,9 @@
               "requireCleanPress": false
             },
             "jump": {
-                "code": "GamepadA",
-                "requireCleanPress": false
-              },
+              "code": "GamepadA",
+              "requireCleanPress": false
+            },
             "sprint": {
               "code": "GamepadLS",
               "mode": "toggle",
@@ -6056,7 +6057,8 @@
                 "rightKey": "MouseLeft"
               },
               "jump": {
-                "code": "Space"
+                "code": "Space",
+                "requireCleanPress": false
               },
               "sprint": {
                 "code": "ShiftLeft",

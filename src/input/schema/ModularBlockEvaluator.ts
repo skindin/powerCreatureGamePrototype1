@@ -234,7 +234,8 @@ export class ModularBlockEvaluator {
     let isSteerCursorActive = false;
 
     // Reticle/Aim target position (works seamlessly for mouse and gamepad reticle)
-    const targetAimPos = execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos;
+    const baseAim = execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos;
+    const targetAimPos = { x: baseAim.x, y: baseAim.y };
 
     // Pre-evaluate locomotion cursor mode states
     const locoBlock = blocks.find((blk) => blk.enabled && blk.type === "locomotion") as LocomotionControlBlock | undefined;
