@@ -289,17 +289,21 @@ export class ModularBlockEvaluator {
     }
 
     // Pre-evaluate laser aiming & firing state for modal arbitration (LASER > CONSUME > THROW > PICKUP)
-    const laserBlock = blocks.find((blk) => blk.enabled && blk.type === "laser") as LaserControlBlock | undefined;
+    const hasLaserCapability = Boolean(char.laserModule && char.laserModule.enabled);
+    const laserBlock = hasLaserCapability
+      ? (blocks.find((blk) => blk.enabled && blk.type === "laser") as LaserControlBlock | undefined)
+      : undefined;
+
     if (laserBlock) {
-      if (isSlotActive(laserBlock.aimTrigger, "hold", false, laserBlock.id, "laser.aim")) {
+      if (laserBlock.aimTrigger?.code && isSlotActive(laserBlock.aimTrigger, "hold", false, laserBlock.id, "laser.aim")) {
         isLaserAiming = true;
       }
-      const isAimConfigured = Boolean(laserBlock.aimTrigger && laserBlock.aimTrigger.code);
-      const canFire = !isAimConfigured || isLaserAiming;
-      if (isLaserAiming && laserBlock.fireTrigger?.autoFireWhenAiming) {
-        isLaserFiring = true;
-      } else if (canFire && isSlotActive(laserBlock.fireTrigger, "hold", false, laserBlock.id, "laser.fire")) {
-        isLaserFiring = true;
+      if (isLaserAiming) {
+        if (laserBlock.fireTrigger?.autoFireWhenAiming) {
+          isLaserFiring = true;
+        } else if (isSlotActive(laserBlock.fireTrigger, "hold", false, laserBlock.id, "laser.fire")) {
+          isLaserFiring = true;
+        }
       }
     }
 
