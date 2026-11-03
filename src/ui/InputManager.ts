@@ -695,6 +695,8 @@ export class InputManager {
 
     window.addEventListener("mousemove", (e) => {
       this.syncModifierStates(e);
+      this.lastClientX = e.clientX;
+      this.lastClientY = e.clientY;
       if (this.isKeyboardSuspended) {
         return;
       }
@@ -792,6 +794,8 @@ export class InputManager {
 
     this.canvas.addEventListener("mousedown", (e) => {
       this.syncModifierStates(e);
+      this.lastClientX = e.clientX;
+      this.lastClientY = e.clientY;
       this.activeInputDevice = "keyboard";
       this.lastMouseMoveTime = performance.now();
 
@@ -1038,21 +1042,25 @@ export class InputManager {
 
   public setKeyboardViewport(vp: CanvasViewport | null): void {
     this.keyboardViewport = vp;
+    this.recomputeMouseWorldPos();
   }
 
-  private updateMousePos(e: MouseEvent): void {
+  public recomputeMouseWorldPos(): void {
+    if (this.lastClientX === null || this.lastClientY === null) return;
+    if (this.lockedAimPos || this.isAwaitingUnlock) return;
+
     const rect = this.canvas.getBoundingClientRect();
     let rawMx = 0;
     let rawMy = 0;
     if (this.keyboardViewport) {
       const vp = this.keyboardViewport;
-      const canvasPixelX = (e.clientX - rect.left) * (this.canvas.width / Math.max(1, rect.width));
-      const canvasPixelY = (e.clientY - rect.top) * (this.canvas.height / Math.max(1, rect.height));
+      const canvasPixelX = (this.lastClientX - rect.left) * (this.canvas.width / Math.max(1, rect.width));
+      const canvasPixelY = (this.lastClientY - rect.top) * (this.canvas.height / Math.max(1, rect.height));
       rawMx = (canvasPixelX - vp.offsetX) / Math.max(0.0001, vp.scale);
       rawMy = (canvasPixelY - vp.offsetY) / Math.max(0.0001, vp.scale);
     } else {
-      rawMx = (e.clientX - rect.left) * (this.arena.width / Math.max(1, rect.width));
-      rawMy = (e.clientY - rect.top) * (this.arena.height / Math.max(1, rect.height));
+      rawMx = (this.lastClientX - rect.left) * (this.arena.width / Math.max(1, rect.width));
+      rawMy = (this.lastClientY - rect.top) * (this.arena.height / Math.max(1, rect.height));
     }
 
     const mx = Math.max(0, Math.min(this.arena.width, rawMx));
@@ -1061,6 +1069,12 @@ export class InputManager {
     this.actualMousePos.y = my;
     this.mousePos.x = mx;
     this.mousePos.y = my;
+  }
+
+  private updateMousePos(e: MouseEvent): void {
+    this.lastClientX = e.clientX;
+    this.lastClientY = e.clientY;
+    this.recomputeMouseWorldPos();
   }
 
   private updateTouchPos(touch: Touch): void {

@@ -2,7 +2,7 @@ import { Arena } from "./Arena.js";
 import { Character } from "../character/Character.js";
 import { GameObject } from "./GameObject.js";
 import { Renderer, RollbackPathPoint, SplitScreenPlayerView } from "./Renderer.js";
-import { InputManager } from "../ui/InputManager.js";
+import { InputManager, type CanvasViewport } from "../ui/InputManager.js";
 import { DevPanel } from "../ui/DevPanel.js";
 import { PlayerManager, PlayerEntry, PLAYER_COLORS } from "./PlayerManager.js";
 import { CollisionResolver, CollisionMode } from "./physics/CollisionResolver.js";
@@ -250,6 +250,51 @@ export class GameLoop {
   }
 
   private renderFrame(deltaSeconds: number): void {
+    // 1. Advance camera viewports and update keyboard viewport BEFORE computing aim cursors so the mouse is 100% in sync with camera!
+    if (this.isSplitScreen) {
+      const activeEntries = Array.from(this.playerManager.players.values())
+        .sort((a, b) => a.playerNumber - b.playerNumber);
+      const isQuadrant = activeEntries.length >= 3;
+      const vpW = this.inputManager.canvas.width / 2;
+      const vpH = isQuadrant ? this.inputManager.canvas.height / 2 : this.inputManager.canvas.height;
+      const ppu = isQuadrant ? 38 : 44;
+
+      const quadOffsets = [
+        { x: 0, y: 0 },
+        { x: vpW, y: 0 },
+        { x: 0, y: vpH },
+        { x: vpW, y: vpH },
+      ];
+
+      let kbVp: CanvasViewport | null = null;
+      for (let i = 0; i < activeEntries.length && i < 4; i++) {
+        const entry = activeEntries[i];
+        const vpX = isQuadrant ? quadOffsets[i].x : i * vpW;
+        const vpY = isQuadrant ? quadOffsets[i].y : 0;
+        const vp = this.renderer.computeCameraViewport(this.arena, entry.character, vpX, vpY, vpW, vpH, ppu, true);
+        if (entry.isKeyboard) {
+          kbVp = vp;
+        }
+      }
+      this.inputManager.setKeyboardViewport(kbVp);
+    } else {
+      const localHeroChar = this.playerManager.players.get("keyboard")?.character
+        || Array.from(this.playerManager.players.values())[0]?.character
+        || this.playerManager.baseCharacter
+        || null;
+      const singleVp = this.renderer.computeCameraViewport(
+        this.arena,
+        localHeroChar,
+        0,
+        0,
+        this.inputManager.canvas.width,
+        this.inputManager.canvas.height,
+        undefined,
+        true
+      );
+      this.inputManager.setKeyboardViewport(singleVp);
+    }
+
     const { targetGrabEntities, activeAimCursors } = this.playerManager.computeAimCursorsAndGrabTargets(
       this.objects,
       this.devPanel.isEditMode
@@ -378,7 +423,7 @@ export class GameLoop {
 
       const renderGhostData = this.activeMode === "online" ? null : ghostData;
 
-      const viewports = this.renderer.renderSplitScreen(
+      this.renderer.renderSplitScreen(
         this.arena,
         playerViews,
         this.objects,
@@ -390,13 +435,7 @@ export class GameLoop {
         this.inputManager.selectedCanvasEntity
       );
 
-      // Route keyboard/mouse coordinates to whichever screen the keyboard player is on
-      const kbIndex = playerViews.findIndex((pv) => pv.isKeyboard);
-      if (kbIndex !== -1 && viewports[kbIndex]) {
-        this.inputManager.setKeyboardViewport(viewports[kbIndex]);
-      } else {
-        this.inputManager.setKeyboardViewport(null);
-      }
+      // Keyboard viewport was already set at start of frame for 0-lag cursor sync
     } else {
       // Revert to full-canvas mouse coordinate mapping
       this.inputManager.setKeyboardViewport(null);
@@ -429,7 +468,7 @@ export class GameLoop {
 
       const renderGhostData = this.activeMode === "online" ? null : ghostData;
 
-      const singleVp = this.renderer.render(
+      this.renderer.render(
         this.arena,
         this.allCharacters,
         this.objects,
@@ -446,7 +485,7 @@ export class GameLoop {
         localHeroChar,
         remoteOverrides
       );
-      this.inputManager.setKeyboardViewport(singleVp);
+      // Viewport was set at start of frame for 0-lag cursor sync
     }
   }
 

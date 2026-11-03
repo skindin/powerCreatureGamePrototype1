@@ -121,6 +121,64 @@ export class Renderer {
     };
   }
 
+  /**
+   * Computes the camera viewport with border clamping and smooth tracking for a character.
+   * Can advance the smoother during render preparation, or sample without advance during draw passes.
+   */
+  public computeCameraViewport(
+    arena: Arena,
+    char: Character | null,
+    vpX: number = 0,
+    vpY: number = 0,
+    vpW: number = this.ctx.canvas.width,
+    vpH: number = this.ctx.canvas.height,
+    customPpu?: number,
+    advanceSmoother: boolean = true
+  ): CanvasViewport {
+    const ppu = customPpu ?? Math.max(30, Math.min(60, vpW / 20));
+    const viewWorldW = vpW / ppu;
+    const viewWorldH = vpH / ppu;
+    const halfViewW = viewWorldW / 2;
+    const halfViewH = viewWorldH / 2;
+
+    let targetCamX = arena.width / 2;
+    let targetCamY = arena.height / 2;
+    if (char) {
+      targetCamX = char.position.x;
+      targetCamY = char.position.y;
+    }
+
+    const clampedCamX = arena.width > viewWorldW
+      ? Math.max(halfViewW, Math.min(arena.width - halfViewW, targetCamX))
+      : arena.width / 2;
+    const clampedCamY = arena.height > viewWorldH
+      ? Math.max(halfViewH, Math.min(arena.height - halfViewH, targetCamY))
+      : arena.height / 2;
+
+    const camKey = char?.playerId || "single-cam";
+    let currentCam = this.cameraSmoothedPositions.get(camKey);
+    if (!currentCam || Math.hypot(clampedCamX - currentCam.x, clampedCamY - currentCam.y) > 12) {
+      currentCam = { x: clampedCamX, y: clampedCamY };
+    } else if (advanceSmoother) {
+      currentCam.x += (clampedCamX - currentCam.x) * 0.22;
+      currentCam.y += (clampedCamY - currentCam.y) * 0.22;
+    }
+    this.cameraSmoothedPositions.set(camKey, currentCam);
+
+    const offsetX = vpX + vpW / 2 - currentCam.x * ppu;
+    const offsetY = vpY + vpH / 2 - currentCam.y * ppu;
+
+    return {
+      x: vpX,
+      y: vpY,
+      width: vpW,
+      height: vpH,
+      scale: ppu,
+      offsetX,
+      offsetY,
+    };
+  }
+
   public render(
     arena: Arena,
     characterInput: Character | Character[],
@@ -148,54 +206,21 @@ export class Renderer {
 
     const hero = localHeroCharacter !== undefined ? localHeroCharacter : (characters[0] || null);
 
-    // Zoom level: comfortable view showing ~20 units horizontally
-    const ppu = Math.max(30, Math.min(60, canvasW / 20));
-    const viewWorldW = canvasW / ppu;
-    const viewWorldH = canvasH / ppu;
-    const halfViewW = viewWorldW / 2;
-    const halfViewH = viewWorldH / 2;
-
-    let targetCamX = arena.width / 2;
-    let targetCamY = arena.height / 2;
-    if (hero) {
-      targetCamX = hero.position.x;
-      targetCamY = hero.position.y;
-    }
-
-    // Border-clamping: camera stops at arena edge so void outside map is hidden
-    const clampedCamX = arena.width > viewWorldW
-      ? Math.max(halfViewW, Math.min(arena.width - halfViewW, targetCamX))
-      : arena.width / 2;
-    const clampedCamY = arena.height > viewWorldH
-      ? Math.max(halfViewH, Math.min(arena.height - halfViewH, targetCamY))
-      : arena.height / 2;
-
-    // Smooth camera lerp
-    const camKey = hero?.playerId || "single-cam";
-    let currentCam = this.cameraSmoothedPositions.get(camKey);
-    if (!currentCam || Math.hypot(clampedCamX - currentCam.x, clampedCamY - currentCam.y) > 12) {
-      currentCam = { x: clampedCamX, y: clampedCamY };
-    } else {
-      currentCam.x += (clampedCamX - currentCam.x) * 0.16;
-      currentCam.y += (clampedCamY - currentCam.y) * 0.16;
-    }
-    this.cameraSmoothedPositions.set(camKey, currentCam);
-
-    const offsetX = canvasW / 2 - currentCam.x * ppu;
-    const offsetY = canvasH / 2 - currentCam.y * ppu;
+    // Sample camera viewport without advancing smoother (was already advanced at start of frame)
+    const vp = this.computeCameraViewport(arena, hero, 0, 0, canvasW, canvasH, undefined, false);
 
     ctx.clearRect(0, 0, canvasW, canvasH);
     ctx.fillStyle = "#090d16";
     ctx.fillRect(0, 0, canvasW, canvasH);
 
     ctx.save();
-    ctx.translate(offsetX, offsetY);
+    ctx.translate(vp.offsetX, vp.offsetY);
 
     this.renderArenaScene(
       arena,
       characters,
       objects,
-      ppu,
+      vp.scale,
       selectedEntity,
       isEditMode,
       hoverEntity,
@@ -213,15 +238,7 @@ export class Renderer {
 
     ctx.restore();
 
-    return {
-      x: 0,
-      y: 0,
-      width: canvasW,
-      height: canvasH,
-      scale: ppu,
-      offsetX,
-      offsetY,
-    };
+    return vp;
   }
 
   /**
@@ -265,57 +282,19 @@ export class Renderer {
         const pv = playerViews[i];
         if (!pv) continue;
         const vpX = i * vpW;
-        const vpY = 0;
-
-        const viewWorldW = vpW / ppu;
-        const viewWorldH = vpH / ppu;
-        const halfViewW = viewWorldW / 2;
-        const halfViewH = viewWorldH / 2;
-
-        const targetCamX = pv.character.position.x;
-        const targetCamY = pv.character.position.y;
-
-        const clampedCamX = arena.width > viewWorldW
-          ? Math.max(halfViewW, Math.min(arena.width - halfViewW, targetCamX))
-          : arena.width / 2;
-        const clampedCamY = arena.height > viewWorldH
-          ? Math.max(halfViewH, Math.min(arena.height - halfViewH, targetCamY))
-          : arena.height / 2;
-
-        const camKey = pv.character.playerId || `p-${pv.playerNumber}`;
-        let currentCam = this.cameraSmoothedPositions.get(camKey);
-        if (!currentCam || Math.hypot(clampedCamX - currentCam.x, clampedCamY - currentCam.y) > 12) {
-          currentCam = { x: clampedCamX, y: clampedCamY };
-        } else {
-          currentCam.x += (clampedCamX - currentCam.x) * 0.16;
-          currentCam.y += (clampedCamY - currentCam.y) * 0.16;
-        }
-        this.cameraSmoothedPositions.set(camKey, currentCam);
-
-        const offsetX = vpX + vpW / 2 - currentCam.x * ppu;
-        const offsetY = vpY + vpH / 2 - currentCam.y * ppu;
-
-        const vp: CanvasViewport = {
-          x: vpX,
-          y: vpY,
-          width: vpW,
-          height: vpH,
-          scale: ppu,
-          offsetX,
-          offsetY,
-        };
+        const vp = this.computeCameraViewport(arena, pv.character, vpX, 0, vpW, vpH, ppu, false);
         viewports.push(vp);
 
         // 1. Clip and Render Viewport
         ctx.save();
         ctx.beginPath();
-        ctx.rect(vpX, vpY, vpW, vpH);
+        ctx.rect(vpX, 0, vpW, vpH);
         ctx.clip();
 
         ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
-        ctx.fillRect(vpX, vpY, vpW, vpH);
+        ctx.fillRect(vpX, 0, vpW, vpH);
 
-        ctx.translate(offsetX, offsetY);
+        ctx.translate(vp.offsetX, vp.offsetY);
         const activeAimCursors: ActiveAimCursor[] = pv.activeAimCursor ? [pv.activeAimCursor] : [];
 
         this.renderArenaScene(
@@ -396,43 +375,7 @@ export class Renderer {
 
         if (i < playerViews.length) {
           const pv = playerViews[i];
-          const viewWorldW = vpW / ppu;
-          const viewWorldH = vpH / ppu;
-          const halfViewW = viewWorldW / 2;
-          const halfViewH = viewWorldH / 2;
-
-          const targetCamX = pv.character.position.x;
-          const targetCamY = pv.character.position.y;
-
-          const clampedCamX = arena.width > viewWorldW
-            ? Math.max(halfViewW, Math.min(arena.width - halfViewW, targetCamX))
-            : arena.width / 2;
-          const clampedCamY = arena.height > viewWorldH
-            ? Math.max(halfViewH, Math.min(arena.height - halfViewH, targetCamY))
-            : arena.height / 2;
-
-          const camKey = pv.character.playerId || `p-${pv.playerNumber}`;
-          let currentCam = this.cameraSmoothedPositions.get(camKey);
-          if (!currentCam || Math.hypot(clampedCamX - currentCam.x, clampedCamY - currentCam.y) > 12) {
-            currentCam = { x: clampedCamX, y: clampedCamY };
-          } else {
-            currentCam.x += (clampedCamX - currentCam.x) * 0.16;
-            currentCam.y += (clampedCamY - currentCam.y) * 0.16;
-          }
-          this.cameraSmoothedPositions.set(camKey, currentCam);
-
-          const offsetX = vpX + vpW / 2 - currentCam.x * ppu;
-          const offsetY = vpY + vpH / 2 - currentCam.y * ppu;
-
-          const vp: CanvasViewport = {
-            x: vpX,
-            y: vpY,
-            width: vpW,
-            height: vpH,
-            scale: ppu,
-            offsetX,
-            offsetY,
-          };
+          const vp = this.computeCameraViewport(arena, pv.character, vpX, vpY, vpW, vpH, ppu, false);
           viewports.push(vp);
 
           // 1. Clip and Render
@@ -444,7 +387,7 @@ export class Renderer {
           ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
           ctx.fillRect(vpX, vpY, vpW, vpH);
 
-          ctx.translate(offsetX, offsetY);
+          ctx.translate(vp.offsetX, vp.offsetY);
           const activeAimCursors: ActiveAimCursor[] = pv.activeAimCursor ? [pv.activeAimCursor] : [];
 
           this.renderArenaScene(
