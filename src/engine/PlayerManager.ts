@@ -19,6 +19,7 @@ import { MeleeModule } from "../character/MeleeModule.js";
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
   name: string;
+  deviceInfo?: string;
   playerNumber: number; // 1, 2, 3, 4
   color: string;
   isKeyboard: boolean;
@@ -471,7 +472,7 @@ export class PlayerManager {
         char.playerColor = char.color || PLAYER_COLORS[0];
       }
       char.color = char.playerColor;
-      if (!char.name || /^Player(\s+\d+)?$/i.test(char.name.trim())) {
+      if (!char.hasCustomName || !char.name || /^Player(\s+\d+)?$/i.test(char.name.trim()) || /Xbox|Controller|Gamepad|DualShock|DualSense/i.test(char.name)) {
         char.name = `Player ${char.playerNumber}`;
         char.hasCustomName = false;
       }
@@ -482,6 +483,7 @@ export class PlayerManager {
       const targetPrefabId = this.baseCharacter?.prefabId || "prefab_player";
       const targetPrefab = prefabManager.get(targetPrefabId);
 
+      const defaultName = `Player ${playerNum}`;
       char = new Character({
         x: slotSpawn.x,
         y: slotSpawn.y,
@@ -491,7 +493,7 @@ export class PlayerManager {
         strength: this.baseCharacter.strength ?? 1.0,
         playerId: key,
         playerNumber: playerNum,
-        name: cleanName,
+        name: defaultName,
         hasCustomName: false,
       });
       char.position.z = slotSpawn.z ?? 0;
@@ -523,7 +525,8 @@ export class PlayerManager {
 
     const entry: PlayerEntry = {
       id: key,
-      name: cleanName,
+      name: char.hasCustomName && char.name ? char.name : `Player ${char.playerNumber}`,
+      deviceInfo: cleanName,
       playerNumber: char.playerNumber,
       color: char.playerColor,
       isKeyboard: false,

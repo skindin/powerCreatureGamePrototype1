@@ -35,8 +35,6 @@ export class HudOverlayPass {
       let chosenName: string;
       if (char.hasCustomName && char.name && char.name.trim().length > 0) {
         chosenName = char.name.trim();
-      } else if (char.name && char.name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(char.name.trim()) && !/^Controller\s+#\d+$/i.test(char.name.trim())) {
-        chosenName = char.name.trim();
       } else {
         chosenName = `Player ${char.playerNumber || 1}`;
       }
