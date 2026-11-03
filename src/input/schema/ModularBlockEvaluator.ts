@@ -686,9 +686,6 @@ export class ModularBlockEvaluator {
             char.isHoldingThrowRelease = false;
             char.isTriggerPullThrowing = false;
             char.activeTrajectory = null;
-            (char as any)._pickupPressCode = null;
-            (char as any)._throwRequiresFreshPress = false;
-            (char as any)._fireRequiresFreshPress = false;
             break;
           }
 
@@ -1123,30 +1120,32 @@ export class ModularBlockEvaluator {
 
           // If the button pressed to pick up or swap this item is STILL held down,
           // firing is strictly locked out until that button is fully released!
-          const pickupCode = (char as any)._pickupPressCode;
-          if (pickupCode) {
-            let isPickupDown = tokens.isDown(pickupCode);
-            let analogVal = 0;
-            if (pickupCode.startsWith("Gamepad")) {
-              const btn = ControlSchemaArbiter.parseGamepadButtonCode(pickupCode);
+          const isButtonCodePhysicallyDown = (code: string | undefined | null): boolean => {
+            if (!code) return false;
+            if (code.startsWith("Gamepad")) {
+              const btn = ControlSchemaArbiter.parseGamepadButtonCode(code);
               if (btn >= 0) {
-                if (execCtx.gamepadStates?.getValue) {
-                  analogVal = execCtx.gamepadStates.getValue(btn);
-                } else if (execCtx.getGamepadButtonValue) {
-                  analogVal = execCtx.getGamepadButtonValue(execCtx.gamepadStates?.slotIndex ?? 0, btn);
-                } else if (execCtx.gamepadStates?.isDown) {
-                  isPickupDown = isPickupDown || execCtx.gamepadStates.isDown(btn);
-                }
+                if (execCtx.gamepadStates?.getValue && execCtx.gamepadStates.getValue(btn) > 0.15) return true;
+                if (execCtx.getGamepadButtonValue && execCtx.getGamepadButtonValue(execCtx.gamepadStates?.slotIndex ?? 0, btn) > 0.15) return true;
+                if (execCtx.gamepadStates?.isDown && execCtx.gamepadStates.isDown(btn)) return true;
               }
-            } else if (pickupCode.startsWith("Mouse")) {
-              const idx = pickupCode === "MouseLeft" ? 0 : pickupCode === "MouseMiddle" ? 1 : pickupCode === "MouseRight" ? 2 : -1;
-              if (idx >= 0 && execCtx.mouseStates?.isDown(idx)) {
-                isPickupDown = true;
-                analogVal = 1.0;
+            } else if (code.startsWith("Mouse")) {
+              const idx = code === "MouseLeft" ? 0 : code === "MouseMiddle" ? 1 : code === "MouseRight" ? 2 : -1;
+              if (idx >= 0) {
+                if (execCtx.isMouseButtonDown(idx)) return true;
+                if (execCtx.mouseStates?.isDown && execCtx.mouseStates.isDown(idx)) return true;
               }
+            } else {
+              if (tokens.isDown(code) || (execCtx.keyStates?.isDown && execCtx.keyStates.isDown(code))) return true;
             }
+            return false;
+          };
 
-            if (isPickupDown || analogVal > 0.05) {
+          const pickupCode = (char as any)._pickupPressCode;
+          const fireCode = b.fireWeapon?.code;
+
+          if (pickupCode) {
+            if (isButtonCodePhysicallyDown(pickupCode)) {
               (char as any)._fireRequiresFreshPress = true;
               (char as any)._throwRequiresFreshPress = true;
             } else {
@@ -1156,28 +1155,23 @@ export class ModularBlockEvaluator {
           }
 
           let isFireBlockedByCleaning = false;
-          if ((char as any)._pickupPressCode && b.fireWeapon && b.fireWeapon.code === (char as any)._pickupPressCode) {
+          if ((char as any)._pickupPressCode && fireCode === (char as any)._pickupPressCode) {
             isFireBlockedByCleaning = true;
           }
 
           if ((char as any)._fireRequiresFreshPress) {
-            if (b.fireWeapon && b.fireWeapon.code) {
-              const fireTriggerVal = getSlotAnalogValue(b.fireWeapon);
-              const isFireDown = isSlotActive(b.fireWeapon, "down", false, b.id, "check");
-              const isFireHold = isSlotActive(b.fireWeapon, "hold", false, b.id, "check");
-              if (fireTriggerVal > 0.05 || isFireDown || isFireHold) {
-                isFireBlockedByCleaning = true;
-              } else {
-                (char as any)._fireRequiresFreshPress = false;
-              }
+            if (fireCode && isButtonCodePhysicallyDown(fireCode)) {
+              isFireBlockedByCleaning = true;
             } else {
               (char as any)._fireRequiresFreshPress = false;
             }
           }
 
+          const isGunOverheated = Boolean(char.heldObject?.gunModule?.isOverheated);
           const isFireSlotActive = Boolean(
             !isThrowOverrideActive &&
             !isFireBlockedByCleaning &&
+            !isGunOverheated &&
             b.fireWeapon && (
               isSlotActive(b.fireWeapon, "hold", false, b.id, "gun.fire") ||
               isSlotActive(b.fireWeapon, "down", false, b.id, "gun.fire") ||

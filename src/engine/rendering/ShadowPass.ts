@@ -35,6 +35,8 @@ export class ShadowPass {
     effectivePos: { x: number; y: number; z: number },
     viewSettings: ViewSettings
   ): void {
+    if (obj.isHeld || obj.heldBy !== null || (obj as any).holder) return;
+
     const z = effectivePos.z;
     if (z <= 0.01) return;
 
@@ -74,6 +76,8 @@ export class ShadowPass {
     effectivePos: { x: number; y: number; z: number },
     viewSettings: ViewSettings
   ): void {
+    if (obj.isHeld || obj.heldBy !== null || (obj as any).holder) return;
+
     const z = effectivePos.z;
     if (z <= 0.01) return;
 
@@ -204,6 +208,8 @@ export class ShadowPass {
     effectivePos: { x: number; y: number; z: number },
     viewSettings: ViewSettings
   ): void {
+    if (obj.isHeld || obj.heldBy !== null || (obj as any).holder) return;
+
     const z = Math.max(
       effectivePos.z,
       obj.supportingSurfaceHeight ?? 0,

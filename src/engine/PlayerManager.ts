@@ -1306,6 +1306,7 @@ export class PlayerManager {
             // Newly picked up: suppress eating if primary feature button was held during pickup
             const gState = this.getGrabSuppressionState(char.id);
             const isButtonHeld = this.inputManager.isMouseDown ||
+              this.inputManager.isRightMouseDown ||
               this.inputManager.justPickedUp ||
               (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
             if (isButtonHeld) {
@@ -1603,6 +1604,7 @@ export class PlayerManager {
                 } else if (pickedUp) {
                   const gState = this.getGrabSuppressionState(char.id);
                   const isButtonHeld = this.inputManager.isMouseDown ||
+                    this.inputManager.isRightMouseDown ||
                     this.inputManager.justPickedUp ||
                     (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
                   if (isButtonHeld) {
@@ -1657,6 +1659,7 @@ export class PlayerManager {
                 } else {
                   const gState = this.getGrabSuppressionState(char.id);
                   const isButtonHeld = this.inputManager.isMouseDown ||
+                    this.inputManager.isRightMouseDown ||
                     this.inputManager.justPickedUp ||
                     (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
                   if (isButtonHeld) {
@@ -1681,6 +1684,7 @@ export class PlayerManager {
               if (pickedUp && held) {
                 const gState = this.getGrabSuppressionState(char.id);
                 const isButtonHeld = this.inputManager.isMouseDown ||
+                  this.inputManager.isRightMouseDown ||
                   this.inputManager.justPickedUp ||
                   (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
                 if (isButtonHeld) {

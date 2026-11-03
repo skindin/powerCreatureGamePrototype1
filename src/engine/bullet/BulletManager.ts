@@ -125,6 +125,25 @@ function getSweptCylinderHit(
  * bullet-to-character / bullet-to-object ray-swept collision, damage deduction,
  * shooter recoil kickback, and target knockback momentum.
  */
+function parseBulletRgb(colorStr: string): { r: number; g: number; b: number } {
+  if (colorStr.startsWith("#")) {
+    let hex = colorStr.slice(1);
+    if (hex.length === 3) {
+      hex = hex.split("").map((c) => c + c).join("");
+    }
+    const val = parseInt(hex, 16);
+    if (!isNaN(val)) {
+      return { r: (val >> 16) & 255, g: (val >> 8) & 255, b: val & 255 };
+    }
+  } else if (colorStr.startsWith("rgb")) {
+    const match = colorStr.match(/\d+/g);
+    if (match && match.length >= 3) {
+      return { r: parseInt(match[0], 10), g: parseInt(match[1], 10), b: parseInt(match[2], 10) };
+    }
+  }
+  return { r: 251, g: 191, b: 36 };
+}
+
 export class BulletManager {
   private static instance: BulletManager | null = null;
 
@@ -559,39 +578,30 @@ export class BulletManager {
     ctx.save();
 
     for (const b of this.bullets) {
-      const head = toScreen(b.x, b.y, b.z);
+      const { r, g, b: colB } = parseBulletRgb(b.color || "#fbbf24");
 
-      // 1. Draw bullet purely as a fading streak / trail (no head circle)
+      // Draw bullet purely as a single continuous fading streak / trail in the bullet's color (no head circle, no dual white stroke)
       if (b.trail.length >= 1) {
-        for (let i = 0; i < b.trail.length - 1; i++) {
-          const p1 = b.trail[i];
-          const p2 = b.trail[i + 1];
+        ctx.shadowColor = `rgba(${r}, ${g}, ${colB}, 0.6)`;
+        ctx.shadowBlur = 4;
+        ctx.lineCap = "round";
+
+        const points = [...b.trail, { x: b.x, y: b.y, z: b.z, alpha: 1.0 }];
+        for (let i = 0; i < points.length - 1; i++) {
+          const p1 = points[i];
+          const p2 = points[i + 1];
           const s1 = toScreen(p1.x, p1.y, p1.z);
           const s2 = toScreen(p2.x, p2.y, p2.z);
 
           const trailAlpha = Math.max(0.05, Math.min(1.0, (p1.alpha + p2.alpha) * 0.5));
-          ctx.strokeStyle = `rgba(251, 191, 36, ${trailAlpha * 0.75})`;
+          ctx.strokeStyle = `rgba(${r}, ${g}, ${colB}, ${trailAlpha.toFixed(2)})`;
           ctx.lineWidth = Math.max(1.2, 2.5 * trailAlpha);
-          ctx.lineCap = "round";
 
           ctx.beginPath();
           ctx.moveTo(s1.x, s1.y);
           ctx.lineTo(s2.x, s2.y);
           ctx.stroke();
         }
-
-        // Leading bright streak connecting to current bullet position
-        const lastP = b.trail[b.trail.length - 1];
-        const lastS = toScreen(lastP.x, lastP.y, lastP.z);
-        ctx.strokeStyle = b.color || "#ffffff";
-        ctx.shadowColor = b.color || "#fbbf24";
-        ctx.shadowBlur = 6;
-        ctx.lineWidth = 2.5;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(lastS.x, lastS.y);
-        ctx.lineTo(head.x, head.y);
-        ctx.stroke();
       }
     }
 

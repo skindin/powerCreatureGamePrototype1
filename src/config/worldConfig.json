@@ -1,6 +1,6 @@
 {
-  "version": 267,
-  "lastSaved": "2026-11-03T20:42:10.003Z",
+  "version": 268,
+  "lastSaved": "2026-11-03T21:43:28.761Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -2630,7 +2630,8 @@
               "gateButtons": []
             },
             "fireWeapon": {
-              "code": "MouseRight"
+              "code": "MouseRight",
+              "requireCleanPress": true
             }
           },
           {
@@ -6277,7 +6278,8 @@
                 "gateButtons": []
               },
               "fireWeapon": {
-                "code": "MouseRight"
+                "code": "MouseRight",
+                "requireCleanPress": true
               }
             },
             {

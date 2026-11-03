@@ -296,7 +296,7 @@ export class EntityPass {
 
     EntityPass.drawConsumableEatingRing(ctx, obj, allCharacters, x, y, renderRadius);
 
-    if (isWithinPickupRange) {
+    if (isWithinPickupRange && !isHeld) {
       const grabRadius = renderRadius + 2;
       ctx.save();
       ctx.beginPath();
@@ -456,7 +456,7 @@ export class EntityPass {
 
     ctx.restore();
 
-    if (isWithinPickupRange) {
+    if (isWithinPickupRange && !isHeld) {
       const grabRadius = r + 3;
       ctx.save();
       ctx.beginPath();

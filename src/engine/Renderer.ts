@@ -739,6 +739,14 @@ export class Renderer {
       // 2. Ground Shadows & Hazard Auras (Rendered BELOW wall squares and entities)
       // Only the shadow fill is covered!
       for (const entity of allRenderables) {
+        const isHeld = Boolean(
+          entity.isHeld ||
+          entity.heldBy !== null ||
+          ((entity as any).holder !== undefined && (entity as any).holder !== null) ||
+          characters.some((c) => c.heldObject === entity)
+        );
+        if (isHeld) continue;
+
         // Draw Damage Aura zone on the floor if equipped
         if (entity.damageAuraModule && entity.damageAuraModule.enabled) {
           HudOverlayPass.drawDamageAura(ctx, entity, ppu);
@@ -849,6 +857,14 @@ export class Renderer {
 
       // 6. Wall-Top Shadows (for entities hovering above walls - rendered on wall tops BEFORE elevated entities)
       for (const entity of allRenderables) {
+        const isHeld = Boolean(
+          entity.isHeld ||
+          entity.heldBy !== null ||
+          ((entity as any).holder !== undefined && (entity as any).holder !== null) ||
+          characters.some((c) => c.heldObject === entity)
+        );
+        if (isHeld) continue;
+
         const effPos = this.getEffectiveObjectPosition(entity, arena, characters);
         ShadowPass.drawObjectWallTopShadowFill(ctx, entity, arena, ppu, effPos, this.viewSettings);
       }
@@ -913,6 +929,14 @@ export class Renderer {
       // 9. Vertical connector lines for elevated entities (renders OVER objects and character!)
       if (useHover) {
         for (const entity of allRenderables) {
+          const isHeld = Boolean(
+            entity.isHeld ||
+            entity.heldBy !== null ||
+            ((entity as any).holder !== undefined && (entity as any).holder !== null) ||
+            characters.some((c) => c.heldObject === entity)
+          );
+          if (isHeld) continue;
+
           const effPos = this.getEffectiveObjectPosition(entity, arena, characters);
           ShadowPass.drawVerticalConnectorLine(ctx, entity, arena, ppu, effPos, this.viewSettings);
         }

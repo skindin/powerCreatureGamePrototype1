@@ -105,11 +105,14 @@ export class GunModule {
 
   /**
    * Updates heat and cooling timers per simulation tick.
+   * If the gun is overheated, it cannot fire, so cooling continues even if the trigger is held!
    */
   public update(dt: number, isFiringNow: boolean): void {
     this.timeSinceLastShot += dt;
 
-    if (!isFiringNow) {
+    const isActuallyFiring = isFiringNow && !this.isOverheated;
+
+    if (!isActuallyFiring) {
       // Dissipate heat towards 0
       const coolRate = 1.0 / this.cooldownTime;
       this.heat = Math.max(0.0, this.heat - coolRate * dt);
