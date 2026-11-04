@@ -612,6 +612,23 @@ export class ModularBlockEvaluator {
             }
             char.isSprinting = isSprinting;
           }
+
+          // Brake (for rolling creatures)
+          if (b.brake) {
+            if (isSlotActive(b.brake, "hold", false, b.id, "locomotion.brake")) {
+              char.isBraking = true;
+              claimSlot(b.brake, b.id, "locomotion.brake", false);
+            } else {
+              char.isBraking = false;
+            }
+          } else if (char.rollMovementModule) {
+            const isKbBrake = tokens.isDown("Space") || tokens.isDown("KeyB");
+            let isGpBrake = false;
+            if (execCtx.gamepadStates) {
+              isGpBrake = execCtx.gamepadStates.isDown(1) || execCtx.gamepadStates.isDown(6);
+            }
+            char.isBraking = isKbBrake || isGpBrake;
+          }
           break;
         }
 

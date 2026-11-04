@@ -939,7 +939,9 @@ export class GameObject {
       const minY = r;
       const maxY = arena.height - r;
 
-      const bRestitution = this.isCharacter ? 0 : (this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0);
+      const bRestitution = this.isCharacter
+        ? ((this as any).rollMovementModule && this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0)
+        : (this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0);
 
       if (this.position.x < minX) {
         this.position.x = minX;
@@ -1215,7 +1217,9 @@ export class GameObject {
       this.lastCollisionType = this.isSweptActive ? "continuous_swept" : "discrete_toi";
       this.lastCollisionTime = performance.now();
 
-      const restitution = this.isCharacter ? 0 : (this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0);
+      const restitution = this.isCharacter
+        ? ((this as any).rollMovementModule && this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0)
+        : (this.hasBounce && this.bounceMod !== null ? this.bounceMod : 0);
       this.resolveWallImpact(normalX, normalY, restitution);
     }
   }

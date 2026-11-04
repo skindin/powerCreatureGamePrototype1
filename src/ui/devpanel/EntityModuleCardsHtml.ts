@@ -44,6 +44,9 @@ export class EntityModuleCardsHtml {
     const hasWalkingModule = isChar && Boolean(char?.walkingModule);
     const walkEnabled = isChar && Boolean(char?.walkingModule?.enabled);
 
+    const hasRollMovementModule = isChar && Boolean(char?.rollMovementModule);
+    const rollMovementEnabled = isChar && Boolean(char?.rollMovementModule?.enabled);
+
     const hasPickupModule = isChar && Boolean(char?.pickupModule);
     const pickupEnabled = isChar && Boolean(char?.pickupModule?.enabled);
 
@@ -369,6 +372,32 @@ export class EntityModuleCardsHtml {
             ${renderToggleRow("check-sprint-energy", "Sprint Consumes Energy", Boolean(char.walkingModule?.sprintConsumesEnergy), "Save Sprint Consumes Energy to project")}
             <div id="field-sprint-partial-power" style="display: ${char.walkingModule?.sprintConsumesEnergy ? "block" : "none"}; padding-left: 8px;">
               ${renderToggleRow("check-sprint-partial-power", "Allow Partial Power", Boolean(char.walkingModule?.sprintAllowPartialPower), "Save Sprint Partial Power to project")}
+            </div>
+            </div>
+          </div>
+        `;
+      }
+
+      
+      if (hasRollMovementModule && char.rollMovementModule) {
+        attachedCount++;
+        html += `
+          <div class="module-card ${!rollMovementEnabled ? "module-disabled" : ""}" data-module-id="rollMovement">
+            ${panel.renderModuleHeader("rollMovement", "🌀 Roll Movement Ability", renderToggleBtn("rollMovement", rollMovementEnabled))}
+            <div id="collapse-body-mod-rollMovement" style="display: ${isCollapsed("mod-rollMovement") ? "none" : "block"};">
+            ${!rollMovementEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Roll Movement Ability is disabled</div>` : ""}
+            <div id="prop-socket-roll-base-accel"></div>
+            <div id="prop-socket-roll-sprint-accel"></div>
+            <div id="prop-socket-roll-max-speed"></div>
+            <div id="prop-socket-roll-sprint-speed"></div>
+            <div id="prop-socket-roll-brake-decel"></div>
+            ${renderToggleRow("check-roll-energy", "Roll Consumes Energy", Boolean(char.rollMovementModule.rollConsumesEnergy), "Save Roll Consumes Energy to project")}
+            <div id="field-roll-partial-power" style="display: ${char.rollMovementModule.rollConsumesEnergy ? "block" : "none"}; padding-left: 8px;">
+              ${renderToggleRow("check-roll-partial-power", "Allow Partial Power", Boolean(char.rollMovementModule.rollAllowPartialPower), "Save Roll Partial Power to project")}
+            </div>
+            ${renderToggleRow("check-roll-sprint-energy", "Sprint Consumes Energy", Boolean(char.rollMovementModule.sprintConsumesEnergy), "Save Sprint Consumes Energy to project")}
+            <div id="field-roll-sprint-partial-power" style="display: ${char.rollMovementModule.sprintConsumesEnergy ? "block" : "none"}; padding-left: 8px;">
+              ${renderToggleRow("check-roll-sprint-partial-power", "Allow Partial Power (Sprint)", Boolean(char.rollMovementModule.sprintAllowPartialPower), "Save Sprint Partial Power to project")}
             </div>
             </div>
           </div>

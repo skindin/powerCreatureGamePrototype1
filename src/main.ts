@@ -308,7 +308,7 @@ async function bootstrap(): Promise<void> {
   // 4. Initialize Renderer & Dev Panel
   let gameLoop: GameLoop | null = null;
   const getAllActiveCharacters = (): Character[] => {
-    return gameLoop ? gameLoop.allCharacters : [character, dummyCharacter];
+    return gameLoop ? gameLoop.allCharacters : [dummyCharacter];
   };
 
   const renderer = new Renderer(ctx);
@@ -440,9 +440,58 @@ async function bootstrap(): Promise<void> {
   (window as any).energyHud = energyHud;
 
   // Keep dev selector synced across dynamic character spawns/removals
+  const joinBanner = document.createElement("div");
+  joinBanner.id = "arena-join-banner";
+  joinBanner.style.cssText = `
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(8px);
+    border-radius: 9999px;
+    padding: 10px 22px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #f1f5f9;
+    font-size: 0.88rem;
+    font-weight: 600;
+    pointer-events: none;
+    z-index: 50;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  `;
+  const canvasWrapper = canvas.parentElement || document.body;
+  canvasWrapper.style.position = "relative";
+  canvasWrapper.appendChild(joinBanner);
+
+  const updateJoinBanner = () => {
+    if (!gameLoop) return;
+    const count = gameLoop.playerManager.players.size;
+    if (count === 0) {
+      joinBanner.style.display = "flex";
+      joinBanner.innerHTML = `
+        <span style="font-size: 1.15rem;">🎮</span>
+        <span>Press Any Key or Controller Button to Join</span>
+      `;
+    } else if (count === 1) {
+      joinBanner.style.display = "flex";
+      joinBanner.innerHTML = `
+        <span style="font-size: 1.15rem;">🎮</span>
+        <span>Press Any Key or Controller Button to Join Player 2</span>
+      `;
+    } else {
+      joinBanner.style.display = "none";
+    }
+  };
+  updateJoinBanner();
+
   const originalOnPlayersChanged = gameLoop.onPlayersChanged;
   gameLoop.onPlayersChanged = () => {
     originalOnPlayersChanged?.();
+    updateJoinBanner();
     devPanel.updateSelectorOptions();
     if (gameLoop) {
       const allChars = gameLoop.allCharacters;

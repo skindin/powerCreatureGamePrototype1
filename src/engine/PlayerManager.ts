@@ -14,6 +14,7 @@ import { DefaultControlBlocks, DefaultGamepadControlBlocks } from "../input/sche
 import type { ControlExecutionContext, ControlRule } from "../input/schema/ControlSchemaTypes.js";
 import { prefabManager } from "./prefab/PrefabManager.js";
 import { applyCharacterConfig, serializeCharacter } from "../config/WorldConfig.js";
+import { CharacterSelectModal } from "../ui/CharacterSelectModal.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -136,12 +137,12 @@ export class PlayerManager {
 
     // Hook input manager on-demand join & disconnect callbacks
     this.inputManager.onKeyboardJoin = () => {
-      this.spawnKeyboardPlayer();
+      this.promptCharacterSelect("keyboard");
     };
 
     this.inputManager.onGamepadJoin = (slotIndex: number) => {
       const slot = this.inputManager.gamepadSlots.get(slotIndex);
-      this.spawnGamepadPlayer(slotIndex, slot?.id);
+      this.promptCharacterSelect(`gamepad-${slotIndex}`, slotIndex, slot?.id);
     };
 
     this.inputManager.onGamepadDisconnected = (slotIndex: number) => {
@@ -185,14 +186,8 @@ export class PlayerManager {
 
   public get allCharacters(): Character[] {
     const activeChars = Array.from(this.players.values()).map((p) => p.character);
-    const remotes = Array.from(this.remotePlayers.values());
+    const remotes = Array.from(this.remotePlayers.values()).map((r: any) => r.character || r);
     const dummies = this.dummyCharacters;
-    if (activeChars.length === 0 && remotes.length === 0) {
-      return [this.baseCharacter, ...dummies];
-    }
-    if (activeChars.length === 0) {
-      return [this.baseCharacter, ...remotes, ...dummies];
-    }
     return [...activeChars, ...remotes, ...dummies];
   }
 
@@ -351,6 +346,122 @@ export class PlayerManager {
         this.baseCharacter.name = "Player 1";
       }
     }
+  }
+
+  public promptCharacterSelect(playerId: string, slotIndex?: number, deviceName?: string): void {
+    if (this.players.has(playerId)) return;
+    if (this.players.size >= PlayerManager.MAX_LOCAL_PLAYERS) return;
+
+    const modal = CharacterSelectModal.getInstance();
+    if (modal.isOpen()) return;
+
+    const playerNum = this.getNextPlayerNumber();
+    modal.open({
+      playerNumber: playerNum,
+      playerId,
+      onSelect: (prefabId) => {
+        this.spawnPlayerWithPrefab(playerId, prefabId, playerNum, slotIndex, deviceName);
+      },
+    });
+  }
+
+  public spawnPlayerWithPrefab(
+    playerId: string,
+    prefabId: string,
+    playerNum: number,
+    slotIndex?: number,
+    deviceName?: string
+  ): Character {
+    const isKeyboard = playerId === "keyboard";
+    const existing = this.players.get(playerId);
+    if (existing) return existing.character;
+
+    const targetPrefab = prefabManager.get(prefabId);
+    const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
+    const slotSpawn = HealthModule.RESPAWN_SPAWNS[(playerNum - 1) % HealthModule.RESPAWN_SPAWNS.length];
+
+    const defaultHandle = isKeyboard
+      ? (() => {
+          try {
+            const h = localStorage.getItem("pcg_player_handle");
+            if (h && h.trim()) return h.trim();
+          } catch {}
+          return `Player ${playerNum}`;
+        })()
+      : (deviceName
+          ? (deviceName.length > 28 ? deviceName.slice(0, 28) + "…" : deviceName)
+          : `Controller #${(slotIndex ?? 0) + 1}`);
+
+    const isBaseUnassigned = !Array.from(this.players.values()).some((p) => p.character === this.baseCharacter);
+    let char: Character;
+
+    if (isBaseUnassigned) {
+      char = this.baseCharacter;
+      char.playerId = playerId;
+      char.playerNumber = playerNum;
+      char.playerColor = color;
+      char.color = color;
+      char.name = defaultHandle;
+    } else {
+      char = new Character({
+        x: slotSpawn.x,
+        y: slotSpawn.y,
+        color,
+        colliderRadius: 0.44,
+        mass: 1.2,
+        strength: 1.0,
+        playerId,
+        playerNumber: playerNum,
+        name: defaultHandle,
+        hasCustomName: false,
+      });
+    }
+
+    if (targetPrefab && targetPrefab.archetype instanceof Character) {
+      const config = serializeCharacter(targetPrefab.archetype);
+      applyCharacterConfig(char, config);
+    }
+
+    char.position.x = slotSpawn.x;
+    char.position.y = slotSpawn.y;
+    char.position.z = slotSpawn.z ?? 0;
+    char.playerNumber = playerNum;
+    char.playerColor = color;
+    char.color = color;
+    char.prefabId = prefabId;
+    char.playerId = playerId;
+
+    const schemaToApply = targetPrefab?.controlSchema || (targetPrefab?.archetype instanceof Character ? targetPrefab.archetype.controlSchema : undefined);
+    if (schemaToApply) {
+      char.controlSchema = JSON.parse(JSON.stringify(schemaToApply));
+    }
+
+    this.arena.syncEntitiesWithWalls([char]);
+
+    if (isKeyboard) {
+      this.inputManager.isKeyboardActive = true;
+    } else if (slotIndex !== undefined) {
+      const slot = this.inputManager.gamepadSlots.get(slotIndex);
+      if (slot) {
+        slot.isActive = true;
+      }
+    }
+
+    const entry: PlayerEntry = {
+      id: playerId,
+      name: char.name,
+      playerNumber: char.playerNumber,
+      color: char.playerColor,
+      character: char,
+      isKeyboard,
+      slotIndex,
+    };
+
+    this.players.set(playerId, entry);
+    this.syncLocalPlayerSlots();
+    this.onPlayersChanged?.();
+
+    return char;
   }
 
   public spawnKeyboardPlayer(): Character {

@@ -31,7 +31,7 @@ export class MotionIntegrator {
           }
           const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
           if (
-            !entity.isCharacter &&
+            (!entity.isCharacter || (entity as any).rollMovementModule) &&
             entity.hasVerticalBounce &&
             entity.bounceMod !== null &&
             entity.bounceMod > 0 &&

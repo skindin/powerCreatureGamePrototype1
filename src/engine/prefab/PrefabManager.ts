@@ -2,6 +2,7 @@ import { GameObject } from "../GameObject.js";
 import { ConsumableModule } from "../ConsumableModule.js";
 import { RollModule } from "../RollModule.js";
 import { GunModule } from "../GunModule.js";
+import { RollMovementModule } from "../../character/RollMovementModule.js";
 import { Prefab } from "./Prefab.js";
 import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
@@ -154,26 +155,78 @@ export class PrefabManager {
     });
     this.prefabs.set(blasterPrefab.id, blasterPrefab);
 
-    // 🧙 Default "Player" character prefab
+    // 🐐 Default "Laser Goat" character prefab
     const playerArchetype = new Character({
       id: "archetype_player",
-      name: "Player",
+      name: "Laser Goat",
       color: "#f59e0b",
       colliderRadius: 0.44,
       mass: 1.2,
       strength: 1.0,
     });
+    playerArchetype.bounceMod = 0.15;
 
     const playerPrefab = new Prefab({
       id: "prefab_player",
-      name: "Player",
-      icon: "🧙",
+      name: "Laser Goat",
+      icon: "🐐",
       archetype: playerArchetype,
     });
 
     playerArchetype.controlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
     playerPrefab.controlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
     this.prefabs.set(playerPrefab.id, playerPrefab);
+
+    // ⚡ Default "Speed Ball" character prefab
+    const speedBallArchetype = new Character({
+      id: "archetype_speed_ball",
+      name: "Speed Ball",
+      color: "#38bdf8",
+      colliderRadius: 0.44,
+      mass: 1.2,
+      strength: 1.0,
+    });
+    speedBallArchetype.bounceMod = 0.85;
+    if (speedBallArchetype.bounceModule) {
+      speedBallArchetype.bounceModule.bounceMod = 0.85;
+      speedBallArchetype.bounceModule.verticalBounce = true;
+    }
+    speedBallArchetype.walkingModule = null;
+    speedBallArchetype.laserModule = null;
+    speedBallArchetype.rollModule = new RollModule({
+      rollResistance: 0.08,
+      bumpyRollEnabled: false,
+      bumpiness: 0,
+    });
+    speedBallArchetype.rollMovementModule = new RollMovementModule({
+      baseAcceleration: 22.0,
+      sprintAcceleration: 45.0,
+      maxRollSpeed: 18.0,
+      maxSprintSpeed: 32.0,
+      brakeDeceleration: 55.0,
+      rollConsumesEnergy: true,
+      rollAllowPartialPower: true,
+    });
+    speedBallArchetype.rollMovementModule.registerProperties(speedBallArchetype.properties);
+
+    const speedBallControlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
+    // Ensure locomotion block has brake assigned to Space / KeyB / Gamepad B / LT
+    if (speedBallControlSchema.blocks) {
+      const loco = speedBallControlSchema.blocks.find((b: any) => b.type === "locomotion" || b.type === "walkSprint");
+      if (loco) {
+        loco.brake = { device: "keyboard", code: "Space", mode: "hold" };
+      }
+    }
+    speedBallArchetype.controlSchema = speedBallControlSchema;
+
+    const speedBallPrefab = new Prefab({
+      id: "prefab_speed_ball",
+      name: "Speed Ball",
+      icon: "⚡",
+      archetype: speedBallArchetype,
+    });
+    speedBallPrefab.controlSchema = speedBallControlSchema;
+    this.prefabs.set(speedBallPrefab.id, speedBallPrefab);
 
     // Default "Hunter" character prefab (Mouse-Facing Drive + Left-Hand Staging)
     const hunterArchetype = new Character({

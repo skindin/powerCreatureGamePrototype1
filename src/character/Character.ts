@@ -22,6 +22,8 @@ import { HealthRegenCapability } from "./capabilities/HealthRegenCapability.js";
 import { ThrowCapability } from "./capabilities/ThrowCapability.js";
 import { LaserCapability } from "./capabilities/LaserCapability.js";
 import { MeleeCapability } from "./capabilities/MeleeCapability.js";
+import { RollMovementModule } from "./RollMovementModule.js";
+import { RollMovementCapability } from "./capabilities/RollMovementCapability.js";
 import type { ControlSchema } from "../input/schema/ControlSchemaTypes.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
@@ -218,6 +220,11 @@ export class Character extends GameObject {
   public meleeAimDir: { x: number; y: number } | null = null;
   public meleeCandidateEntities?: GameObject[];
   public onPunchExecuted?: (hitResult: MeleeHitResult, dirX: number, dirY: number) => void;
+
+  // Rolling creature drive capability & braking state
+  public rollMovementModule: RollMovementModule | null = null;
+  public isBraking: boolean = false;
+  public isDying: boolean = false;
 
   /**
    * Currently active modal or stage state set by custom control schemes (defaults to immutable "none").
@@ -593,6 +600,13 @@ export class Character extends GameObject {
     aimLockDelta = 0,
     hasAuthoredFacingAngle = false
   ): void {
+    if (this.isDying) {
+      this.velocity.x = 0;
+      this.velocity.y = 0;
+      this.verticalVelocity = 0;
+      return;
+    }
+
     this.movementInput.x = movementInput.x;
     this.movementInput.y = movementInput.y;
     this.isClimbInputHeld = isClimbInput;
@@ -604,6 +618,9 @@ export class Character extends GameObject {
 
     // Phase 1: Pre-register active ability demands for proportional power rationing
     const canWalk = LocomotionCapability.registerDemand(this, movementInput);
+    if (this.rollMovementModule) {
+      RollMovementCapability.registerDemand(this, movementInput, this.isBraking, this.isSprinting);
+    }
     HealthRegenCapability.registerDemand(this);
     const canClimb = ClimbingCapability.registerDemand(this, isClimbInput, arena);
 
@@ -616,6 +633,9 @@ export class Character extends GameObject {
     }
 
     LocomotionCapability.actuate(this, canWalk, movementInput, dt, arena);
+    if (this.rollMovementModule) {
+      RollMovementCapability.actuate(this, movementInput, this.isBraking, this.isSprinting, dt, arena);
+    }
 
     // Base physics & collisions
     this.updatePosition(dt, arena);
@@ -691,6 +711,8 @@ export class Character extends GameObject {
    * Primary entry point for dying and respawning.
    */
   public dieAndRespawn(_arena?: Arena, explicitPos?: { x: number; y: number; z?: number }): void {
+    if (this.isDying) return;
+
     if (this.heldObject) {
       if (_arena) {
         const dropPos = this.calculateHeldObjectPosition(_arena);
@@ -710,7 +732,47 @@ export class Character extends GameObject {
       this.heldObject = null;
     }
     this.hasDiedAwaitingNewPickup = true;
+    this.velocity = { x: 0, y: 0 };
+    this.verticalVelocity = 0;
 
+    // For active local players, delay 1.2s and open the Character Selection Window
+    if (!this.isDummy && this.controllerType !== "none" && typeof window !== "undefined") {
+      this.isDying = true;
+      setTimeout(async () => {
+        try {
+          const { CharacterSelectModal } = await import("../ui/CharacterSelectModal.js");
+          const { prefabManager } = await import("../engine/prefab/PrefabManager.js");
+          const { applyCharacterConfig, serializeCharacter } = await import("../config/WorldConfig.js");
+
+          CharacterSelectModal.getInstance().open({
+            playerNumber: this.playerNumber,
+            playerId: this.playerId,
+            onSelect: (chosenPrefabId: string) => {
+              const prefab = prefabManager.get(chosenPrefabId);
+              if (prefab && prefab.archetype instanceof Character) {
+                const config = serializeCharacter(prefab.archetype);
+                applyCharacterConfig(this, config);
+                this.prefabId = chosenPrefabId;
+                if (prefab.controlSchema) {
+                  this.controlSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
+                }
+              }
+              this.isDying = false;
+              this.performRespawn(_arena, explicitPos);
+            },
+          });
+        } catch {
+          this.isDying = false;
+          this.performRespawn(_arena, explicitPos);
+        }
+      }, 1200);
+      return;
+    }
+
+    this.performRespawn(_arena, explicitPos);
+  }
+
+  private performRespawn(_arena?: Arena, explicitPos?: { x: number; y: number; z?: number }): void {
     this.isClimbing = false;
     this.standingWall = null;
     if (this.wallEdgeAssistModule) {

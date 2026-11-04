@@ -6,6 +6,7 @@ import { BounceModule } from "../engine/BounceModule.js";
 import { VerticalPositionModule } from "../engine/VerticalPositionModule.js";
 import { GravityModule } from "../engine/GravityModule.js";
 import { RollModule } from "../engine/RollModule.js";
+import { RollMovementModule } from "../character/RollMovementModule.js";
 import { ConsumableModule } from "../engine/ConsumableModule.js";
 import { GunModule } from "../engine/GunModule.js";
 import { HealthModule } from "../character/HealthModule.js";
@@ -277,6 +278,31 @@ export interface SerializedCharacterConfig {
     minShockThreshold?: number;
     selfImpactWeight?: number;
   } | null;
+  hasBounce?: boolean;
+  bounceMod?: number;
+  verticalBounce?: boolean;
+  hasRollModule?: boolean;
+  rollModule?: {
+    enabled?: boolean;
+    rollResistance?: number;
+    bumpyRollEnabled?: boolean;
+    bumpiness?: number;
+    seed?: number;
+  };
+  hasRollMovement?: boolean;
+  rollMovementModule?: {
+    enabled?: boolean;
+    baseAcceleration?: number;
+    sprintAcceleration?: number;
+    maxRollSpeed?: number;
+    maxSprintSpeed?: number;
+    brakeDeceleration?: number;
+    rollPowerCapacity?: number;
+    sprintPowerCapacity?: number;
+    brakePowerCapacity?: number;
+    consumesEnergy?: boolean;
+    allowPartialPower?: boolean;
+  };
   controlSchema?: ControlSchema;
 }
 
@@ -512,6 +538,44 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
     };
   } else {
     result.hasDamageSolverModule = false;
+  }
+
+  if (char.bounceMod !== undefined && char.bounceMod !== null) {
+    result.hasBounce = char.hasBounce;
+    result.bounceMod = char.bounceMod;
+    result.verticalBounce = char.hasVerticalBounce;
+  }
+
+  if (char.rollModule) {
+    result.hasRollModule = char.rollModule.enabled;
+    result.rollModule = {
+      enabled: char.rollModule.enabled,
+      rollResistance: char.rollModule.rollResistanceProp.get(char.properties),
+      bumpyRollEnabled: char.rollModule.bumpyRollEnabled,
+      bumpiness: char.rollModule.bumpinessProp.get(char.properties),
+      seed: char.rollModule.seed,
+    };
+  } else {
+    result.hasRollModule = false;
+  }
+
+  if (char.rollMovementModule) {
+    result.hasRollMovement = char.rollMovementModule.enabled;
+    result.rollMovementModule = {
+      enabled: char.rollMovementModule.enabled,
+      baseAcceleration: char.rollMovementModule.baseAccelerationProp.get(char.properties),
+      sprintAcceleration: char.rollMovementModule.sprintAccelerationProp.get(char.properties),
+      maxRollSpeed: char.rollMovementModule.maxRollSpeedProp.get(char.properties),
+      maxSprintSpeed: char.rollMovementModule.maxSprintSpeedProp.get(char.properties),
+      brakeDeceleration: char.rollMovementModule.brakeDecelerationProp.get(char.properties),
+      rollPowerCapacity: char.rollMovementModule.maxRollPowerProp.get(char.properties),
+      sprintPowerCapacity: char.rollMovementModule.maxSprintPowerProp.get(char.properties),
+      brakePowerCapacity: char.rollMovementModule.maxBrakePowerProp.get(char.properties),
+      consumesEnergy: char.rollMovementModule.rollConsumesEnergy,
+      allowPartialPower: char.rollMovementModule.rollAllowPartialPower,
+    };
+  } else {
+    result.hasRollMovement = false;
   }
 
   return result;
@@ -793,6 +857,80 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
   if (config.damageAuraModule && char.damageAuraModule) {
     if (config.damageAuraModule.damageRadius !== undefined) char.damageAuraModule.damageRadiusProp.set(config.damageAuraModule.damageRadius, char.properties);
     if (config.damageAuraModule.damageRate !== undefined) char.damageAuraModule.damageRateProp.set(config.damageAuraModule.damageRate, char.properties);
+  }
+
+  if (config.bounceMod !== undefined) {
+    char.bounceMod = config.bounceMod;
+    if (char.bounceModule) {
+      char.bounceModule.bounceMod = config.bounceMod;
+      char.bounceModule.bounceModProp.set(config.bounceMod, char.properties);
+    }
+  }
+  if (config.verticalBounce !== undefined) {
+    if (char.bounceModule) char.bounceModule.verticalBounce = config.verticalBounce;
+  }
+
+  if (config.hasRollModule === false) {
+    char.rollModule = null;
+  } else if (config.rollModule) {
+    if (!char.rollModule) {
+      char.rollModule = new RollModule({
+        enabled: config.rollModule.enabled ?? true,
+        rollResistance: config.rollModule.rollResistance ?? 0.08,
+        bumpyRollEnabled: config.rollModule.bumpyRollEnabled ?? false,
+        bumpiness: config.rollModule.bumpiness ?? 0,
+        seed: config.rollModule.seed,
+      });
+    } else {
+      char.rollModule.enabled = config.rollModule.enabled ?? true;
+      if (config.rollModule.rollResistance !== undefined) {
+        char.rollModule.rollResistanceProp.set(config.rollModule.rollResistance, char.properties);
+      }
+      if (config.rollModule.bumpyRollEnabled !== undefined) {
+        char.rollModule.bumpyRollEnabled = config.rollModule.bumpyRollEnabled;
+      }
+      if (config.rollModule.bumpiness !== undefined) {
+        char.rollModule.bumpinessProp.set(config.rollModule.bumpiness, char.properties);
+      }
+    }
+  }
+
+  if (config.hasRollMovement === false) {
+    char.rollMovementModule = null;
+  } else if (config.rollMovementModule) {
+    if (!char.rollMovementModule) {
+      char.rollMovementModule = new RollMovementModule({
+        enabled: config.rollMovementModule.enabled ?? true,
+        baseAcceleration: config.rollMovementModule.baseAcceleration ?? 22.0,
+        sprintAcceleration: config.rollMovementModule.sprintAcceleration ?? 45.0,
+        maxRollSpeed: config.rollMovementModule.maxRollSpeed ?? 18.0,
+        maxSprintSpeed: config.rollMovementModule.maxSprintSpeed ?? 32.0,
+        brakeDeceleration: config.rollMovementModule.brakeDeceleration ?? 55.0,
+        maxRollPower: config.rollMovementModule.rollPowerCapacity ?? 800.0,
+        maxSprintPower: config.rollMovementModule.sprintPowerCapacity ?? 1800.0,
+        maxBrakePower: config.rollMovementModule.brakePowerCapacity ?? 400.0,
+        rollConsumesEnergy: config.rollMovementModule.consumesEnergy ?? true,
+        rollAllowPartialPower: config.rollMovementModule.allowPartialPower ?? true,
+      });
+      char.rollMovementModule.registerProperties(char.properties);
+    } else {
+      char.rollMovementModule.enabled = config.rollMovementModule.enabled ?? true;
+      if (config.rollMovementModule.baseAcceleration !== undefined) {
+        char.rollMovementModule.baseAccelerationProp.set(config.rollMovementModule.baseAcceleration, char.properties);
+      }
+      if (config.rollMovementModule.sprintAcceleration !== undefined) {
+        char.rollMovementModule.sprintAccelerationProp.set(config.rollMovementModule.sprintAcceleration, char.properties);
+      }
+      if (config.rollMovementModule.maxRollSpeed !== undefined) {
+        char.rollMovementModule.maxRollSpeedProp.set(config.rollMovementModule.maxRollSpeed, char.properties);
+      }
+      if (config.rollMovementModule.maxSprintSpeed !== undefined) {
+        char.rollMovementModule.maxSprintSpeedProp.set(config.rollMovementModule.maxSprintSpeed, char.properties);
+      }
+      if (config.rollMovementModule.brakeDeceleration !== undefined) {
+        char.rollMovementModule.brakeDecelerationProp.set(config.rollMovementModule.brakeDeceleration, char.properties);
+      }
+    }
   }
 
   if (config.damageSolverModule && char.damageSolverModule) {

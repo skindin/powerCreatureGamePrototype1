@@ -12,6 +12,74 @@ export class LocomotionModulesInspector {
     char: Character,
     bindToggleSave: (checkboxId: string, owner: GameObject, keyPath: string, label: string, onApply?: (val: boolean) => void) => void
   ): void {
+    
+    // Roll Movement Module sockets & controls
+    if (char.rollMovementModule) {
+      const baseAccelEl = container.querySelector("#prop-socket-roll-base-accel");
+      if (baseAccelEl) {
+        const c = new PropertyControl({
+          property: char.rollMovementModule.baseAccelerationProp,
+          owner: char,
+          label: "Base Acceleration (u/s²)",
+          step: 0.5,
+        });
+        baseAccelEl.appendChild(c.element);
+      }
+      const sprintAccelEl = container.querySelector("#prop-socket-roll-sprint-accel");
+      if (sprintAccelEl) {
+        const c = new PropertyControl({
+          property: char.rollMovementModule.sprintAccelerationProp,
+          owner: char,
+          label: "Sprint Acceleration (u/s²)",
+          step: 0.5,
+        });
+        sprintAccelEl.appendChild(c.element);
+      }
+      const maxSpeedEl = container.querySelector("#prop-socket-roll-max-speed");
+      if (maxSpeedEl) {
+        const c = new PropertyControl({
+          property: char.rollMovementModule.maxRollSpeedProp,
+          owner: char,
+          label: "Max Roll Speed (u/s)",
+          step: 0.2,
+        });
+        maxSpeedEl.appendChild(c.element);
+      }
+      const sprintSpeedEl = container.querySelector("#prop-socket-roll-sprint-speed");
+      if (sprintSpeedEl) {
+        const c = new PropertyControl({
+          property: char.rollMovementModule.maxSprintSpeedProp,
+          owner: char,
+          label: "Max Sprint Speed (u/s)",
+          step: 0.2,
+        });
+        sprintSpeedEl.appendChild(c.element);
+      }
+      const brakeDecelEl = container.querySelector("#prop-socket-roll-brake-decel");
+      if (brakeDecelEl) {
+        const c = new PropertyControl({
+          property: char.rollMovementModule.brakeDecelerationProp,
+          owner: char,
+          label: "Brake Deceleration (u/s²)",
+          step: 1.0,
+        });
+        brakeDecelEl.appendChild(c.element);
+      }
+
+      bindToggleSave("check-roll-energy", char, "rollMovementModule.rollConsumesEnergy", "Roll Consumes Energy", (v) => {
+        if (char.rollMovementModule) char.rollMovementModule.rollConsumesEnergy = v;
+      });
+      bindToggleSave("check-roll-partial-power", char, "rollMovementModule.rollAllowPartialPower", "Allow Partial Power", (v) => {
+        if (char.rollMovementModule) char.rollMovementModule.rollAllowPartialPower = v;
+      });
+      bindToggleSave("check-roll-sprint-energy", char, "rollMovementModule.sprintConsumesEnergy", "Sprint Consumes Energy", (v) => {
+        if (char.rollMovementModule) char.rollMovementModule.sprintConsumesEnergy = v;
+      });
+      bindToggleSave("check-roll-sprint-partial-power", char, "rollMovementModule.sprintAllowPartialPower", "Allow Partial Power (Sprint)", (v) => {
+        if (char.rollMovementModule) char.rollMovementModule.sprintAllowPartialPower = v;
+      });
+    }
+
     const checkWalkInAir = container.querySelector("#check-walk-in-air") as HTMLInputElement;
     checkWalkInAir?.addEventListener("change", () => {
       if (char.walkingModule) {

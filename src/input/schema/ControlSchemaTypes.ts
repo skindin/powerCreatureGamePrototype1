@@ -319,6 +319,7 @@ export interface WalkSprintControlBlock {
   sprint?: BlockInputSlot & {
     mode?: "hold" | "toggle";
   };
+  brake?: BlockInputSlot; // Dedicated brake key/button for rolling creatures
   jump?: BlockInputSlot; // Legacy fallback if jump is embedded in this block
 }
 

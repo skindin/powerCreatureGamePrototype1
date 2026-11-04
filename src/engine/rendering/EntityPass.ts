@@ -420,9 +420,10 @@ export class EntityPass {
     const isHeld = char.isHeld || char.heldBy !== null;
     const isBiggerWithoutHover = useBigger && (!useHover || hoverScale <= 0);
     const shouldBeTransparent = isHeld || (isBiggerWithoutHover && isOnLayer2);
+    const isDying = Boolean(char.isDying);
 
     ctx.save();
-    ctx.globalAlpha = shouldBeTransparent ? 0.55 : 1.0;
+    ctx.globalAlpha = isDying ? 0.35 : (shouldBeTransparent ? 0.55 : 1.0);
 
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
