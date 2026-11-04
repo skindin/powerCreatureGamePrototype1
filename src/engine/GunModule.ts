@@ -8,6 +8,7 @@ export interface GunModuleOptions {
   bulletSpeed?: number;      // Projectile velocity (units / sec)
   firingSeconds?: number;    // Continuous fire duration before overheat (seconds)
   cooldownTime?: number;     // Time to fully cool down from overheat (seconds)
+  cooldownDelay?: number;    // Wait time after last shot before cooling begins (seconds)
   bulletMass?: number;       // Mass per bullet (kg) determining recoil & knockback
   gunLength?: number;        // Visual barrel length (units)
   gunWidth?: number;         // Visual barrel width (units)
@@ -42,6 +43,9 @@ export class GunModule {
   /** Cooldown time in seconds to dissipate 100% heat back to 0% */
   public cooldownTimeProp: DynamicProperty;
 
+  /** Delay in seconds before cooling begins after firing */
+  public cooldownDelayProp: DynamicProperty;
+
   /** Mass per bullet in kg (scales shooter kickback and target knockback momentum) */
   public bulletMassProp: DynamicProperty;
 
@@ -65,6 +69,7 @@ export class GunModule {
     this.bulletSpeedProp = new DynamicProperty(options.bulletSpeed ?? 28.0);
     this.firingSecondsProp = new DynamicProperty(options.firingSeconds ?? 2.5);
     this.cooldownTimeProp = new DynamicProperty(options.cooldownTime ?? 1.5);
+    this.cooldownDelayProp = new DynamicProperty(options.cooldownDelay ?? 0.5);
     this.bulletMassProp = new DynamicProperty(options.bulletMass ?? 0.06);
 
     if (options.gunLength !== undefined) this.gunLength = options.gunLength;
@@ -88,6 +93,9 @@ export class GunModule {
   public get cooldownTime(): number { return Math.max(0.1, this.cooldownTimeProp.literalValue); }
   public set cooldownTime(val: number) { this.cooldownTimeProp.literalValue = Math.max(0.1, val); }
 
+  public get cooldownDelay(): number { return Math.max(0.0, this.cooldownDelayProp.literalValue); }
+  public set cooldownDelay(val: number) { this.cooldownDelayProp.literalValue = Math.max(0.0, val); }
+
   public get bulletMass(): number { return this.bulletMassProp.literalValue; }
   public set bulletMass(val: number) { this.bulletMassProp.literalValue = Math.max(0.001, val); }
 
@@ -96,6 +104,7 @@ export class GunModule {
   public getBulletSpeed(registry?: ObjectPropertiesRegistry): number { return this.bulletSpeedProp.get(registry); }
   public getFiringSeconds(registry?: ObjectPropertiesRegistry): number { return Math.max(0.1, this.firingSecondsProp.get(registry)); }
   public getCooldownTime(registry?: ObjectPropertiesRegistry): number { return Math.max(0.1, this.cooldownTimeProp.get(registry)); }
+  public getCooldownDelay(registry?: ObjectPropertiesRegistry): number { return Math.max(0.0, this.cooldownDelayProp.get(registry)); }
   public getBulletMass(registry?: ObjectPropertiesRegistry): number { return this.bulletMassProp.get(registry); }
 
   /** Calculated Damage Per Second (DPS) */
@@ -105,7 +114,8 @@ export class GunModule {
 
   /**
    * Updates heat and cooling timers per simulation tick.
-   * If the gun is overheated, it cannot fire, so cooling continues even if the trigger is held!
+   * If the gun is overheated, it cannot fire, so cooling continues even if the trigger is held,
+   * provided it has waited cooldownDelay seconds since the last fired shot.
    */
   public update(dt: number, isFiringNow: boolean): void {
     this.timeSinceLastShot += dt;
@@ -113,14 +123,17 @@ export class GunModule {
     const isActuallyFiring = isFiringNow && !this.isOverheated;
 
     if (!isActuallyFiring) {
-      // Dissipate heat towards 0
-      const coolRate = 1.0 / this.cooldownTime;
-      this.heat = Math.max(0.0, this.heat - coolRate * dt);
+      // Only cool down once the weapon has waited cooldownDelay seconds after the last shot
+      if (this.timeSinceLastShot >= this.cooldownDelay) {
+        // Dissipate heat towards 0
+        const coolRate = 1.0 / this.cooldownTime;
+        this.heat = Math.max(0.0, this.heat - coolRate * dt);
 
-      // Once fully cooled down, reset overheat lockout
-      if (this.isOverheated && this.heat <= 0.01) {
-        this.heat = 0.0;
-        this.isOverheated = false;
+        // Once fully cooled down, reset overheat lockout
+        if (this.isOverheated && this.heat <= 0.01) {
+          this.heat = 0.0;
+          this.isOverheated = false;
+        }
       }
     }
   }
@@ -160,6 +173,7 @@ export class GunModule {
       bulletSpeed: this.bulletSpeed,
       firingSeconds: this.firingSeconds,
       cooldownTime: this.cooldownTime,
+      cooldownDelay: this.cooldownDelay,
       bulletMass: this.bulletMass,
       gunLength: this.gunLength,
       gunWidth: this.gunWidth,
@@ -174,6 +188,7 @@ export class GunModule {
     if (data.bulletSpeed !== undefined) this.bulletSpeedProp.literalValue = data.bulletSpeed;
     if (data.firingSeconds !== undefined) this.firingSecondsProp.literalValue = data.firingSeconds;
     if (data.cooldownTime !== undefined) this.cooldownTimeProp.literalValue = data.cooldownTime;
+    if (data.cooldownDelay !== undefined) this.cooldownDelayProp.literalValue = data.cooldownDelay;
     if (data.bulletMass !== undefined) this.bulletMassProp.literalValue = data.bulletMass;
     if (data.gunLength !== undefined) this.gunLength = data.gunLength;
     if (data.gunWidth !== undefined) this.gunWidth = data.gunWidth;

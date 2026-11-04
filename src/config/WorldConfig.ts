@@ -105,6 +105,7 @@ export interface SerializedGameObjectConfig {
     bulletSpeed: number;
     firingSeconds: number;
     cooldownTime: number;
+    cooldownDelay?: number;
     bulletMass: number;
     gunLength?: number;
     gunWidth?: number;
@@ -916,6 +917,7 @@ export function serializeGameObject(obj: GameObject): SerializedGameObjectConfig
       bulletSpeed: obj.gunModule.bulletSpeedProp.get(obj.properties),
       firingSeconds: obj.gunModule.firingSecondsProp.get(obj.properties),
       cooldownTime: obj.gunModule.cooldownTimeProp.get(obj.properties),
+      cooldownDelay: obj.gunModule.cooldownDelayProp.get(obj.properties),
       bulletMass: obj.gunModule.bulletMassProp.get(obj.properties),
       gunLength: obj.gunModule.gunLength,
       gunWidth: obj.gunModule.gunWidth,
@@ -1090,6 +1092,7 @@ export function deserializeGameObject(config: SerializedGameObjectConfig): GameO
       bulletSpeed: config.gunModule.bulletSpeed,
       firingSeconds: config.gunModule.firingSeconds,
       cooldownTime: config.gunModule.cooldownTime,
+      cooldownDelay: config.gunModule.cooldownDelay,
       bulletMass: config.gunModule.bulletMass,
       gunLength: config.gunModule.gunLength,
       gunWidth: config.gunModule.gunWidth,

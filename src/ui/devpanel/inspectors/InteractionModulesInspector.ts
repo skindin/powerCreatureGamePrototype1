@@ -311,6 +311,20 @@ export class InteractionModulesInspector {
         cooldownSocketEl.appendChild(ctrl.element);
       }
 
+      const cooldownDelaySocketEl = container.querySelector("#prop-socket-gun-cooldown-delay");
+      if (cooldownDelaySocketEl) {
+        const ctrl = new PropertyControl({
+          property: gm.cooldownDelayProp,
+          owner: e,
+          label: "Cooldown Delay / Wait Time (s)",
+          step: 0.05,
+          onUserChange: () => {
+            if (!(e instanceof Character)) panel.markDirty("objects", e);
+          },
+        });
+        cooldownDelaySocketEl.appendChild(ctrl.element);
+      }
+
       const massSocketEl = container.querySelector("#prop-socket-gun-bullet-mass");
       if (massSocketEl) {
         const ctrl = new PropertyControl({

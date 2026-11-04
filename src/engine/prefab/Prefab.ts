@@ -84,6 +84,7 @@ export class Prefab {
         bulletSpeed: src.bulletSpeedProp.get(this.archetype.properties),
         firingSeconds: src.firingSecondsProp.get(this.archetype.properties),
         cooldownTime: src.cooldownTimeProp.get(this.archetype.properties),
+        cooldownDelay: src.cooldownDelayProp.get(this.archetype.properties),
         bulletMass: src.bulletMassProp.get(this.archetype.properties),
         gunLength: src.gunLength,
         gunWidth: src.gunWidth,
@@ -306,6 +307,13 @@ export class Prefab {
         if (ent.gunModule) {
           ent.gunModule.cooldownTimeProp.literalValue = Number(value);
           ent.gunModule.cooldownTimeProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "gun_cooldownDelay":
+      case "gunModule.cooldownDelay":
+        if (ent.gunModule) {
+          ent.gunModule.cooldownDelayProp.literalValue = Number(value);
+          ent.gunModule.cooldownDelayProp.set(Number(value), ent.properties);
         }
         break;
       case "gun_bulletMass":
