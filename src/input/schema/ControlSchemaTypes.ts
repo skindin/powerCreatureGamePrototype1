@@ -323,6 +323,36 @@ export interface WalkSprintControlBlock {
   jump?: BlockInputSlot; // Legacy fallback if jump is embedded in this block
 }
 
+export interface RollMovementControlBlock {
+  type: "rollMovement";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  mode?: "wasd" | "analogStick" | "walkToMouse" | "stickDirectionDriveButton";
+  moveKeys?: {
+    upKey?: string | null;
+    downKey?: string | null;
+    leftKey?: string | null;
+    rightKey?: string | null;
+    requireCleanPress?: boolean;
+  };
+  forwardTrigger?: BlockInputSlot;
+  reverseKey?: string | null;
+  strafeLeftKey?: string | null;
+  strafeRightKey?: string | null;
+  cursorSteerTrigger?: BlockInputSlot;
+  cursorSteerMode?: "whenHoldingButton" | "toggleButton" | "cursorWhenIdle" | "whenAiming" | "never";
+  rawDirectionWhileWalking?: boolean;
+  stickCursorInFront?: boolean;
+  lockCursorDistanceToMax?: boolean;
+  cursorMaxDistance?: number;
+  cursorMinDistance?: number;
+  sprint?: BlockInputSlot & {
+    mode?: "hold" | "toggle";
+  };
+  brake?: BlockInputSlot; // Dedicated brake key/button for rolling creatures (e.g. Space / Gamepad LT)
+}
+
 // Backward compatibility alias
 export type LocomotionControlBlock = WalkSprintControlBlock;
 
@@ -416,6 +446,7 @@ export interface FacingControlBlock {
 
 export type ControlBlock =
   | WalkSprintControlBlock
+  | RollMovementControlBlock
   | JumpControlBlock
   | MeleeControlBlock
   | LaserControlBlock

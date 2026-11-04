@@ -19,6 +19,7 @@ import type {
   BlockInputSlot,
   LocomotionControlBlock,
   WalkSprintControlBlock,
+  RollMovementControlBlock,
   JumpControlBlock,
   MeleeControlBlock,
   LaserControlBlock,
@@ -28,6 +29,7 @@ import type {
 } from "../../../input/schema/ControlSchemaTypes.js";
 import {
   DefaultControlSchema,
+  SpeedBallControlSchema,
   DefaultPrebuiltChannels,
   DefaultPipelineBindings,
   DefaultControlBlocks,
@@ -244,18 +246,37 @@ export class ControlsInspector {
   }
 
   public static getActiveSchema(char: Character): ControlSchema {
-    const prefabId = char.prefabId || "prefab_player";
-    const prefab = prefabManager.get(prefabId);
+    const targetPrefabId = char.prefabId || (char.id.startsWith("archetype_") ? char.id.replace("archetype_", "prefab_") : undefined);
+    const prefab = targetPrefabId ? prefabManager.get(targetPrefabId) : undefined;
+    const isRollingCreature = Boolean(char.rollMovementModule && !char.walkingModule);
+
     if (prefab?.controlSchema) {
-      char.controlSchema = prefab.controlSchema;
-      this.ensureSchemaTags(prefab.controlSchema);
-      return prefab.controlSchema;
+      // If prefab already has a tailored schema, return it
+      const hasLocoMismatch = isRollingCreature && prefab.controlSchema.keyboardMouse?.blocks?.some((b) => b.type === "walkSprint");
+      if (!hasLocoMismatch) {
+        char.controlSchema = prefab.controlSchema;
+        this.ensureSchemaTags(prefab.controlSchema);
+        return prefab.controlSchema;
+      }
     }
+
     if (char.controlSchema) {
-      this.ensureSchemaTags(char.controlSchema);
-      return char.controlSchema;
+      const hasLocoMismatch = isRollingCreature && char.controlSchema.keyboardMouse?.blocks?.some((b) => b.type === "walkSprint");
+      if (!hasLocoMismatch) {
+        this.ensureSchemaTags(char.controlSchema);
+        return char.controlSchema;
+      }
     }
-    char.controlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
+
+    // Creature capability tailored baseline
+    const baseSchema = isRollingCreature ? SpeedBallControlSchema : DefaultControlSchema;
+    char.controlSchema = JSON.parse(JSON.stringify(baseSchema));
+    if (prefab) {
+      prefab.controlSchema = char.controlSchema;
+      if (prefab.archetype instanceof Character) {
+        (prefab.archetype as Character).controlSchema = char.controlSchema;
+      }
+    }
     this.ensureSchemaTags(char.controlSchema!);
     return char.controlSchema!;
   }
@@ -263,17 +284,17 @@ export class ControlsInspector {
   public static setActiveSchema(char: Character, schema: ControlSchema): void {
     const copy = JSON.parse(JSON.stringify(schema));
     char.controlSchema = copy;
-    const targetPrefabId = char.prefabId || "prefab_player";
-    const prefab = prefabManager.get(targetPrefabId);
+    const targetPrefabId = char.prefabId || (char.id.startsWith("archetype_") ? char.id.replace("archetype_", "prefab_") : undefined);
+    const prefab = targetPrefabId ? prefabManager.get(targetPrefabId) : undefined;
     if (prefab) {
       prefab.controlSchema = copy;
       if (prefab.archetype instanceof Character) {
         (prefab.archetype as Character).controlSchema = copy;
       }
     }
-    if (this.modalPanel) {
+    if (this.modalPanel && targetPrefabId) {
       for (const ent of this.modalPanel.getActiveCharacters()) {
-        if (ent.prefabId === targetPrefabId || (!ent.prefabId && targetPrefabId === "prefab_player")) {
+        if (ent.prefabId === targetPrefabId) {
           ent.controlSchema = copy;
         }
       }
@@ -284,17 +305,17 @@ export class ControlsInspector {
     if (!this.modalChar || !this.workingSchema) return;
     const schemaCopy = JSON.parse(JSON.stringify(this.workingSchema));
     this.modalChar.controlSchema = schemaCopy;
-    const targetPrefabId = this.modalChar.prefabId || "prefab_player";
-    const prefab = prefabManager.get(targetPrefabId);
+    const targetPrefabId = this.modalChar.prefabId || (this.modalChar.id.startsWith("archetype_") ? this.modalChar.id.replace("archetype_", "prefab_") : undefined);
+    const prefab = targetPrefabId ? prefabManager.get(targetPrefabId) : undefined;
     if (prefab) {
       prefab.controlSchema = schemaCopy;
       if (prefab.archetype instanceof Character) {
         (prefab.archetype as Character).controlSchema = schemaCopy;
       }
     }
-    if (this.modalPanel) {
+    if (this.modalPanel && targetPrefabId) {
       for (const ent of this.modalPanel.getActiveCharacters()) {
-        if (ent.prefabId === targetPrefabId || (!ent.prefabId && targetPrefabId === "prefab_player")) {
+        if (ent.prefabId === targetPrefabId) {
           ent.controlSchema = schemaCopy;
         }
       }
@@ -1736,6 +1757,85 @@ export class ControlsInspector {
         `;
       }
 
+      case "rollMovement": {
+        const b = block as RollMovementControlBlock;
+        b.mode = b.mode || (this.activeTab === "gamepad" ? "analogStick" : "wasd");
+        b.moveKeys = b.moveKeys || { upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" };
+        b.sprint = b.sprint || { code: this.activeTab === "gamepad" ? "GamepadLS" : "ShiftLeft", mode: "hold" };
+        b.brake = b.brake || { code: this.activeTab === "gamepad" ? "GamepadLT" : "Space" };
+
+        const renderMoveKey = (dir: string, keyName: "upKey" | "downKey" | "leftKey" | "rightKey" | "reverseKey" | "strafeLeftKey" | "strafeRightKey") => {
+          const isListening = this.listeningBlockTarget?.blockId === b.id && this.listeningBlockTarget?.isMoveKey === keyName;
+          const code = (keyName === "reverseKey" || keyName === "strafeLeftKey" || keyName === "strafeRightKey")
+            ? (b as any)[keyName]
+            : b.moveKeys![keyName];
+          const lbl = code ? this.formatChannelKeyLabel(code) : "None";
+          return `
+            <div style="display: inline-flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; padding: 1px 4px;">
+              <span style="font-size: 0.64rem; color: #94a3b8; font-weight: 700;">${dir}</span>
+              <button class="btn-block-move-key btn-secondary-action" data-block-id="${b.id}" data-move-key="${keyName}" type="button" style="
+                font-size: 0.68rem; padding: 2px 6px; font-weight: 600; border: none; background: transparent; ${isListening ? "color: #ef4444; font-weight: 700;" : (code ? "color: #fff;" : "color: #64748b; font-style: italic;")}
+              ">${isListening ? "🔴 Press..." : lbl}</button>
+              ${code ? `<button class="btn-block-move-key-clear" data-block-id="${b.id}" data-move-key="${keyName}" type="button" style="font-size: 0.62rem; color: #ef4444; background: transparent; border: none; cursor: pointer; padding: 0 2px;">✕</button>` : ""}
+            </div>
+          `;
+        };
+
+        return `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Roll Mode:</span>
+              <select class="block-loco-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
+                <option value="analogStick" ${b.mode === "analogStick" ? "selected" : ""}>🕹️ Left Stick Direct Analog Roll (Full 360° spin)</option>
+                <option value="wasd" ${b.mode === "wasd" || !b.mode ? "selected" : ""}>🎮 Directional Buttons / Keys (WASD / D-Pad Buttons)</option>
+                <option value="stickDirectionDriveButton" ${b.mode === "stickDirectionDriveButton" ? "selected" : ""}>🕹️ Stick Direction + Drive Button</option>
+                <option value="walkToMouse" ${b.mode === "walkToMouse" ? "selected" : ""}>🖱️ Roll to Mouse (Drive toward Cursor)</option>
+              </select>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: start;">
+              ${b.mode === "analogStick" ? `
+                <div>
+                  <div style="font-size: 0.64rem; color: #94a3b8; font-weight: 600;">🕹️ Left Stick Direct Analog Roll</div>
+                  <div style="font-size: 0.60rem; color: #64748b; line-height: 1.3; margin-top: 3px;">
+                    Left stick exerts physical rolling torque in 360° heading. Releasing stick lets creature coast and drift with roll resistance.
+                  </div>
+                </div>
+              ` : `
+                <div>
+                  <div style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Directional Keys (WASD / D-Pad)</div>
+                  <div style="display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap;">
+                    ${renderMoveKey("↑", "upKey")}
+                    ${renderMoveKey("↓", "downKey")}
+                    ${renderMoveKey("←", "leftKey")}
+                    ${renderMoveKey("→", "rightKey")}
+                  </div>
+                  <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                    Applies physical roll torque in 8 directions.
+                  </div>
+                </div>
+              `}
+              <div>
+                ${this.renderInputSlot(b.id, "sprint", b.sprint, "Fast Roll / Sprint Acceleration")}
+                <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 0.62rem; color: #94a3b8;">Sprint Mode:</span>
+                  <select class="block-sprint-mode dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                    <option value="hold" ${b.sprint.mode !== "toggle" ? "selected" : ""}>Hold to Sprint</option>
+                    <option value="toggle" ${b.sprint.mode === "toggle" ? "selected" : ""}>Toggle Sprint</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "brake", b.brake, "🛑 Active Brake (Hold to Stop)")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 4px; line-height: 1.3;">
+                  Applies strong braking deceleration. While released, the ball rolls freely with natural roll resistance.
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
       case "jump": {
         const b = block as JumpControlBlock;
         b.jump = b.jump || b.jumpTrigger || { code: "Space", requireCleanPress: false };
@@ -2062,6 +2162,7 @@ export class ControlsInspector {
             <select id="select-add-control-block" class="dev-select" style="font-size: 0.72rem; font-weight: 700; padding: 4px 8px; background: rgba(56,189,248,0.15); border: 1px solid #38bdf8; color: #38bdf8; border-radius: 4px;">
               <option value="" disabled selected>+ Add Control Module...</option>
               <option value="walkSprint">+ Walk & Sprint (Movement & Speed)</option>
+              <option value="rollMovement">+ Roll Movement & Brake (Spin & Torque)</option>
               <option value="jump">+ Jump (Vertical Leap)</option>
               <option value="itemInteraction">+ Item Interaction (Pickup, Drop, Swap, Eat)</option>
               <option value="throw">+ Throwing & Ballistics</option>
@@ -2082,6 +2183,7 @@ export class ControlsInspector {
             const typeIcons: Record<string, string> = {
               walkSprint: "🏃",
               locomotion: "🏃",
+              rollMovement: "🌀",
               jump: "🦘",
               itemInteraction: "📦",
               throw: "🏹",
@@ -2160,7 +2262,7 @@ export class ControlsInspector {
       const block = blocks.find((b) => b.id === blockId);
       if (!block) return;
 
-      if (isMoveKey && (block.type === "locomotion" || block.type === "walkSprint")) {
+      if (isMoveKey && (block.type === "locomotion" || block.type === "walkSprint" || block.type === "rollMovement")) {
         const loco = block as WalkSprintControlBlock;
         if (isMoveKey === "reverseKey" || isMoveKey === "strafeLeftKey" || isMoveKey === "strafeRightKey") {
           (loco as any)[isMoveKey] = code;
@@ -2848,6 +2950,30 @@ export class ControlsInspector {
               strafeRightKey: "KeyD",
               sprint: { code: "ShiftLeft", mode: "hold" },
             });
+          } else if (type === "rollMovement") {
+            blocks.push(isGamepad ? {
+              type: "rollMovement",
+              id: newId,
+              name: "Roll Movement & Brake",
+              enabled: true,
+              mode: "analogStick",
+              moveKeys: { upKey: "GamepadDpadUp", downKey: "GamepadDpadDown", leftKey: "GamepadDpadLeft", rightKey: "GamepadDpadRight", requireCleanPress: false },
+              sprint: { code: "GamepadLS", mode: "hold", requireCleanPress: false },
+              brake: { code: "GamepadLT", requireCleanPress: false },
+              forwardTrigger: { code: "GamepadRT" },
+              cursorSteerTrigger: { code: "GamepadLB" },
+              cursorSteerMode: "toggleButton",
+              rawDirectionWhileWalking: true,
+            } : {
+              type: "rollMovement",
+              id: newId,
+              name: "Roll Movement & Brake",
+              enabled: true,
+              mode: "wasd",
+              moveKeys: { upKey: "KeyW", downKey: "KeyS", leftKey: "KeyA", rightKey: "KeyD" },
+              sprint: { code: "ShiftLeft", mode: "hold" },
+              brake: { code: "Space" },
+            });
           } else if (type === "jump") {
             blocks.push(isGamepad ? {
               type: "jump",
@@ -3084,8 +3210,8 @@ export class ControlsInspector {
           const bId = (btn as HTMLElement).dataset.blockId;
           const moveKey = (btn as HTMLElement).dataset.moveKey as any;
           const block = blocks.find((b) => b.id === bId);
-          if (block && (block.type === "locomotion" || block.type === "walkSprint") && moveKey) {
-            const loco = block as WalkSprintControlBlock;
+          if (block && (block.type === "locomotion" || block.type === "walkSprint" || block.type === "rollMovement") && moveKey) {
+            const loco = block as WalkSprintControlBlock | RollMovementControlBlock;
             if (moveKey === "reverseKey" || moveKey === "strafeLeftKey" || moveKey === "strafeRightKey") {
               (loco as any)[moveKey] = null;
             } else if (loco.moveKeys) {
@@ -3100,7 +3226,7 @@ export class ControlsInspector {
       root.querySelectorAll(".block-loco-mode").forEach((sel) => {
         sel.addEventListener("change", (e) => {
           const bId = (sel as HTMLElement).dataset.blockId;
-          const block = blocks.find((b) => b.id === bId) as WalkSprintControlBlock;
+          const block = blocks.find((b) => b.id === bId) as WalkSprintControlBlock | RollMovementControlBlock;
           if (block) {
             block.mode = (e.target as HTMLSelectElement).value as any;
             this.renderActiveView();
@@ -3132,8 +3258,8 @@ export class ControlsInspector {
         chk.addEventListener("change", (e) => {
           const bId = (chk as HTMLElement).dataset.blockId;
           const block = blocks.find((b) => b.id === bId);
-          if (block && (block.type === "locomotion" || block.type === "walkSprint")) {
-            const loco = block as WalkSprintControlBlock;
+          if (block && (block.type === "locomotion" || block.type === "walkSprint" || block.type === "rollMovement")) {
+            const loco = block as WalkSprintControlBlock | RollMovementControlBlock;
             loco.moveKeys = loco.moveKeys || {};
             loco.moveKeys.requireCleanPress = (e.target as HTMLInputElement).checked;
             this.renderActiveView();
@@ -3145,7 +3271,7 @@ export class ControlsInspector {
       root.querySelectorAll(".block-sprint-mode").forEach((sel) => {
         sel.addEventListener("change", (e) => {
           const bId = (sel as HTMLElement).dataset.blockId;
-          const block = blocks.find((b) => b.id === bId) as WalkSprintControlBlock;
+          const block = blocks.find((b) => b.id === bId) as WalkSprintControlBlock | RollMovementControlBlock;
           if (block && block.sprint) {
             block.sprint.mode = (e.target as HTMLSelectElement).value as any;
             ControlsInspector.syncLiveWorkingSchema();

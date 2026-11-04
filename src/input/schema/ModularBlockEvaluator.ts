@@ -3,6 +3,7 @@ import type {
   ControlExecutionContext,
   BlockInputSlot,
   WalkSprintControlBlock,
+  RollMovementControlBlock,
   JumpControlBlock,
   MeleeControlBlock,
   LaserControlBlock,
@@ -240,7 +241,7 @@ export class ModularBlockEvaluator {
     const targetAimPos = { x: baseAim.x, y: baseAim.y };
 
     // Pre-evaluate locomotion cursor mode states
-    const locoBlock = blocks.find((blk) => blk.enabled && (blk.type === "locomotion" || blk.type === "walkSprint")) as WalkSprintControlBlock | undefined;
+    const locoBlock = blocks.find((blk) => blk.enabled && (blk.type === "locomotion" || blk.type === "walkSprint" || blk.type === "rollMovement")) as (WalkSprintControlBlock | RollMovementControlBlock) | undefined;
     if (locoBlock) {
       const isToggleMode = locoBlock.cursorSteerMode === "toggleButton";
       if (isToggleMode && locoBlock.cursorSteerTrigger) {
@@ -374,8 +375,9 @@ export class ModularBlockEvaluator {
 
       switch (block.type) {
         case "walkSprint":
-        case "locomotion": {
-          const b = block as WalkSprintControlBlock;
+        case "locomotion":
+        case "rollMovement": {
+          const b = block as WalkSprintControlBlock | RollMovementControlBlock;
           const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
           const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
 
@@ -578,7 +580,7 @@ export class ModularBlockEvaluator {
           (char as any)._prevSteerCursorActive = isSteerCursorActive;
 
           // Legacy Jump fallback if block has jump and no separate jump block exists
-          if (b.jump && !blocks.some((blk) => blk.enabled && blk.type === "jump")) {
+          if ("jump" in b && b.jump && !blocks.some((blk) => blk.enabled && blk.type === "jump")) {
             const jumpRequiresClean = b.jump?.requireCleanPress === true;
             if (jumpRequiresClean) {
               if (isSlotActive(b.jump, "down", true, b.id, "locomotion.jump")) {
@@ -621,13 +623,8 @@ export class ModularBlockEvaluator {
             } else {
               char.isBraking = false;
             }
-          } else if (char.rollMovementModule) {
-            const isKbBrake = tokens.isDown("Space") || tokens.isDown("KeyB");
-            let isGpBrake = false;
-            if (execCtx.gamepadStates) {
-              isGpBrake = execCtx.gamepadStates.isDown(1) || execCtx.gamepadStates.isDown(6);
-            }
-            char.isBraking = isKbBrake || isGpBrake;
+          } else {
+            char.isBraking = false;
           }
           break;
         }

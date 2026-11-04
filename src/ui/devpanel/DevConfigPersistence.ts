@@ -431,8 +431,8 @@ export class DevConfigPersistence {
     };
 
     // 2. Update linked prefab archetype if exists and sync to all live instances
-    const targetPrefabId = char.prefabId || "prefab_player";
-    const prefab = prefabManager.get(targetPrefabId);
+    const targetPrefabId = char.prefabId || (char.id.startsWith("archetype_") ? char.id.replace("archetype_", "prefab_") : undefined);
+    const prefab = targetPrefabId ? prefabManager.get(targetPrefabId) : undefined;
     if (prefab) {
       prefab.controlSchema = JSON.parse(JSON.stringify(schema));
       if (prefab.archetype instanceof Character) {
@@ -440,7 +440,7 @@ export class DevConfigPersistence {
       }
       if (panel) {
         for (const ent of panel.getActiveCharacters()) {
-          if (ent.prefabId === targetPrefabId || (!ent.prefabId && targetPrefabId === "prefab_player")) {
+          if (ent.prefabId === targetPrefabId) {
             ent.controlSchema = JSON.parse(JSON.stringify(schema));
           }
         }
@@ -451,11 +451,13 @@ export class DevConfigPersistence {
       };
     }
 
-    // 3. Save strictly ONLY the control schema to player config (never overwrite live gameplay properties like energy, HP, or position)
-    sections.push("player");
-    delta.player = {
-      controlSchema: JSON.parse(JSON.stringify(schema)),
-    } as any;
+    // 3. Save to player config only if this is the default player prefab / base player
+    if (targetPrefabId === "prefab_player" || !targetPrefabId) {
+      sections.push("player");
+      delta.player = {
+        controlSchema: JSON.parse(JSON.stringify(schema)),
+      } as any;
+    }
 
     const resp = await fetch("/api/dev/save-config", {
       method: "POST",

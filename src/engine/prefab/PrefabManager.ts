@@ -15,6 +15,7 @@ import {
 } from "../../config/WorldConfig.js";
 import {
   DefaultControlSchema,
+  SpeedBallControlSchema,
   HunterControlSchema,
   GamepadHybridSchema,
 } from "../../input/schema/presets/DefaultControlSchemas.js";
@@ -209,23 +210,16 @@ export class PrefabManager {
     });
     speedBallArchetype.rollMovementModule.registerProperties(speedBallArchetype.properties);
 
-    const speedBallControlSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
-    // Ensure locomotion block has brake assigned to Space / KeyB / Gamepad B / LT
-    if (speedBallControlSchema.blocks) {
-      const loco = speedBallControlSchema.blocks.find((b: any) => b.type === "locomotion" || b.type === "walkSprint");
-      if (loco) {
-        loco.brake = { device: "keyboard", code: "Space", mode: "hold" };
-      }
-    }
-    speedBallArchetype.controlSchema = speedBallControlSchema;
+    speedBallArchetype.prefabId = "prefab_speed_ball";
+    speedBallArchetype.controlSchema = JSON.parse(JSON.stringify(SpeedBallControlSchema));
 
     const speedBallPrefab = new Prefab({
       id: "prefab_speed_ball",
       name: "Speed Ball",
       icon: "⚡",
       archetype: speedBallArchetype,
+      controlSchema: JSON.parse(JSON.stringify(SpeedBallControlSchema)),
     });
-    speedBallPrefab.controlSchema = speedBallControlSchema;
     this.prefabs.set(speedBallPrefab.id, speedBallPrefab);
 
     // Default "Hunter" character prefab (Mouse-Facing Drive + Left-Hand Staging)
@@ -288,9 +282,10 @@ export class PrefabManager {
       const arc = cfg.archetype as any;
       const isCharacterConfig =
         cfg.id === "prefab_player" ||
+        cfg.id === "prefab_speed_ball" ||
         cfg.id === "prefab_hunter" ||
         cfg.id === "prefab_fighter" ||
-        Boolean(arc.walkingModule || arc.jumpModule || arc.isCharacter);
+        Boolean(arc.walkingModule || arc.jumpModule || arc.rollMovementModule || arc.isCharacter);
 
       let archetype: GameObject;
       if (isCharacterConfig) {
@@ -309,12 +304,14 @@ export class PrefabManager {
         archetype = deserializeGameObject(cfg.archetype as any);
       }
 
+      const schemaToUse = cfg.controlSchema || (archetype instanceof Character ? archetype.controlSchema : undefined);
+
       const prefab = new Prefab({
         id: cfg.id,
         name: cfg.name,
         icon: cfg.icon,
         archetype,
-        controlSchema: cfg.controlSchema,
+        controlSchema: schemaToUse,
       });
       this.prefabs.set(cfg.id, prefab);
     }

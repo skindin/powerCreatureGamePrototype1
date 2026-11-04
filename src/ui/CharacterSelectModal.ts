@@ -289,3 +289,4 @@ export class CharacterSelectModal {
     this.activeOptions = null;
   }
 }
+

@@ -1,7 +1,9 @@
 import { prefabManager } from "../../engine/prefab/PrefabManager.js";
 import { Prefab } from "../../engine/prefab/Prefab.js";
+import { Character } from "../../character/Character.js";
 import { consumableTagRegistry } from "../../engine/properties/ConsumableTagRegistry.js";
 import type { DevPanel } from "../DevPanel.js";
+import { ControlsInspector } from "./inspectors/ControlsInspector.js";
 
 /**
  * Isolated DevPanel section for Scene Prefabs management & Prefab instance override badges.
@@ -142,6 +144,7 @@ export class PrefabsPanelSection {
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 4px;">
             <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 0.70rem; padding: 2px 6px;">${liveCount} live</span>
             <div style="display: flex; align-items: center; gap: 4px;">
+              ${arc instanceof Character ? `<button class="btn-secondary-action btn-config-prefab-controls" data-prefab-id="${prefab.id}" style="padding: 3px 8px; font-size: 0.72rem; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" title="Configure tailored Control Schema for this creature prefab">🎮 Controls</button>` : ""}
               <button class="btn-secondary-action btn-save-whole-prefab" data-prefab-id="${prefab.id}" style="padding: 3px 8px; font-size: 0.72rem; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" title="Save entire prefab archetype and live instances to project">💾 Save All</button>
               <button class="btn-secondary-action btn-spawn-prefab" data-prefab-id="${prefab.id}" style="padding: 3px 8px; font-size: 0.72rem; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Spawn one instance on the arena floor">➕ Spawn</button>
               <button class="btn-icon-subtle btn-delete-prefab" data-prefab-id="${prefab.id}" style="color: #f87171; padding: 3px 6px; font-size: 0.8rem;" title="Delete Prefab (unlinks live instances)">🗑️</button>
@@ -387,6 +390,16 @@ export class PrefabsPanelSection {
         const p = prefabManager.get(pid);
         if (p && p.archetype.consumableModule) {
           await panel.savePrefabProperty(p, "consumable_tag", p.archetype.consumableModule.tag, "Consumable Tag");
+        }
+      });
+    });
+
+    listEl.querySelectorAll(".btn-config-prefab-controls").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p && p.archetype instanceof Character) {
+          ControlsInspector.openModal(panel, p.archetype as Character);
         }
       });
     });
