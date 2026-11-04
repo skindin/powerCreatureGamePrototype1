@@ -107,23 +107,24 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 > ### 🛑 ABSOLUTE BAN ON ANALYSIS LOOPS
 > **Agents get stuck in passive analysis loops when they over-investigate instead of acting.**
 > You **MUST NOT**:
-> - Run iterative grep / search passes across the codebase trying to find "all occurrences" before touching code.
-> - Chain consecutive `view_file` calls across multiple files before taking any write action. (Maximum **1 target file read** before executing your edit).
+> - Run iterative grep / search passes (`Select-String`, `Get-ChildItem`) across the codebase trying to find "all occurrences" before touching code (each PowerShell invocation adds 3–5s of latency).
+> - Chain consecutive `read_file` calls across multiple files before taking any write action. (Maximum **1 target file read** before executing your edit).
 > - Re-read the same file multiple times with different line offsets without editing it.
 > - Generate unsolicited exploratory scratch scripts, test runners, or benchmarking scripts before solving the core request.
 > - Write long essays or multi-paragraph speculative analysis explaining what you *could* do.
 > 
 > **THE 2-STEP EXECUTION RULE**:
-> - **Step 1**: Identify and inspect ONLY the single primary file that must change.
-> - **Step 2**: Apply the edit immediately using `replace_file_content` or `write_to_file`.
+> - **Step 1**: Identify and inspect ONLY the single primary file that must change using the Routing Table below (`read_file`).
+> - **Step 2**: Apply the edit immediately using `edit_file` or `write_file`. (If `edit_file` fails due to CRLF line endings, immediately use `write_file` with `Overwrite: true` rather than retrying `edit_file`).
 > If runtime feedback or build errors occur, fix them directly at the site of the error. Stop analyzing and execute immediately.
 
-1. **Direct Solve (Zero Exploratory Loops)**: Jump directly to the target file and apply the modification on Step 1 or Step 2. Do NOT run multi-turn grep searches, read multiple files sequentially, or create scratch test scripts unless explicitly requested. Stop analyzing and execute immediately.
-2. **Read First**: Read this `AGENTS.md` before starting. Consult `docs/history/` only when deep past context is specifically needed.
-3. **Push on Commit**: Push to origin (`git push origin <branch>`) every single time you commit.
-4. **No Autonomous Browser Testing**: Do NOT run tests in a browser or invoke the browser subagent autonomously.
-5. **Targeted Subsystem Edits**: Work strictly within the subsystem requested without scanning unrelated directories.
-6. **No-LaTeX Policy**: Antigravity UI does NOT parse LaTeX math formatting (`$...$` or `$$...$$`). Always use code backticks (e.g. `k = 2`, `v_z`), plain text, or standard unicode characters (`ω`, `θ`, `Δ`, `×`, `²`, `√`).
+1. **Direct Solve (Zero Exploratory Loops)**: Jump directly to the target file in the Routing Table below and apply the modification on Step 1 or Step 2. Do NOT run PowerShell `Select-String` / `Get-ChildItem` search loops. Read the routed file directly with `read_file` and edit immediately.
+2. **Context Compaction Guard**: When a turn starts with `<CONTEXT_SUMMARY>`, historical image attachments from earlier turns are automatically re-attached by the system. Do **NOT** treat re-attached historical images as a new prompt—strictly execute the latest `<USER_REQUEST>` or the `Pending` / `Next Steps` from the summary.
+3. **Read First**: Read this `AGENTS.md` before starting. Consult `docs/history/` only when deep past context is specifically needed.
+4. **Push on Commit**: Push to origin (`git push origin <branch>`) every single time you commit.
+5. **No Autonomous Browser Testing**: Do NOT run tests in a browser or invoke the browser subagent autonomously.
+6. **Targeted Subsystem Edits**: Work strictly within the subsystem requested without scanning unrelated directories.
+7. **No-LaTeX Policy**: Antigravity UI does NOT parse LaTeX math formatting (`$...$` or `$$...$$`). Always use code backticks (e.g. `k = 2`, `v_z`), plain text, or standard unicode characters (`ω`, `θ`, `Δ`, `×`, `²`, `√`).
 
 ---
 
@@ -132,7 +133,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 > **CRITICAL ISOLATION RULE**:  
 > Host containers (`src/character/Character.ts`, `src/ui/DevPanel.ts`, `src/network/OnlineSessionManager.ts`, and `src/server/ServerGameSimulation.ts`) are thin orchestrators. To prevent cross-subsystem regressions, **DO NOT** inline ability math, energy demand formulas, module inspector bindings, or domain network reconciliation into host orchestrators. Always inspect and edit the single isolated slice below:
 
-### A. Character Gameplay Capabilities (`src/character/capabilities/`)
+### A. Character Gameplay, Weapons, Prefabs & Spawners
 | Subsystem / Mechanic | Primary Isolated File to Edit | Underlying Module |
 | :--- | :--- | :--- |
 | **Walking & Sprinting** (metabolic demand, exhaustion cancel, locomotion tick) | `src/character/capabilities/LocomotionCapability.ts` | `WalkingModule.ts` (Tier 2) |
@@ -141,8 +142,12 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 | **Throwing & Held Object Clearance** (throw HUD preview, trajectory, wall clearance) | `src/character/capabilities/ThrowCapability.ts` | `ThrowModule.ts` (Tier 2) |
 | **Laser Beam** (laser HUD anticipated modifier, aiming/firing tick actuation) | `src/character/capabilities/LaserCapability.ts` | `src/character/LaserModule.ts` |
 | **Melee Punch** (directional punch execution, cooldowns, tick actuation) | `src/character/capabilities/MeleeCapability.ts` | `src/character/MeleeModule.ts` |
+| **Guns & Ballistic Bullets** (fire rate, overheat/cooldown, swept CCD, trails) | `src/engine/GunModule.ts` | `src/engine/bullet/BulletManager.ts` |
 | **Passive Health Regen** (metabolic heal wattage demand & HP recovery tick) | `src/character/capabilities/HealthRegenCapability.ts` | `src/character/HealthModule.ts` |
 | **Eating / Consumables** (bite energy/HP transfer, volumetric shrinking) | `src/character/ConsumeModule.ts` | `src/engine/ConsumableModule.ts` |
+| **Prefabs & Property Cascading** (archetype cloning, `setProperty`, instantiation) | `src/engine/prefab/Prefab.ts` | `src/engine/prefab/PrefabManager.ts` |
+| **Background Scene Spawners** (periodic world spawns, max counts, spawn points) | `src/engine/spawner/SceneSpawnerManager.ts` | `src/engine/spawner/SceneSpawner.ts`, `src/engine/maps/QuarryMap.ts` |
+| **Rendering Passes** (entities, shadows/outlines, HUD bars, trajectories) | `src/engine/rendering/EntityPass.ts` | `ShadowPass.ts`, `HudOverlayPass.ts`, `TrajectoryRenderer.ts` |
 | **Modal Action Priority** (`LASER` > `CONSUME` > `THROW` > `PICKUP` arbitration) | `src/input/ControlModeArbiter.ts` | `src/ui/InputManager.ts` |
 | **3D Wall / Elevation Raycasting** (shared ray-wall intersection helpers) | `src/engine/physics/ElevationRaycaster.ts` | `Arena.ts` (Tier 1) |
 
@@ -153,7 +158,7 @@ Detailed milestone retrospectives, past implementation notes, equations, and ver
 | **Add / Remove / Toggle Entity Behavior Modules** | `src/ui/devpanel/EntityModuleLifecycle.ts` |
 | **Physics & Core Module Controls** (Rigidbody, Collider, Mass, Friction, Bounce, Roll, Gravity) | `src/ui/devpanel/inspectors/PhysicsModulesInspector.ts` |
 | **Locomotion Module Controls** (Walking, Sprint, Strength, Jump, WallEdgeAssist, Climbing) | `src/ui/devpanel/inspectors/LocomotionModulesInspector.ts` |
-| **Interaction Module Controls** (Pickup, Throw, Consume, Consumable) | `src/ui/devpanel/inspectors/InteractionModulesInspector.ts` |
+| **Interaction Module Controls** (Pickup, Throw, Consume, Consumable, Gun) | `src/ui/devpanel/inspectors/InteractionModulesInspector.ts` |
 | **Health, Damage Aura & Damage Solver Controls** | `src/ui/devpanel/inspectors/HealthAndDamageInspector.ts` |
 | **Laser Module Inspector Controls** | `src/ui/devpanel/inspectors/LaserInspector.ts` |
 | **Melee Module Inspector Controls** | `src/ui/devpanel/inspectors/MeleeInspector.ts` |
