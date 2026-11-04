@@ -181,10 +181,15 @@ export class BulletManager {
     const dirX = dist > 0.001 ? dx / dist : Math.cos(char.facingAngle);
     const dirY = dist > 0.001 ? dy / dist : Math.sin(char.facingAngle);
 
-    const vx = dirX * speed;
-    const vy = dirY * speed;
+    // Incorporate character's rigidbody velocity into bullet launch momentum
+    const charVx = char.velocity ? char.velocity.x : 0;
+    const charVy = char.velocity ? char.velocity.y : 0;
+    const charVz = char.verticalVelocity || 0;
+
+    const vx = dirX * speed + charVx;
+    const vy = dirY * speed + charVy;
     // Ballistic arc loft: slight upward velocity so the projectile travels along a shallow arc
-    const vz = Math.max(2.5, speed * 0.12);
+    const vz = Math.max(2.5, speed * 0.12) + charVz;
 
     // Apply recoil kickback impulse on shooter: I = m_bullet * v
     const bulletMass = gun.bulletMass;
@@ -207,7 +212,7 @@ export class BulletManager {
       vz,
       damage: gun.damagePerBullet,
       bulletMass,
-      bulletSpeed: speed,
+      bulletSpeed: Math.hypot(vx, vy) || speed,
       color: gun.bulletColor || "#f59e0b",
       shooterId: char.id,
       lifeTime: 0,
@@ -242,9 +247,14 @@ export class BulletManager {
     const dirX = dist > 0.001 ? dx / dist : Math.cos(char.facingAngle);
     const dirY = dist > 0.001 ? dy / dist : Math.sin(char.facingAngle);
 
-    const vx = dirX * speed;
-    const vy = dirY * speed;
-    const vz = Math.max(2.5, speed * 0.12);
+    // Incorporate character's rigidbody velocity into preview trajectory
+    const charVx = char.velocity ? char.velocity.x : 0;
+    const charVy = char.velocity ? char.velocity.y : 0;
+    const charVz = char.verticalVelocity || 0;
+
+    const vx = dirX * speed + charVx;
+    const vy = dirY * speed + charVy;
+    const vz = Math.max(2.5, speed * 0.12) + charVz;
 
     const g = arena.gravity || 30;
     const dt = 0.016;
