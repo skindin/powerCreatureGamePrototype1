@@ -114,10 +114,10 @@ export class PrefabManager {
 
     this.prefabs.set(stonePrefab.id, stonePrefab);
 
-    // 🔫 "Pistol" Gun prefab: punchy semi-auto sidearm with high bullet damage & kickback
+    // 🔫 "Tactical Pistol" Gun prefab: punchy semi-auto sidearm with high bullet damage & kickback
     const pistolArchetype = new GameObject({
       id: "archetype_pistol",
-      name: "Pistol",
+      name: "Tactical Pistol",
       position: { x: 0, y: 0, z: 0 },
       color: "#475569",
       visualShape: "box",
@@ -141,7 +141,7 @@ export class PrefabManager {
 
     const pistolPrefab = new Prefab({
       id: "prefab_pistol",
-      name: "Pistol",
+      name: "Tactical Pistol",
       icon: "🔫",
       archetype: pistolArchetype,
     });
@@ -289,7 +289,7 @@ export class PrefabManager {
   public createFromEntity(entity: GameObject, name?: string): Prefab {
     const id = `prefab_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const prefabName = name || entity.name || "Custom Prefab";
-    const icon = entity.consumableModule ? "🍎" : (entity.visualShape === "box" ? "📦" : "⚪");
+    const icon = entity.gunModule ? "🔫" : (entity.consumableModule ? "🍎" : (entity.visualShape === "box" ? "📦" : "⚪"));
 
     // Clone the archetype
     const GameObjectClass = entity.constructor as any;
@@ -311,12 +311,30 @@ export class PrefabManager {
 
     let cloneRoll: RollModule | null = null;
     if (entity.rollModule) {
+      const src = entity.rollModule;
       cloneRoll = new RollModule({
-        enabled: entity.rollModule.enabled,
-        rollResistance: entity.rollModule.rollResistance,
-        bumpyRollEnabled: entity.rollModule.bumpyRollEnabled,
-        bumpiness: entity.rollModule.bumpiness,
-        seed: entity.rollModule.seed,
+        enabled: src.enabled,
+        rollResistance: src.rollResistance,
+        bumpyRollEnabled: src.bumpyRollEnabled,
+        bumpiness: src.bumpiness,
+        seed: src.seed,
+      });
+    }
+
+    let cloneGun: GunModule | null = null;
+    if (entity.gunModule) {
+      const src = entity.gunModule;
+      cloneGun = new GunModule({
+        enabled: src.enabled,
+        fireRate: src.fireRateProp.literalValue,
+        damagePerBullet: src.damagePerBulletProp.literalValue,
+        bulletSpeed: src.bulletSpeedProp.literalValue,
+        firingSeconds: src.firingSecondsProp.literalValue,
+        cooldownTime: src.cooldownTimeProp.literalValue,
+        bulletMass: src.bulletMassProp.literalValue,
+        gunLength: src.gunLength,
+        gunWidth: src.gunWidth,
+        bulletColor: src.bulletColor,
       });
     }
 
@@ -334,6 +352,7 @@ export class PrefabManager {
       hasVerticalPosition: entity.hasVerticalPosition,
       consumableModule: cloneConsumable,
       rollModule: cloneRoll,
+      gunModule: cloneGun,
     });
 
     const prefab = new Prefab({

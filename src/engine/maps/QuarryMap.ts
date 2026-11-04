@@ -139,6 +139,18 @@ export const QUARRY_APPLE_SPAWN_POINTS: { x: number; y: number; z?: number }[] =
   { x: 25.5, y: 25.5, z: 1.0 }, // Elevated SE Rampart
 ];
 
+/** Designated open ground spawn locations for firearms in the Quarry */
+export const QUARRY_GUN_SPAWN_POINTS: { x: number; y: number; z?: number }[] = [
+  { x: 13.5, y: 15.0, z: 0 },   // Central West corridor
+  { x: 16.5, y: 15.0, z: 0 },   // Central East corridor
+  { x: 15.0, y: 13.5, z: 0 },   // Central North corridor
+  { x: 15.0, y: 16.5, z: 0 },   // Central South corridor
+  { x: 10.5, y: 10.5, z: 0 },   // Inner Northwest
+  { x: 19.5, y: 10.5, z: 0 },   // Inner Northeast
+  { x: 10.5, y: 19.5, z: 0 },   // Inner Southwest
+  { x: 19.5, y: 19.5, z: 0 },   // Inner Southeast
+];
+
 export const QUARRY_PLAYER_SPAWN = { x: 7.5, y: 7.5 };
 export const QUARRY_DUMMY_SPAWN = { x: 15.0, y: 10.0 };
 

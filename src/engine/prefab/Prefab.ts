@@ -1,6 +1,7 @@
 import { GameObject, Vector3D } from "../GameObject.js";
 import { ConsumableModule } from "../ConsumableModule.js";
 import { RollModule } from "../RollModule.js";
+import { GunModule } from "../GunModule.js";
 import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
 import { LaserModule } from "../../character/LaserModule.js";
@@ -62,12 +63,30 @@ export class Prefab {
 
     let cloneRoll: RollModule | null = null;
     if (this.archetype.rollModule) {
+      const src = this.archetype.rollModule;
       cloneRoll = new RollModule({
-        enabled: this.archetype.rollModule.enabled,
-        rollResistance: this.archetype.rollModule.rollResistance,
-        bumpyRollEnabled: this.archetype.rollModule.bumpyRollEnabled,
-        bumpiness: this.archetype.rollModule.bumpiness,
-        seed: this.archetype.rollModule.seed,
+        enabled: src.enabled,
+        rollResistance: src.rollResistance,
+        bumpyRollEnabled: src.bumpyRollEnabled,
+        bumpiness: src.bumpiness,
+        seed: src.seed,
+      });
+    }
+
+    let cloneGun: GunModule | null = null;
+    if (this.archetype.gunModule) {
+      const src = this.archetype.gunModule;
+      cloneGun = new GunModule({
+        enabled: src.enabled,
+        fireRate: src.fireRateProp.literalValue,
+        damagePerBullet: src.damagePerBulletProp.literalValue,
+        bulletSpeed: src.bulletSpeedProp.literalValue,
+        firingSeconds: src.firingSecondsProp.literalValue,
+        cooldownTime: src.cooldownTimeProp.literalValue,
+        bulletMass: src.bulletMassProp.literalValue,
+        gunLength: src.gunLength,
+        gunWidth: src.gunWidth,
+        bulletColor: src.bulletColor,
       });
     }
 
@@ -91,6 +110,7 @@ export class Prefab {
       hasVerticalPosition: this.archetype.hasVerticalPosition,
       consumableModule: cloneConsumable,
       rollModule: cloneRoll,
+      gunModule: cloneGun,
     });
 
     instance.prefabId = this.id;
@@ -201,6 +221,24 @@ export class Prefab {
         if (ent.consumableModule) {
           ent.consumableModule.unlimited = Boolean(value);
         }
+        break;
+      case "gun_fireRate":
+        if (ent.gunModule) ent.gunModule.fireRateProp.literalValue = Number(value);
+        break;
+      case "gun_damagePerBullet":
+        if (ent.gunModule) ent.gunModule.damagePerBulletProp.literalValue = Number(value);
+        break;
+      case "gun_bulletSpeed":
+        if (ent.gunModule) ent.gunModule.bulletSpeedProp.literalValue = Number(value);
+        break;
+      case "gun_firingSeconds":
+        if (ent.gunModule) ent.gunModule.firingSecondsProp.literalValue = Number(value);
+        break;
+      case "gun_cooldownTime":
+        if (ent.gunModule) ent.gunModule.cooldownTimeProp.literalValue = Number(value);
+        break;
+      case "gun_bulletMass":
+        if (ent.gunModule) ent.gunModule.bulletMassProp.literalValue = Number(value);
         break;
     }
   }

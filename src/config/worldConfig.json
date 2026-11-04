@@ -1,6 +1,6 @@
 {
-  "version": 277,
-  "lastSaved": "2026-11-03T22:25:10.345Z",
+  "version": 279,
+  "lastSaved": "2026-11-04T00:27:06.563Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -4292,11 +4292,11 @@
       "position": {
         "x": 6.78,
         "y": 15.58,
-        "z": 0.45
+        "z": 0
       },
       "color": "#475569",
       "visualShape": "box",
-      "isSleeping": false,
+      "isSleeping": true,
       "hasRigidbody": true,
       "hasCollider": true,
       "hasFriction": true,
@@ -4337,14 +4337,14 @@
       },
       "verticalPositionModule": {
         "enabled": true,
-        "z": 0.45
+        "z": 0
       },
       "gravityModule": {
         "enabled": true
       },
       "gunModule": {
         "enabled": true,
-        "fireRate": 4,
+        "fireRate": 2,
         "damagePerBullet": 25,
         "bulletSpeed": 32,
         "firingSeconds": 2,
@@ -4360,13 +4360,13 @@
       "name": "Rapid Blaster",
       "prefabId": "prefab_blaster",
       "position": {
-        "x": 11.29,
-        "y": 16.76,
-        "z": 0
+        "x": 19.01,
+        "y": 15.74,
+        "z": 0.45
       },
       "color": "#0284c7",
       "visualShape": "box",
-      "isSleeping": true,
+      "isSleeping": false,
       "hasRigidbody": true,
       "hasCollider": true,
       "hasFriction": true,
@@ -4407,7 +4407,7 @@
       },
       "verticalPositionModule": {
         "enabled": true,
-        "z": 0
+        "z": 0.45
       },
       "gravityModule": {
         "enabled": true
@@ -4415,7 +4415,7 @@
       "gunModule": {
         "enabled": true,
         "fireRate": 10,
-        "damagePerBullet": 12,
+        "damagePerBullet": 4,
         "bulletSpeed": 28,
         "firingSeconds": 3,
         "cooldownTime": 1.8,
@@ -7072,11 +7072,11 @@
     },
     {
       "id": "prefab_pistol",
-      "name": "Pistol",
+      "name": "Tactical Pistol",
       "icon": "🔫",
       "archetype": {
         "id": "archetype_pistol",
-        "name": "Pistol",
+        "name": "Tactical Pistol",
         "position": {
           "x": 0,
           "y": 0,
@@ -9097,6 +9097,56 @@
         {
           "x": 21.5,
           "y": 21.5,
+          "z": 0
+        }
+      ]
+    },
+    {
+      "id": "spawner_gun_default",
+      "name": "Gun Weapon Spawner",
+      "enabled": true,
+      "prefabId": "prefab_pistol",
+      "intervalMinutes": 0.5,
+      "maxCount": 2,
+      "designatedSpawnPoints": [
+        {
+          "x": 13.5,
+          "y": 15,
+          "z": 0
+        },
+        {
+          "x": 16.5,
+          "y": 15,
+          "z": 0
+        },
+        {
+          "x": 15,
+          "y": 13.5,
+          "z": 0
+        },
+        {
+          "x": 15,
+          "y": 16.5,
+          "z": 0
+        },
+        {
+          "x": 10.5,
+          "y": 10.5,
+          "z": 0
+        },
+        {
+          "x": 19.5,
+          "y": 10.5,
+          "z": 0
+        },
+        {
+          "x": 10.5,
+          "y": 19.5,
+          "z": 0
+        },
+        {
+          "x": 19.5,
+          "y": 19.5,
           "z": 0
         }
       ]

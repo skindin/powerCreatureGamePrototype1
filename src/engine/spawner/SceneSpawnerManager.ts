@@ -3,7 +3,7 @@ import { Arena } from "../Arena.js";
 import { SceneSpawner, SceneSpawnerOptions } from "./SceneSpawner.js";
 import { prefabManager, PrefabManager } from "../prefab/PrefabManager.js";
 
-import { QUARRY_APPLE_SPAWN_POINTS } from "../maps/QuarryMap.js";
+import { QUARRY_APPLE_SPAWN_POINTS, QUARRY_GUN_SPAWN_POINTS } from "../maps/QuarryMap.js";
 
 export class SceneSpawnerManager {
   private spawners: Map<string, SceneSpawner> = new Map();
@@ -47,6 +47,19 @@ export class SceneSpawnerManager {
     });
 
     this.spawners.set(superAppleSpawner.id, superAppleSpawner);
+
+    // Default Gun Spawner: maintains firearms in the quarry arena (cap 2)
+    const gunSpawner = new SceneSpawner({
+      id: "spawner_gun_default",
+      name: "Gun Weapon Spawner",
+      enabled: true,
+      prefabId: "prefab_pistol",
+      intervalMinutes: 0.5,
+      maxCount: 2,
+      designatedSpawnPoints: QUARRY_GUN_SPAWN_POINTS,
+    });
+
+    this.spawners.set(gunSpawner.id, gunSpawner);
   }
 
   public getAll(): SceneSpawner[] {
