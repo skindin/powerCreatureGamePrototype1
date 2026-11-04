@@ -23,6 +23,12 @@ export class MotionIntegrator {
         // Surface impact (hitting floor or top of wall from above)
         if (entity.position.z <= surfaceHeight) {
           entity.position.z = surfaceHeight;
+          if (entity.isDismountFreefall && (surfaceHeight === 0 || entity.position.z <= 0.05)) {
+            entity.isDismountFreefall = false;
+            if ((entity as any).climbingModule) {
+              (entity as any).climbingModule.isDismountFreefall = false;
+            }
+          }
           if (entity.rollModule) {
             entity.rollModule.lastContactRadius = 0;
           }
@@ -85,6 +91,12 @@ export class MotionIntegrator {
         entity.position.z += entity.verticalVelocity * dt;
         if (entity.position.z <= surfaceHeight) {
           entity.position.z = surfaceHeight;
+          if (entity.isDismountFreefall && (surfaceHeight === 0 || entity.position.z <= 0.05)) {
+            entity.isDismountFreefall = false;
+            if ((entity as any).climbingModule) {
+              (entity as any).climbingModule.isDismountFreefall = false;
+            }
+          }
           if (entity.isInFlight) {
             entity.isInFlight = false;
           }

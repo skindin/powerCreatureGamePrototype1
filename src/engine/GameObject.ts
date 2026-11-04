@@ -562,6 +562,9 @@ export class GameObject {
   /** The specific wall the entity is currently standing on (if supported on layer 2) */
   public standingWall: Wall | null = null;
 
+  /** True while entity is falling off an elevated wall until it reaches ground or another surface */
+  public isDismountFreefall = false;
+
   /** True if entity is actively resting on a supporting surface (ground or wall top) */
   public get isRestingOnSurface(): boolean {
     return Math.abs(this.position.z - this.supportingSurfaceHeight) <= 0.02 && Math.abs(this.verticalVelocity) <= 0.1;
@@ -657,6 +660,11 @@ export class GameObject {
       this.position.z = 0;
       this.verticalVelocity = 0;
       this.supportingSurfaceHeight = 0;
+      this.isDismountFreefall = false;
+    }
+
+    if (this.position.z <= 0.05) {
+      this.isDismountFreefall = false;
     }
 
     // 0. Supporting surface evaluation (delegated to SurfaceSupportModule)
@@ -693,6 +701,7 @@ export class GameObject {
       this.isRestingOnSurface
     );
     const hangDistance = Math.max(0.01, edgeMod?.hangDistance ?? 0.10);
+    const supportRadius = Math.max(0.05, Math.min(this.colliderRadius, edgeMod ? edgeMod.hangDistance : 0.12));
 
     if (edgeMod) {
       if (!isStandingOnWallTop) {
@@ -822,8 +831,8 @@ export class GameObject {
 
             // Dismounting / disabling wall assist ONLY occurs if actively pushing against the guardrail,
             // and the character has moved onto the wall platform first!
-            const canDismount = !edgeMod || edgeMod.hasMovedOntoWall;
-            if (isPushingAgainstGuardrail && char?.isClimbInputHeld && canDismount) {
+            const canDismount = !edgeMod || !edgeMod.preventWalkOff || edgeMod.hasMovedOntoWall || !char?.climbingModule;
+            if (isPushingAgainstGuardrail && (char?.isClimbInputHeld || !char?.climbingModule) && canDismount) {
               if (edgeMod) {
                 edgeMod.isAssistClampArmed = false;
                 edgeMod.hasLeftClampZoneSinceDismount = false;
@@ -872,9 +881,9 @@ export class GameObject {
         // Interpolate continuously. If at any point between current point and next point the collider
         // wouldn't be touching a wall and they have just dismounted a wall, they should collide with
         // the wall they're heading towards and fall.
-        let currentWall = this.standingWall ?? (isStandingOnWallTop ? arena.getSupportingWall(this.position.x, this.position.y, this.colliderRadius) : null);
+        let currentWall = this.standingWall ?? (isStandingOnWallTop ? arena.getSupportingWall(this.position.x, this.position.y, supportRadius) : null);
         let hasDismountedIntoGap = false;
-        const canDismount = !edgeMod || edgeMod.hasMovedOntoWall;
+        const canDismount = !edgeMod || !edgeMod.preventWalkOff || edgeMod.hasMovedOntoWall || !char?.climbingModule;
 
         for (let s = 1; s <= numSteps; s++) {
           let candX = this.position.x + stepDx;
@@ -882,11 +891,11 @@ export class GameObject {
 
           if (currentWall) {
             let nextSupport: Wall | null = null;
-            if (arena.testWallOverlap(candX, candY, this.colliderRadius, currentWall)) {
+            if (arena.testWallOverlap(candX, candY, supportRadius, currentWall)) {
               nextSupport = currentWall;
             } else {
               for (const w of arena.walls) {
-                if (arena.areWallsContiguous(currentWall, w) && arena.testWallOverlap(candX, candY, this.colliderRadius, w)) {
+                if (arena.areWallsContiguous(currentWall, w) && arena.testWallOverlap(candX, candY, supportRadius, w)) {
                   nextSupport = w;
                   break;
                 }
@@ -902,6 +911,7 @@ export class GameObject {
               currentWall = null;
               this.standingWall = null;
               this.supportingSurfaceHeight = 0;
+              this.isDismountFreefall = true;
               if (char?.climbingModule) {
                 char.climbingModule.isDismountFreefall = true;
               }
@@ -918,7 +928,7 @@ export class GameObject {
           // If dismounted into a gap, airborne, or in dismount falling:
           // Immediately resolve collision with any wall ahead so collider cannot enter another wall across the gap!
           const isFallingInGap = !this.isClimbing && (hasDismountedIntoGap ||
-            (!this.standingWall && Boolean(char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress)));
+            (!this.standingWall && Boolean(this.isDismountFreefall || char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress)));
 
           if (isFallingInGap && this.hasCollider) {
             for (const wall of arena.walls) {
@@ -978,11 +988,11 @@ export class GameObject {
       // Internal arena walls collision:
       // A wall only exists physically from z=0 up to wall.wallHeight.
       // If an entity or thrown object is elevated above the wall (z > wall.wallHeight), it flies cleanly over the wall!
-      const isDismountFallingNow = Boolean(char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress);
+      const isDismountFallingNow = Boolean(this.isDismountFreefall || char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress);
       for (const wall of arena.walls) {
         if (this.position.z <= wall.wallHeight) {
           const isAtWallTop = this.position.z >= wall.wallHeight - 0.05 && !isDismountFallingNow;
-          if (isAtWallTop && (this.standingWall?.id === wall.id || arena.testWallOverlap(this.position.x, this.position.y, this.colliderRadius, wall))) {
+          if (isAtWallTop && (this.standingWall?.id === wall.id || arena.testWallOverlap(this.position.x, this.position.y, supportRadius, wall))) {
             continue;
           }
           if (this.position.z < wall.wallHeight - 0.05 || isDismountFallingNow || this.standingWall === null) {
