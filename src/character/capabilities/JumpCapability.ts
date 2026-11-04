@@ -20,9 +20,22 @@ export class JumpCapability {
     // A jump can ONLY occur from a supporting surface (ground or wall top).
     // If airborne, do NOT consume energy!
     const surfaceZ = char.supportingSurfaceHeight ?? 0;
+    const isBouncy = Boolean(
+      (char as any).rollMovementModule ||
+      (char.bounceMod !== null && char.bounceMod !== undefined && char.bounceMod > 0.1) ||
+      (char.bounceModule && char.bounceModule.enabled && (char.bounceModule.bounceMod ?? 0) > 0.1)
+    );
+
+    const now = performance.now();
+    const lastJumpTime = (char as any)._lastJumpTimestamp ?? 0;
+    const hasJumpCooldownPassed = (now - lastJumpTime) >= 120; // 120ms lock prevents double-jump on consecutive takeoff frames
+
+    // Bouncy creatures can jump immediately upon touching/landing on the ground without waiting for all bounce momentum to settle
+    const isNearSurface = Math.abs(char.position.z - surfaceZ) <= 0.15;
     const isGrounded =
       char.isRestingOnSurface ||
-      (Math.abs(char.position.z - surfaceZ) <= 0.08 && Math.abs(char.verticalVelocity) <= 0.8);
+      (Math.abs(char.position.z - surfaceZ) <= 0.08 && Math.abs(char.verticalVelocity) <= 0.8) ||
+      (isBouncy && isNearSurface && hasJumpCooldownPassed);
 
     if (!isGrounded || char.isHeld) {
       return false;
@@ -81,10 +94,26 @@ export class JumpCapability {
       }
     }
 
+    // Preserve original kinematic state in case JumpModule requires surface grounding alignment
+    const origVz = char.verticalVelocity;
+    const origZ = char.position.z;
+
+    // Temporarily satisfy sealed JumpModule's internal grounding check if bouncy entity is touching the surface
+    if (isBouncy && isNearSurface) {
+      char.position.z = surfaceZ;
+      char.verticalVelocity = 0;
+    }
+
     const jumped = char.jumpModule.jump(char, arena, movementInput);
     if (jumped) {
+      (char as any)._lastJumpTimestamp = performance.now();
       const achievableSpeed = targetTakeoffSpeed * Math.sqrt(energyFraction);
-      char.verticalVelocity = achievableSpeed;
+      // If bouncy creature already had upward momentum from the ground bounce rebound, stack a spring bonus
+      const bounceBonus = isBouncy && origVz > 0 ? Math.min(origVz * 0.35, 4.0) : 0;
+      char.verticalVelocity = achievableSpeed + bounceBonus;
+    } else {
+      char.verticalVelocity = origVz;
+      char.position.z = origZ;
     }
     return jumped;
   }

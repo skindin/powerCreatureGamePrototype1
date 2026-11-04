@@ -5560,7 +5560,14 @@ class JumpCapability {
       return false;
     }
     const surfaceZ = char.supportingSurfaceHeight ?? 0;
-    const isGrounded = char.isRestingOnSurface || Math.abs(char.position.z - surfaceZ) <= 0.08 && Math.abs(char.verticalVelocity) <= 0.8;
+    const isBouncy = Boolean(
+      char.rollMovementModule || char.bounceMod !== null && char.bounceMod !== void 0 && char.bounceMod > 0.1 || char.bounceModule && char.bounceModule.enabled && (char.bounceModule.bounceMod ?? 0) > 0.1
+    );
+    const now = performance.now();
+    const lastJumpTime = char._lastJumpTimestamp ?? 0;
+    const hasJumpCooldownPassed = now - lastJumpTime >= 120;
+    const isNearSurface = Math.abs(char.position.z - surfaceZ) <= 0.15;
+    const isGrounded = char.isRestingOnSurface || Math.abs(char.position.z - surfaceZ) <= 0.08 && Math.abs(char.verticalVelocity) <= 0.8 || isBouncy && isNearSurface && hasJumpCooldownPassed;
     if (!isGrounded || char.isHeld) {
       return false;
     }
@@ -5609,10 +5616,21 @@ class JumpCapability {
         energyFraction = burstRes.fraction * (metabolicJoules / rawMetabolicJoules);
       }
     }
+    const origVz = char.verticalVelocity;
+    const origZ = char.position.z;
+    if (isBouncy && isNearSurface) {
+      char.position.z = surfaceZ;
+      char.verticalVelocity = 0;
+    }
     const jumped = char.jumpModule.jump(char, arena2, movementInput);
     if (jumped) {
+      char._lastJumpTimestamp = performance.now();
       const achievableSpeed = targetTakeoffSpeed * Math.sqrt(energyFraction);
-      char.verticalVelocity = achievableSpeed;
+      const bounceBonus = isBouncy && origVz > 0 ? Math.min(origVz * 0.35, 4) : 0;
+      char.verticalVelocity = achievableSpeed + bounceBonus;
+    } else {
+      char.verticalVelocity = origVz;
+      char.position.z = origZ;
     }
     return jumped;
   }
