@@ -13,6 +13,11 @@ export interface BulletTrailPoint {
   alpha: number;
 }
 
+export interface LingeringTrail {
+  color: string;
+  points: BulletTrailPoint[];
+}
+
 export interface Bullet {
   id: string;
   x: number;
@@ -111,7 +116,7 @@ function sweptCircleHit(
  * 
  * Manages active ballistic bullets, trajectory calculation, continuous overheat cooling,
  * bullet-to-character / bullet-to-object ray-swept collision, damage deduction,
- * shooter recoil kickback, and target knockback momentum.
+ * shooter recoil kickback, target knockback momentum, and lingering vapor trails.
  */
 function parseBulletRgb(colorStr: string): { r: number; g: number; b: number } {
   if (colorStr.startsWith("#")) {
@@ -143,10 +148,12 @@ export class BulletManager {
   }
 
   public bullets: Bullet[] = [];
+  public lingeringTrails: LingeringTrail[] = [];
   private nextBulletId: number = 1;
 
   public clear(): void {
     this.bullets = [];
+    this.lingeringTrails = [];
   }
 
   /**
@@ -399,23 +406,44 @@ export class BulletManager {
       }
     }
 
-    // 2. Advance active bullets
+    // 2. Advance lingering trails from previous bullet impacts/deletions
+    const remainingLingering: LingeringTrail[] = [];
+    for (const lt of this.lingeringTrails) {
+      let anyVisible = false;
+      for (const p of lt.points) {
+        p.alpha = Math.max(0, p.alpha - dt * 3.0);
+        if (p.alpha > 0.02) {
+          anyVisible = true;
+        }
+      }
+      if (anyVisible && lt.points.length >= 2) {
+        remainingLingering.push(lt);
+      }
+    }
+    this.lingeringTrails = remainingLingering;
+
+    // 3. Advance active bullets
     const g = arena.gravity || 30;
     const remainingBullets: Bullet[] = [];
 
     for (const b of this.bullets) {
       b.lifeTime += dt;
       if (b.lifeTime >= b.maxLifeTime) {
-        continue; // Expired
+        // Bullet expired from lifetime: keep its trail lingering all the way to its final point
+        this.lingeringTrails.push({
+          color: b.color || "#f59e0b",
+          points: [...b.trail, { x: b.x, y: b.y, z: b.z, alpha: 1.0 }],
+        });
+        continue;
       }
 
-      // Record trail point
+      // Record trail point at current position before integrating next step
       b.trail.push({ x: b.x, y: b.y, z: b.z, alpha: 1.0 });
-      if (b.trail.length > 14) {
+      if (b.trail.length > 20) {
         b.trail.shift();
       }
       for (const p of b.trail) {
-        p.alpha = Math.max(0, p.alpha - dt * 4.5);
+        p.alpha = Math.max(0, p.alpha - dt * 3.0);
       }
 
       // Ballistic integration
@@ -531,11 +559,20 @@ export class BulletManager {
 
       // 5. Resolve earliest collision
       if (hitType !== null) {
-        // Record final impact point on trail so the visual streak connects cleanly to the hit surface
+        // Record final impact point on trail so the visual streak connects all the way to the deletion point
         const hitX = b.x + earliestHitToi * dx;
         const hitY = b.y + earliestHitToi * dy;
         const hitZ = Math.max(0, b.z + earliestHitToi * dz);
-        b.trail.push({ x: hitX, y: hitY, z: hitZ, alpha: 1.0 });
+        
+        // Preserve lingering trail connecting all the way to impact point so it lingers and smoothly fades
+        const finalTrailPoints: BulletTrailPoint[] = [
+          ...b.trail,
+          { x: hitX, y: hitY, z: hitZ, alpha: 1.0 },
+        ];
+        this.lingeringTrails.push({
+          color: b.color || "#f59e0b",
+          points: finalTrailPoints,
+        });
 
         if (hitType === "character" && hitTarget) {
           const char = hitTarget as Character;
@@ -604,7 +641,7 @@ export class BulletManager {
   }
 
   /**
-   * Renders flying bullet streaks and fading vapor trails.
+   * Renders flying bullet streaks and fading vapor trails all the way to impact/deletion point.
    */
   public render(
     ctx: CanvasRenderingContext2D,
@@ -612,7 +649,7 @@ export class BulletManager {
     _arena: Arena,
     viewSettings: ViewSettings
   ): void {
-    if (this.bullets.length === 0) return;
+    if (this.bullets.length === 0 && this.lingeringTrails.length === 0) return;
 
     const useHover = viewSettings.verticalVisuals === "hover" || viewSettings.verticalVisuals === "both";
     const hoverScale = useHover ? viewSettings.visualAltitudeScale : 0;
@@ -624,32 +661,39 @@ export class BulletManager {
 
     ctx.save();
 
-    for (const b of this.bullets) {
-      const { r, g, b: colB } = parseBulletRgb(b.color || "#fbbf24");
+    const drawStreak = (points: BulletTrailPoint[], colorStr: string) => {
+      if (points.length < 2) return;
+      const { r, g, b: colB } = parseBulletRgb(colorStr || "#fbbf24");
+      ctx.shadowColor = `rgba(${r}, ${g}, ${colB}, 0.6)`;
+      ctx.shadowBlur = 4;
+      ctx.lineCap = "round";
 
-      // Draw bullet purely as a single continuous fading streak / trail in the bullet's color (no head circle, no dual white stroke)
-      if (b.trail.length >= 1) {
-        ctx.shadowColor = `rgba(${r}, ${g}, ${colB}, 0.6)`;
-        ctx.shadowBlur = 4;
-        ctx.lineCap = "round";
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const s1 = toScreen(p1.x, p1.y, p1.z);
+        const s2 = toScreen(p2.x, p2.y, p2.z);
 
-        const points = [...b.trail, { x: b.x, y: b.y, z: b.z, alpha: 1.0 }];
-        for (let i = 0; i < points.length - 1; i++) {
-          const p1 = points[i];
-          const p2 = points[i + 1];
-          const s1 = toScreen(p1.x, p1.y, p1.z);
-          const s2 = toScreen(p2.x, p2.y, p2.z);
+        const trailAlpha = Math.max(0.01, Math.min(1.0, (p1.alpha + p2.alpha) * 0.5));
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${colB}, ${trailAlpha.toFixed(2)})`;
+        ctx.lineWidth = Math.max(1.2, 2.5 * trailAlpha);
 
-          const trailAlpha = Math.max(0.05, Math.min(1.0, (p1.alpha + p2.alpha) * 0.5));
-          ctx.strokeStyle = `rgba(${r}, ${g}, ${colB}, ${trailAlpha.toFixed(2)})`;
-          ctx.lineWidth = Math.max(1.2, 2.5 * trailAlpha);
-
-          ctx.beginPath();
-          ctx.moveTo(s1.x, s1.y);
-          ctx.lineTo(s2.x, s2.y);
-          ctx.stroke();
-        }
+        ctx.beginPath();
+        ctx.moveTo(s1.x, s1.y);
+        ctx.lineTo(s2.x, s2.y);
+        ctx.stroke();
       }
+    };
+
+    // 1. Draw lingering trails from collided/deleted bullets all the way to impact point
+    for (const lt of this.lingeringTrails) {
+      drawStreak(lt.points, lt.color);
+    }
+
+    // 2. Draw active flying bullet trails all the way to current bullet position
+    for (const b of this.bullets) {
+      const points = [...b.trail, { x: b.x, y: b.y, z: b.z, alpha: 1.0 }];
+      drawStreak(points, b.color);
     }
 
     ctx.restore();

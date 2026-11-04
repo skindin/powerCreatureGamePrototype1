@@ -1,6 +1,6 @@
 {
-  "version": 291,
-  "lastSaved": "2026-11-04T00:50:35.707Z",
+  "version": 292,
+  "lastSaved": "2026-11-04T01:00:17.131Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -4570,8 +4570,8 @@
       "name": "Tactical Pistol",
       "prefabId": "prefab_pistol",
       "position": {
-        "x": 15,
-        "y": 16.5,
+        "x": 14.97,
+        "y": 16.51,
         "z": 0
       },
       "color": "#475569",
