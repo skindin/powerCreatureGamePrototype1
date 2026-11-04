@@ -1,6 +1,6 @@
 {
-  "version": 310,
-  "lastSaved": "2026-11-04T04:17:55.188Z",
+  "version": 317,
+  "lastSaved": "2026-11-04T06:56:26.502Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -9994,7 +9994,7 @@
                 "brake": {
                   "code": "AltLeft",
                   "mode": "hold",
-                  "requireCleanPress": false
+                  "requireCleanPress": true
                 }
               },
               {
@@ -10003,7 +10003,7 @@
                 "name": "Item Interaction",
                 "enabled": true,
                 "pickup": {
-                  "code": "MouseLeft",
+                  "code": null,
                   "requireCleanPress": true
                 },
                 "drop": {
@@ -10019,11 +10019,14 @@
                   "requireCleanPress": false
                 },
                 "fireWeapon": {
-                  "code": "MouseRight",
+                  "code": "MouseLeft",
                   "requireCleanPress": false
                 },
                 "swapRequiresHolding": false,
-                "triggerPickupWhenEmptyHanded": true
+                "triggerPickupWhenEmptyHanded": true,
+                "additionalPickup": {
+                  "code": "MouseLeft"
+                }
               },
               {
                 "type": "throw",
@@ -10070,7 +10073,7 @@
                 "name": "Melee Combat",
                 "enabled": true,
                 "punch": {
-                  "code": "KeyF",
+                  "code": "MouseRight",
                   "requireCleanPress": true
                 }
               },
@@ -10079,7 +10082,7 @@
                 "id": "block-facing",
                 "name": "Aim / Heading Facing",
                 "enabled": true,
-                "mode": "mouseWorldPos"
+                "mode": "fromMovement"
               }
             ],
             "aiming": {
@@ -11290,7 +11293,7 @@
               "brake": {
                 "code": "AltLeft",
                 "mode": "hold",
-                "requireCleanPress": false
+                "requireCleanPress": true
               }
             },
             {
@@ -11299,7 +11302,7 @@
               "name": "Item Interaction",
               "enabled": true,
               "pickup": {
-                "code": "MouseLeft",
+                "code": null,
                 "requireCleanPress": true
               },
               "drop": {
@@ -11315,11 +11318,14 @@
                 "requireCleanPress": false
               },
               "fireWeapon": {
-                "code": "MouseRight",
+                "code": "MouseLeft",
                 "requireCleanPress": false
               },
               "swapRequiresHolding": false,
-              "triggerPickupWhenEmptyHanded": true
+              "triggerPickupWhenEmptyHanded": true,
+              "additionalPickup": {
+                "code": "MouseLeft"
+              }
             },
             {
               "type": "throw",
@@ -11366,7 +11372,7 @@
               "name": "Melee Combat",
               "enabled": true,
               "punch": {
-                "code": "KeyF",
+                "code": "MouseRight",
                 "requireCleanPress": true
               }
             },
@@ -11375,7 +11381,7 @@
               "id": "block-facing",
               "name": "Aim / Heading Facing",
               "enabled": true,
-              "mode": "mouseWorldPos"
+              "mode": "fromMovement"
             }
           ],
           "aiming": {

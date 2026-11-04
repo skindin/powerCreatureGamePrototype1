@@ -555,7 +555,7 @@ export class EntityPass {
       const cosR = Math.cos(rollDirAngle);
       const sinR = Math.sin(rollDirAngle);
 
-      const isHalf1Top = cosR < 0;
+      const isHalf1Top = Math.abs(cosR) >= 0.25 ? cosR < 0 : false;
       const topStart = isHalf1Top ? 0 : Math.PI;
       const topEnd = isHalf1Top ? Math.PI : Math.PI * 2;
       const bottomStart = isHalf1Top ? Math.PI : 0;
@@ -569,7 +569,7 @@ export class EntityPass {
       const dashOffset = -spinSign * roll.visualPhase * a;
 
       if (showArrows) {
-        this.drawFixedSpeedTriangles(ctx, x, y, a, b, rollDirAngle, spinSign, renderRadius, false);
+        this.drawFixedSpeedTriangles(ctx, x, y, a, b, rollDirAngle, spinSign, renderRadius, false, isHalf1Top);
       }
 
       ctx.save();
@@ -625,7 +625,8 @@ export class EntityPass {
     rollDirAngle: number,
     spinSign: number,
     renderRadius: number,
-    isUniformAlpha: boolean = false
+    isUniformAlpha: boolean = false,
+    isHalf1Top: boolean = false
   ): void {
     const fixedRate = 2.5;
     const fixedPhase = (performance.now() * 0.001 * fixedRate) % (Math.PI * 2);
@@ -665,8 +666,11 @@ export class EntityPass {
       const nx = -ty;
       const ny = tx;
 
-      const isTopHalf = sy <= centerY;
-      const alpha = isUniformAlpha ? 0.90 : (isTopHalf ? 0.90 : 0.32);
+      const normT = ((t % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const isBrightArc = isHalf1Top
+        ? (normT >= 0 && normT < Math.PI)
+        : (normT >= Math.PI && normT < Math.PI * 2);
+      const alpha = isUniformAlpha ? 0.90 : (isBrightArc ? 0.90 : 0.32);
       ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
 
       const apexX = sx + tx * (L * 0.55);
