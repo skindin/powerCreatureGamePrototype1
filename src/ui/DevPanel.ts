@@ -1183,6 +1183,16 @@ export class DevPanel {
       });
     });
 
+    // Wire up Save Module to Prefab buttons
+    container.querySelectorAll(".btn-save-module").forEach((btn) => {
+      btn.addEventListener("click", async (evt) => {
+        evt.stopPropagation();
+        const modId = (btn as HTMLElement).dataset.moduleId;
+        if (!modId) return;
+        await this.saveModuleToPrefab(modId);
+      });
+    });
+
     // Wire up Add items
     dropdown.querySelectorAll(".add-behavior-item").forEach((btn) => {
       btn.addEventListener("click", (evt) => {
@@ -1208,6 +1218,45 @@ export class DevPanel {
 
   public addModuleToSelectedEntity(moduleType: string): void {
     EntityModuleLifecycle.addModuleToSelectedEntity(this, moduleType);
+  }
+
+  public async saveModuleToPrefab(moduleType: string): Promise<void> {
+    if (this.isOnlineLocked) {
+      this.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+    const e = this.selectedEntity;
+    if (!e) return;
+
+    let targetPrefabId = e.prefabId;
+    if (!targetPrefabId && e instanceof Character) {
+      targetPrefabId = (e as any).prefabId || (e.role === "local_player" ? "prefab_player" : undefined);
+    }
+    let prefab = targetPrefabId ? prefabManager.get(targetPrefabId) : undefined;
+    if (!prefab) {
+      prefab = prefabManager.getAll().find((p) => p.archetype === e || (p.archetype.id && p.archetype.id === e.id));
+    }
+
+    if (!prefab) {
+      this.showSaveToast("⚠️ No linked prefab found for this entity. Select or create a prefab first.", true);
+      return;
+    }
+
+    // 1. Sync module existence and properties from selected entity to prefab archetype
+    EntityModuleLifecycle.syncModule(e, prefab.archetype, moduleType);
+
+    // 2. Cascade module sync to other live instances of this prefab
+    const allObjects = (this.objects as GameObject[] || []).concat(this.getAllCharacters ? this.getAllCharacters() : []);
+    for (const liveObj of allObjects) {
+      if (liveObj !== e && liveObj.prefabId === prefab.id) {
+        EntityModuleLifecycle.syncModule(e, liveObj, moduleType);
+      }
+    }
+
+    // 3. Persist updated prefab to project
+    await DevConfigPersistence.savePrefab(this, prefab);
+    this.renderEntityModules();
+    this.renderScenePrefabs();
   }
 
   private bindDynamicModuleControls(): void {

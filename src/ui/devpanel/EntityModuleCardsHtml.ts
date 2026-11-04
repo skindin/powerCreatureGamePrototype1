@@ -100,6 +100,7 @@ export class EntityModuleCardsHtml {
 
     const renderToggleBtn = (modId: string, isEnabled: boolean) => `
       <div style="display: flex; align-items: center; gap: 6px;">
+        <button class="btn-save-module prop-save-btn" data-module-id="${modId}" title="Save module to Prefab & Project" style="padding: 2px 7px; font-size: 0.75rem; border-radius: 4px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; cursor: pointer;">💾</button>
         <button class="btn-toggle-module ${isEnabled ? "active" : "disabled"}" data-module-id="${modId}" title="${isEnabled ? "Disable" : "Enable"} this behavior">
           ${isEnabled ? "✓ Enabled" : "✕ Disabled"}
         </button>

@@ -1,6 +1,6 @@
 {
-  "version": 328,
-  "lastSaved": "2026-11-04T07:07:01.245Z",
+  "version": 338,
+  "lastSaved": "2026-11-04T07:16:41.110Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -1027,11 +1027,11 @@
     },
     "hasEnergyPool": true,
     "energyPool": {
-      "staminaCapacity": 5000,
-      "staminaRegenRate": 500,
-      "energyPoolCapacity": 10000,
-      "currentStamina": 5000,
-      "currentEnergy": 10000,
+      "staminaCapacity": 10000,
+      "staminaRegenRate": 1000,
+      "energyPoolCapacity": 20000,
+      "currentStamina": 10000,
+      "currentEnergy": 20000,
       "muscleEfficiency": 0.25,
       "infiniteEnergy": false,
       "debugAutoRefillOnEmpty": false
@@ -7443,6 +7443,14 @@
           "maxThrowHeight": 5,
           "consumesEnergy": true
         },
+        "hasJump": true,
+        "jumpModule": {
+          "jumpImpulse": 18.5,
+          "maxInitialSpeed": 9.67,
+          "jumpPowerCapacity": 1200,
+          "jumpConsumesEnergy": true,
+          "jumpAllowPartialPower": false
+        },
         "hasPickup": true,
         "pickupModule": {
           "pickupReach": 1.3,
@@ -7484,7 +7492,7 @@
           "staminaCapacity": 5000,
           "staminaRegenRate": 500,
           "energyPoolCapacity": 10000,
-          "currentStamina": 5000,
+          "currentStamina": 10000,
           "currentEnergy": 10000,
           "muscleEfficiency": 0.25,
           "infiniteEnergy": false,
@@ -9939,6 +9947,8 @@
           "cooldownTime": 1.8,
           "cooldownDelay": 0.4,
           "bulletMass": 0.04,
+          "turnSpeed": 22,
+          "aimTolerance": 0.15,
           "gunLength": 0.6,
           "gunWidth": 0.24,
           "bulletColor": "#38bdf8"
@@ -10023,7 +10033,7 @@
                   "requireCleanPress": false
                 },
                 "fireWeapon": {
-                  "code": "MouseRight",
+                  "code": "MouseLeft",
                   "requireCleanPress": false
                 },
                 "swapRequiresHolding": false,
@@ -10083,7 +10093,7 @@
                 "id": "block-facing",
                 "name": "Aim / Heading Facing",
                 "enabled": true,
-                "mode": "mouseWorldPos"
+                "mode": "fromMovement"
               },
               {
                 "type": "jump",
@@ -11132,6 +11142,14 @@
           "maxThrowHeight": 5,
           "consumesEnergy": true
         },
+        "hasJump": true,
+        "jumpModule": {
+          "jumpImpulse": 18.5,
+          "maxInitialSpeed": 9.67,
+          "jumpPowerCapacity": 1200,
+          "jumpConsumesEnergy": true,
+          "jumpAllowPartialPower": false
+        },
         "hasPickup": true,
         "pickupModule": {
           "pickupReach": 1.3,
@@ -11163,11 +11181,11 @@
         },
         "hasEnergyPool": true,
         "energyPool": {
-          "staminaCapacity": 5000,
-          "staminaRegenRate": 500,
-          "energyPoolCapacity": 10000,
+          "staminaCapacity": 10000,
+          "staminaRegenRate": 1000,
+          "energyPoolCapacity": 20000,
           "currentStamina": 5000,
-          "currentEnergy": 10000,
+          "currentEnergy": 20000,
           "muscleEfficiency": 0.25,
           "infiniteEnergy": false,
           "debugAutoRefillOnEmpty": false
@@ -11283,7 +11301,7 @@
                 "requireCleanPress": false
               },
               "fireWeapon": {
-                "code": "MouseRight",
+                "code": "MouseLeft",
                 "requireCleanPress": false
               },
               "swapRequiresHolding": false,
@@ -11343,7 +11361,7 @@
               "id": "block-facing",
               "name": "Aim / Heading Facing",
               "enabled": true,
-              "mode": "mouseWorldPos"
+              "mode": "fromMovement"
             },
             {
               "type": "jump",
