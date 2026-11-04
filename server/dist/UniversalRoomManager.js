@@ -15069,6 +15069,63 @@ class DevConfigPersistence {
     panel.updateDirtyBadge();
     panel.showSaveToast(`💾 Saved ${prefab.name} Prefab to Project & ${affectedObjects.length} live instances`);
   }
+  static async savePrefabDeletion(panel, prefabId, prefabName) {
+    if (panel.isOnlineLocked) {
+      panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+    const delta = {
+      clientVersion: panel.currentConfigVersion,
+      sections: ["prefabs"],
+      prefabsDelta: {
+        deletedIds: [prefabId]
+      }
+    };
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta)
+    });
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const res = await resp.json();
+    panel.currentConfigVersion = res.version ?? panel.currentConfigVersion + 1;
+    panel.updateDirtyBadge();
+    panel.showSaveToast(`🗑️ Saved deletion of ${prefabName} Prefab to Project file`);
+  }
+  static async saveSpawnerDeletion(panel, _spawnerId, spawnerName) {
+    if (panel.isOnlineLocked) {
+      panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+    const delta = {
+      clientVersion: panel.currentConfigVersion,
+      sections: ["spawners"],
+      spawners: sceneSpawnerManager.getAll().map((s) => ({
+        id: s.id,
+        name: s.name,
+        prefabId: s.prefabId,
+        intervalMinutes: s.intervalMinutes,
+        maxCount: s.maxCount,
+        enabled: s.enabled,
+        designatedSpawnPoints: s.designatedSpawnPoints
+      }))
+    };
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta)
+    });
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const res = await resp.json();
+    panel.currentConfigVersion = res.version ?? panel.currentConfigVersion + 1;
+    panel.dirtyState.spawners = false;
+    panel.updateDirtyBadge();
+    panel.showSaveToast(`🗑️ Saved deletion of ${spawnerName} Spawner to Project file`);
+  }
   static async saveControlSchema(panel, char, schema) {
     var _a;
     if (panel == null ? void 0 : panel.isOnlineLocked) {

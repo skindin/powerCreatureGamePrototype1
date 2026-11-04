@@ -1,12 +1,20 @@
 import { prefabManager } from "../../engine/prefab/PrefabManager.js";
 import { sceneSpawnerManager } from "../../engine/spawner/SceneSpawnerManager.js";
+import type { SceneSpawner } from "../../engine/spawner/SceneSpawner.js";
 import type { DevPanel } from "../DevPanel.js";
+
+export interface DeletedSpawnerPlaceholder {
+  id: string;
+  name: string;
+  spawner?: SceneSpawner;
+}
 
 /**
  * Isolated DevPanel section for Scene Spawners management & live timer telemetry.
  * Editing Scene Spawner UI or controls happens strictly in this file.
  */
 export class SpawnersPanelSection {
+  private static deletedSpawnersPendingSave: Map<string, DeletedSpawnerPlaceholder> = new Map();
   public static renderSceneSpawners(panel: DevPanel): void {
     const container = (panel as any).container as HTMLElement;
     const objects = (panel as any).objects as any[];
@@ -20,7 +28,7 @@ export class SpawnersPanelSection {
     if (badgeEl) badgeEl.textContent = allSpawners.length.toString();
     if (!listEl) return;
 
-    if (allSpawners.length === 0) {
+    if (allSpawners.length === 0 && SpawnersPanelSection.deletedSpawnersPendingSave.size === 0) {
       listEl.innerHTML = `
         <div style="text-align: center; color: var(--text-muted); font-size: 0.74rem; padding: 12px 0;">
           No scene spawners. Click "+ Add Scene Spawner" above to create an automated background spawner.
@@ -70,6 +78,28 @@ export class SpawnersPanelSection {
               <span>Scene Count: <strong id="spawner-active-count-${spawner.id}" style="color: #4ade80;">${activeCount} / ${spawner.maxCount}</strong></span>
               <span id="spawner-timer-${spawner.id}" style="color: #cbd5e1;"></span>
             </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Render placeholder cards for deleted spawners awaiting file persistence
+    for (const deleted of SpawnersPanelSection.deletedSpawnersPendingSave.values()) {
+      html += `
+        <div class="behavior-card deleted-spawner-placeholder" data-deleted-spawner-id="${deleted.id}" style="border: 1px dashed rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.08); margin-bottom: 10px; border-radius: 6px; padding: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 600; font-size: 0.82rem; color: #fca5a5; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <span>🗑️</span>
+              <span style="text-decoration: line-through; opacity: 0.85;">${deleted.name}</span>
+              <span class="badge" style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; font-size: 0.68rem; padding: 1px 6px;">Deleted from scene</span>
+            </div>
+            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 3px;">
+              Spawner removed from active runtime. Click Save to delete from project config file so it won't reload when refreshed.
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
+            <button class="btn-secondary-action btn-undo-delete-spawner" data-spawner-id="${deleted.id}" style="padding: 4px 8px; font-size: 0.74rem; color: #cbd5e1; border-color: rgba(148, 163, 184, 0.4);" title="Restore this spawner to scene">↩️ Undo</button>
+            <button class="btn-primary-action btn-save-delete-spawner" data-spawner-id="${deleted.id}" style="padding: 4px 10px; font-size: 0.74rem; background: #dc2626; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;" title="Save deletion to worldConfig.json so it doesn't load when refreshed">💾 Save Deletion to File</button>
           </div>
         </div>
       `;
@@ -163,10 +193,44 @@ export class SpawnersPanelSection {
     listEl.querySelectorAll(".btn-delete-spawner").forEach((btn) => {
       btn.addEventListener("click", () => {
         const sid = (btn as HTMLElement).dataset.spawnerId!;
+        const s = sceneSpawnerManager.get(sid);
+        if (s) {
+          SpawnersPanelSection.deletedSpawnersPendingSave.set(sid, {
+            id: sid,
+            name: s.name,
+            spawner: s,
+          });
+        }
         sceneSpawnerManager.delete(sid);
         dirtyState.spawners = true;
         panel.updateDirtyBadge();
         panel.renderSceneSpawners();
+      });
+    });
+
+    listEl.querySelectorAll(".btn-save-delete-spawner").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const sid = (btn as HTMLElement).dataset.spawnerId!;
+        const item = SpawnersPanelSection.deletedSpawnersPendingSave.get(sid);
+        const name = item ? item.name : sid;
+        await panel.saveSpawnerDeletion(sid, name);
+        SpawnersPanelSection.deletedSpawnersPendingSave.delete(sid);
+        panel.renderSceneSpawners();
+      });
+    });
+
+    listEl.querySelectorAll(".btn-undo-delete-spawner").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const sid = (btn as HTMLElement).dataset.spawnerId!;
+        const item = SpawnersPanelSection.deletedSpawnersPendingSave.get(sid);
+        if (item?.spawner) {
+          (sceneSpawnerManager as any).spawners.set(sid, item.spawner);
+          SpawnersPanelSection.deletedSpawnersPendingSave.delete(sid);
+          dirtyState.spawners = true;
+          panel.updateDirtyBadge();
+          panel.renderSceneSpawners();
+          panel.showSaveToast(`↩️ Restored ${item.name} Spawner to scene`);
+        }
       });
     });
   }

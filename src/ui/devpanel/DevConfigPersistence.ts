@@ -299,6 +299,71 @@ export class DevConfigPersistence {
     panel.showSaveToast(`💾 Saved ${prefab.name} Prefab to Project & ${affectedObjects.length} live instances`);
   }
 
+  public static async savePrefabDeletion(panel: DevPanel, prefabId: string, prefabName: string): Promise<void> {
+    if ((panel as any).isOnlineLocked) {
+      panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    const delta: WorldConfigDelta = {
+      clientVersion: (panel as any).currentConfigVersion,
+      sections: ["prefabs"],
+      prefabsDelta: {
+        deletedIds: [prefabId],
+      },
+    };
+
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const res = await resp.json();
+    (panel as any).currentConfigVersion = res.version ?? ((panel as any).currentConfigVersion + 1);
+    panel.updateDirtyBadge();
+    panel.showSaveToast(`🗑️ Saved deletion of ${prefabName} Prefab to Project file`);
+  }
+
+  public static async saveSpawnerDeletion(panel: DevPanel, _spawnerId: string, spawnerName: string): Promise<void> {
+    if ((panel as any).isOnlineLocked) {
+      panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+
+    const delta: WorldConfigDelta = {
+      clientVersion: (panel as any).currentConfigVersion,
+      sections: ["spawners"],
+      spawners: sceneSpawnerManager.getAll().map((s) => ({
+        id: s.id,
+        name: s.name,
+        prefabId: s.prefabId,
+        intervalMinutes: s.intervalMinutes,
+        maxCount: s.maxCount,
+        enabled: s.enabled,
+        designatedSpawnPoints: s.designatedSpawnPoints,
+      })) as any,
+    };
+
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const res = await resp.json();
+    (panel as any).currentConfigVersion = res.version ?? ((panel as any).currentConfigVersion + 1);
+    (panel as any).dirtyState.spawners = false;
+    panel.updateDirtyBadge();
+    panel.showSaveToast(`🗑️ Saved deletion of ${spawnerName} Spawner to Project file`);
+  }
+
     public static async saveControlSchema(
     panel: DevPanel | null,
     char: Character,

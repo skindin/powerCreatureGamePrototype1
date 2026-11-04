@@ -2621,6 +2621,14 @@ export class DevPanel {
     return DevConfigPersistence.savePrefab(this, prefab);
   }
 
+  public async savePrefabDeletion(prefabId: string, prefabName: string): Promise<void> {
+    return DevConfigPersistence.savePrefabDeletion(this, prefabId, prefabName);
+  }
+
+  public async saveSpawnerDeletion(spawnerId: string, spawnerName: string): Promise<void> {
+    return DevConfigPersistence.saveSpawnerDeletion(this, spawnerId, spawnerName);
+  }
+
   public async saveProjectConfig(): Promise<void> {
     return DevConfigPersistence.saveProjectConfig(this);
   }

@@ -1,4 +1,5 @@
 import { prefabManager } from "../../engine/prefab/PrefabManager.js";
+import { Prefab } from "../../engine/prefab/Prefab.js";
 import { consumableTagRegistry } from "../../engine/properties/ConsumableTagRegistry.js";
 import type { DevPanel } from "../DevPanel.js";
 
@@ -6,7 +7,15 @@ import type { DevPanel } from "../DevPanel.js";
  * Isolated DevPanel section for Scene Prefabs management & Prefab instance override badges.
  * Editing Prefab UI or archetype scrubbers happens strictly in this file.
  */
+export interface DeletedPrefabPlaceholder {
+  id: string;
+  name: string;
+  icon?: string;
+  prefab?: Prefab;
+}
+
 export class PrefabsPanelSection {
+  private static deletedPrefabsPendingSave: Map<string, DeletedPrefabPlaceholder> = new Map();
   public static updatePrefabInfoBadge(panel: DevPanel): void {
     const container = (panel as any).container as HTMLElement;
     const badgeEl = container.querySelector("#selected-entity-prefab-info") as HTMLElement | null;
@@ -97,7 +106,7 @@ export class PrefabsPanelSection {
     if (badgeEl) badgeEl.textContent = allPrefabs.length.toString();
     if (!listEl) return;
 
-    if (allPrefabs.length === 0) {
+    if (allPrefabs.length === 0 && PrefabsPanelSection.deletedPrefabsPendingSave.size === 0) {
       listEl.innerHTML = `
         <div style="text-align: center; color: var(--text-muted); font-size: 0.74rem; padding: 12px 0;">
           No scene prefabs created yet. Select any scene object and click "📦 Make Prefab".
@@ -167,6 +176,28 @@ export class PrefabsPanelSection {
                 <div id="scrub-container-prefab-heal-${prefab.id}"></div>
               </div>
             ` : ""}
+          </div>
+        </div>
+      `;
+    }
+
+    // Render placeholder cards for deleted prefabs awaiting file persistence
+    for (const deleted of PrefabsPanelSection.deletedPrefabsPendingSave.values()) {
+      html += `
+        <div class="behavior-card deleted-prefab-placeholder" data-deleted-prefab-id="${deleted.id}" style="border: 1px dashed rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.08); margin-bottom: 10px; border-radius: 6px; padding: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 600; font-size: 0.82rem; color: #fca5a5; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <span>🗑️</span>
+              <span style="text-decoration: line-through; opacity: 0.85;">${deleted.icon || "📦"} ${deleted.name}</span>
+              <span class="badge" style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; font-size: 0.68rem; padding: 1px 6px;">Deleted from scene</span>
+            </div>
+            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 3px;">
+              Prefab unlinked from scene. Click Save to delete from project config file so it won't reload when refreshed.
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
+            <button class="btn-secondary-action btn-undo-delete-prefab" data-prefab-id="${deleted.id}" style="padding: 4px 8px; font-size: 0.74rem; color: #cbd5e1; border-color: rgba(148, 163, 184, 0.4);" title="Restore this prefab to scene">↩️ Undo</button>
+            <button class="btn-primary-action btn-save-delete-prefab" data-prefab-id="${deleted.id}" style="padding: 4px 10px; font-size: 0.74rem; background: #dc2626; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;" title="Save deletion to worldConfig.json so it doesn't load when refreshed">💾 Save Deletion to File</button>
           </div>
         </div>
       `;
@@ -393,9 +424,43 @@ export class PrefabsPanelSection {
     listEl.querySelectorAll(".btn-delete-prefab").forEach((btn) => {
       btn.addEventListener("click", () => {
         const pid = (btn as HTMLElement).dataset.prefabId!;
+        const p = prefabManager.get(pid);
+        if (p) {
+          PrefabsPanelSection.deletedPrefabsPendingSave.set(pid, {
+            id: pid,
+            name: p.name,
+            icon: p.icon,
+            prefab: p,
+          });
+        }
         prefabManager.delete(pid, objects);
         panel.renderScenePrefabs();
         panel.updatePrefabInfoBadge();
+      });
+    });
+
+    listEl.querySelectorAll(".btn-save-delete-prefab").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const item = PrefabsPanelSection.deletedPrefabsPendingSave.get(pid);
+        const name = item ? item.name : pid;
+        await panel.savePrefabDeletion(pid, name);
+        PrefabsPanelSection.deletedPrefabsPendingSave.delete(pid);
+        panel.renderScenePrefabs();
+      });
+    });
+
+    listEl.querySelectorAll(".btn-undo-delete-prefab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const pid = (btn as HTMLElement).dataset.prefabId!;
+        const item = PrefabsPanelSection.deletedPrefabsPendingSave.get(pid);
+        if (item?.prefab) {
+          (prefabManager as any).prefabs.set(pid, item.prefab);
+          PrefabsPanelSection.deletedPrefabsPendingSave.delete(pid);
+          panel.renderScenePrefabs();
+          panel.updatePrefabInfoBadge();
+          panel.showSaveToast(`↩️ Restored ${item.name} Prefab to scene`);
+        }
       });
     });
   }
