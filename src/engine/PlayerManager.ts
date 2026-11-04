@@ -13,8 +13,7 @@ import { ModularBlockEvaluator } from "../input/schema/ModularBlockEvaluator.js"
 import { DefaultControlBlocks, DefaultGamepadControlBlocks } from "../input/schema/presets/DefaultControlSchemas.js";
 import type { ControlExecutionContext, ControlRule } from "../input/schema/ControlSchemaTypes.js";
 import { prefabManager } from "./prefab/PrefabManager.js";
-import { LaserModule } from "../character/LaserModule.js";
-import { MeleeModule } from "../character/MeleeModule.js";
+import { applyCharacterConfig, serializeCharacter } from "../config/WorldConfig.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -398,6 +397,16 @@ export class PlayerManager {
         name: defaultName,
         hasCustomName: false,
       });
+
+      // Synchronize all attributes from the player prefab archetype (or baseCharacter)
+      const sourceChar = (targetPrefab?.archetype instanceof Character) ? targetPrefab.archetype : this.baseCharacter;
+      if (sourceChar instanceof Character) {
+        const config = serializeCharacter(sourceChar);
+        applyCharacterConfig(char, config);
+      }
+
+      char.position.x = slotSpawn.x;
+      char.position.y = slotSpawn.y;
       char.position.z = slotSpawn.z ?? 0;
       char.playerNumber = playerNum;
       char.playerColor = color;
@@ -405,22 +414,7 @@ export class PlayerManager {
       char.name = defaultName;
       char.hasCustomName = false;
       char.prefabId = targetPrefabId;
-
-      if (this.baseCharacter.laserModule) {
-        char.laserModule = new LaserModule({
-          damageRate: this.baseCharacter.laserModule.damageRateProp.literalValue,
-          maxDamageRate: this.baseCharacter.laserModule.maxDamageRateProp.literalValue,
-          thickness: this.baseCharacter.laserModule.thicknessProp.literalValue,
-          maxPower: this.baseCharacter.laserModule.maxPowerProp.literalValue,
-        });
-      }
-      if (this.baseCharacter.meleeModule) {
-        char.meleeModule = new MeleeModule({
-          maxForce: this.baseCharacter.meleeModule.maxForceProp.literalValue,
-          reach: this.baseCharacter.meleeModule.reachProp.literalValue,
-          punchFrequency: this.baseCharacter.meleeModule.punchFrequencyProp.literalValue,
-        });
-      }
+      char.playerId = "keyboard";
 
       const schemaToApply = targetPrefab?.controlSchema || this.baseCharacter.controlSchema;
       if (schemaToApply) {
@@ -536,6 +530,16 @@ export class PlayerManager {
         name: defaultName,
         hasCustomName: false,
       });
+
+      // Synchronize all attributes from the player prefab archetype (or baseCharacter)
+      const sourceChar = (targetPrefab?.archetype instanceof Character) ? targetPrefab.archetype : this.baseCharacter;
+      if (sourceChar instanceof Character) {
+        const config = serializeCharacter(sourceChar);
+        applyCharacterConfig(char, config);
+      }
+
+      char.position.x = slotSpawn.x;
+      char.position.y = slotSpawn.y;
       char.position.z = slotSpawn.z ?? 0;
       char.playerNumber = playerNum;
       char.playerColor = color;
@@ -543,22 +547,7 @@ export class PlayerManager {
       char.name = defaultName;
       char.hasCustomName = false;
       char.prefabId = targetPrefabId;
-
-      if (this.baseCharacter.laserModule) {
-        char.laserModule = new LaserModule({
-          damageRate: this.baseCharacter.laserModule.damageRateProp.literalValue,
-          maxDamageRate: this.baseCharacter.laserModule.maxDamageRateProp.literalValue,
-          thickness: this.baseCharacter.laserModule.thicknessProp.literalValue,
-          maxPower: this.baseCharacter.laserModule.maxPowerProp.literalValue,
-        });
-      }
-      if (this.baseCharacter.meleeModule) {
-        char.meleeModule = new MeleeModule({
-          maxForce: this.baseCharacter.meleeModule.maxForceProp.literalValue,
-          reach: this.baseCharacter.meleeModule.reachProp.literalValue,
-          punchFrequency: this.baseCharacter.meleeModule.punchFrequencyProp.literalValue,
-        });
-      }
+      char.playerId = key;
 
       const schemaToApply = targetPrefab?.controlSchema || this.baseCharacter.controlSchema;
       if (schemaToApply) {

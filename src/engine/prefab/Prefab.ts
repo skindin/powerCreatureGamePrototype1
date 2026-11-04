@@ -4,9 +4,9 @@ import { RollModule } from "../RollModule.js";
 import { GunModule } from "../GunModule.js";
 import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
-import { LaserModule } from "../../character/LaserModule.js";
-import { MeleeModule } from "../../character/MeleeModule.js";
 import { ControlSchema } from "../../input/schema/ControlSchemaTypes.js";
+import { applyCharacterConfig, serializeCharacter } from "../../config/WorldConfig.js";
+import { PlayerDeltaBuilder } from "../../ui/devpanel/PlayerDeltaBuilder.js";
 
 export interface PrefabOptions {
   id: string;
@@ -122,27 +122,12 @@ export class Prefab {
       const srcChar = this.archetype as Character;
       const targetChar = instance as Character;
 
-      targetChar.strength = srcChar.strength;
-      if (srcChar.laserModule) {
-        targetChar.laserModule = new LaserModule({
-          damageRate: srcChar.laserModule.damageRateProp.literalValue,
-          maxDamageRate: srcChar.laserModule.maxDamageRateProp.literalValue,
-          thickness: srcChar.laserModule.thicknessProp.literalValue,
-          maxPower: srcChar.laserModule.maxPowerProp.literalValue,
-        });
-      }
-      if (srcChar.meleeModule) {
-        targetChar.meleeModule = new MeleeModule({
-          maxForce: srcChar.meleeModule.maxForceProp.literalValue,
-          reach: srcChar.meleeModule.reachProp.literalValue,
-          punchFrequency: srcChar.meleeModule.punchFrequencyProp.literalValue,
-        });
-      }
-      if (!srcChar.walkingModule) targetChar.walkingModule = null;
-      if (!srcChar.pickupModule) targetChar.pickupModule = null;
-      if (!srcChar.throwModule) targetChar.throwModule = null;
-      if (!srcChar.jumpModule) targetChar.jumpModule = null;
-      if (!srcChar.climbingModule) targetChar.climbingModule = null;
+      const charConfig = serializeCharacter(srcChar);
+      applyCharacterConfig(targetChar, charConfig);
+      targetChar.prefabId = this.id;
+      targetChar.position.x = spawnPos.x;
+      targetChar.position.y = spawnPos.y;
+      targetChar.position.z = spawnPos.z;
 
       const schemaToApply = this.controlSchema || srcChar.controlSchema;
       if (schemaToApply) {
@@ -176,6 +161,13 @@ export class Prefab {
   }
 
   private applyPropertyToEntity(ent: GameObject, propKey: string, value: any): void {
+    if (ent instanceof Character) {
+      const charDelta = PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(propKey, value);
+      if (charDelta) {
+        applyCharacterConfig(ent, charDelta);
+      }
+    }
+
     switch (propKey) {
       case "name":
         ent.name = String(value);

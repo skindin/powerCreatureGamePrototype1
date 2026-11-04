@@ -11,6 +11,7 @@ import {
   serializeGameObject,
   deserializeGameObject,
   serializePrefab,
+  serializeCharacter,
 } from "../../config/WorldConfig.js";
 import { PlayerDeltaBuilder } from "./PlayerDeltaBuilder.js";
 import type { DevPanel } from "../DevPanel.js";
@@ -41,7 +42,8 @@ export class DevConfigPersistence {
     const isChar = owner instanceof Character || (owner as any).isCharacter;
     if (isChar) {
       const char = owner as Character;
-      const playerPrefab = prefabManager.get("prefab_player");
+      const targetPrefabId = char.prefabId || "prefab_player";
+      const playerPrefab = prefabManager.get(targetPrefabId);
       if (playerPrefab) {
         playerPrefab.setProperty(canonicalPath, value, getAllCharacters ? getAllCharacters() : [char]);
       }
@@ -49,8 +51,12 @@ export class DevConfigPersistence {
       const playerDelta = PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(canonicalPath, value);
       const delta: WorldConfigDelta = {
         clientVersion: (panel as any).currentConfigVersion,
-        sections: ["player"],
+        sections: ["player", "prefabs"],
         player: playerDelta,
+        prefabsDelta: {
+          replaceAll: prefabManager.getAll().map(serializePrefab),
+        },
+        prefabs: prefabManager.getAll().map(serializePrefab) as any,
       };
 
       const resp = await fetch("/api/dev/save-config", {
@@ -66,7 +72,7 @@ export class DevConfigPersistence {
       (panel as any).currentConfigVersion = res.version ?? ((panel as any).currentConfigVersion + 1);
       dirtyState.player = false;
       panel.updateDirtyBadge();
-      panel.showSaveToast(`💾 Saved ${label || canonicalPath}: ${Number(value.toFixed(2))} to Player Prefab & Config`);
+      panel.showSaveToast(`💾 Saved ${label || canonicalPath}: ${Number(value.toFixed(2))} to ${playerPrefab ? playerPrefab.name : "Player"} Prefab & Config`);
     } else {
       let affectedObjects: GameObject[] = [owner];
       let prefabsUpsert: SerializedPrefabConfig[] | undefined = undefined;
@@ -139,7 +145,8 @@ export class DevConfigPersistence {
       const isChar = owner instanceof Character || (owner as any).isCharacter;
       if (isChar) {
         const char = owner as Character;
-        const playerPrefab = prefabManager.get("prefab_player");
+        const targetPrefabId = char.prefabId || "prefab_player";
+        const playerPrefab = prefabManager.get(targetPrefabId);
         if (playerPrefab) {
           playerPrefab.setProperty(keyPath, value, getAllCharacters ? getAllCharacters() : [char]);
         }
@@ -147,8 +154,12 @@ export class DevConfigPersistence {
         const playerDelta = PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(keyPath, value);
         const delta: WorldConfigDelta = {
           clientVersion: (panel as any).currentConfigVersion,
-          sections: ["player"],
+          sections: ["player", "prefabs"],
           player: playerDelta,
+          prefabsDelta: {
+            replaceAll: prefabManager.getAll().map(serializePrefab),
+          },
+          prefabs: prefabManager.getAll().map(serializePrefab) as any,
         };
 
         const resp = await fetch("/api/dev/save-config", {
@@ -162,7 +173,7 @@ export class DevConfigPersistence {
         (panel as any).currentConfigVersion = res.version ?? ((panel as any).currentConfigVersion + 1);
         dirtyState.player = false;
         panel.updateDirtyBadge();
-        panel.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} to Player Prefab & Config`);
+        panel.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} to ${playerPrefab ? playerPrefab.name : "Player"} Prefab & Config`);
       } else {
         let affectedObjects: GameObject[] = [owner];
         let prefabsUpsert: SerializedPrefabConfig[] | undefined = undefined;
@@ -226,19 +237,31 @@ export class DevConfigPersistence {
 
     const objects = (panel as any).objects as GameObject[];
     const dirtyState = (panel as any).dirtyState;
+    const getAllCharacters = (panel as any).getAllCharacters as (() => Character[]) | undefined;
+    const isChar = prefab.archetype instanceof Character;
 
-    prefab.setProperty(propKey, value, objects);
+    if (isChar) {
+      prefab.setProperty(propKey, value, getAllCharacters ? getAllCharacters() : objects);
+    } else {
+      prefab.setProperty(propKey, value, objects);
+    }
     const affectedObjects = objects.filter((o) => o.prefabId === prefab.id && !o.overriddenProperties.has(propKey));
+
+    const sections: ("prefabs" | "objects" | "player")[] = ["prefabs", "objects"];
+    if (isChar) sections.push("player");
 
     const delta: WorldConfigDelta = {
       clientVersion: (panel as any).currentConfigVersion,
-      sections: ["prefabs", "objects"],
+      sections,
       prefabsDelta: {
+        replaceAll: prefabManager.getAll().map(serializePrefab),
         upsert: [serializePrefab(prefab)],
       },
+      prefabs: prefabManager.getAll().map(serializePrefab) as any,
       objectsDelta: {
         upsert: affectedObjects.map(serializeGameObject),
       },
+      player: isChar ? PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(propKey, value) : undefined,
     };
 
     const resp = await fetch("/api/dev/save-config", {
@@ -270,15 +293,22 @@ export class DevConfigPersistence {
     const dirtyState = (panel as any).dirtyState;
 
     const affectedObjects = objects.filter((o) => o.prefabId === prefab.id);
+    const isChar = prefab.archetype instanceof Character;
+    const sections: ("prefabs" | "objects" | "player")[] = ["prefabs", "objects"];
+    if (isChar) sections.push("player");
+
     const delta: WorldConfigDelta = {
       clientVersion: (panel as any).currentConfigVersion,
-      sections: ["prefabs", "objects"],
+      sections,
       prefabsDelta: {
+        replaceAll: prefabManager.getAll().map(serializePrefab),
         upsert: [serializePrefab(prefab)],
       },
+      prefabs: prefabManager.getAll().map(serializePrefab) as any,
       objectsDelta: {
         upsert: affectedObjects.map(serializeGameObject),
       },
+      player: isChar ? serializeCharacter(prefab.archetype as Character) : undefined,
     };
 
     const resp = await fetch("/api/dev/save-config", {

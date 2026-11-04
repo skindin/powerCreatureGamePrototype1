@@ -5,7 +5,13 @@ import { GunModule } from "../GunModule.js";
 import { Prefab } from "./Prefab.js";
 import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
-import { SerializedPrefabConfig, deserializeGameObject, serializePrefab } from "../../config/WorldConfig.js";
+import {
+  SerializedPrefabConfig,
+  SerializedCharacterConfig,
+  deserializeGameObject,
+  serializePrefab,
+  applyCharacterConfig,
+} from "../../config/WorldConfig.js";
 import {
   DefaultControlSchema,
   HunterControlSchema,
@@ -226,7 +232,30 @@ export class PrefabManager {
     this.prefabs.clear();
     for (const cfg of configs) {
       if (!cfg || !cfg.id || !cfg.archetype) continue;
-      const archetype = deserializeGameObject(cfg.archetype);
+      const arc = cfg.archetype as any;
+      const isCharacterConfig =
+        cfg.id === "prefab_player" ||
+        cfg.id === "prefab_hunter" ||
+        cfg.id === "prefab_fighter" ||
+        Boolean(arc.walkingModule || arc.jumpModule || arc.isCharacter);
+
+      let archetype: GameObject;
+      if (isCharacterConfig) {
+        const char = new Character({
+          id: arc.id || `archetype_${cfg.id}`,
+          name: arc.name || cfg.name,
+          color: arc.color || "#f59e0b",
+          colliderRadius: arc.colliderRadius ?? 0.44,
+          mass: arc.mass ?? 1.2,
+          strength: arc.strength ?? 1.0,
+        });
+        char.prefabId = cfg.id;
+        applyCharacterConfig(char, arc as SerializedCharacterConfig);
+        archetype = char;
+      } else {
+        archetype = deserializeGameObject(cfg.archetype as any);
+      }
+
       const prefab = new Prefab({
         id: cfg.id,
         name: cfg.name,

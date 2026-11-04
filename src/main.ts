@@ -17,7 +17,7 @@ import QRCode from "qrcode";
 import { quarryPreset, QUARRY_DUMMY_SPAWN, createQuarryStones } from "./engine/maps/QuarryMap.js";
 import { HealthModule } from "./character/HealthModule.js";
 import initialWorldConfig from "./config/worldConfig.json";
-import { deserializeGameObject, applyCharacterConfig } from "./config/WorldConfig.js";
+import { deserializeGameObject, applyCharacterConfig, serializeCharacter } from "./config/WorldConfig.js";
 import { prefabManager } from "./engine/prefab/PrefabManager.js";
 import { sceneSpawnerManager } from "./engine/spawner/SceneSpawnerManager.js";
 import { ControlsInspector } from "./ui/devpanel/inspectors/ControlsInspector.js";
@@ -277,6 +277,10 @@ async function bootstrap(): Promise<void> {
   character.prefabId = "prefab_player";
   if (worldConfig.player) {
     applyCharacterConfig(character, worldConfig.player);
+  }
+  const playerPrefab = prefabManager.get("prefab_player");
+  if (playerPrefab && playerPrefab.archetype instanceof Character) {
+    applyCharacterConfig(playerPrefab.archetype, serializeCharacter(character));
   }
 
   // 2b. Initialize Sparring Dummy Character (inert, untied to player input, with HP & Damage Solver)

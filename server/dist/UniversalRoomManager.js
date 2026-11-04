@@ -8383,304 +8383,6 @@ class GunModule {
     if (data.bulletColor !== void 0) this.bulletColor = data.bulletColor;
   }
 }
-class Prefab {
-  constructor(options) {
-    __publicField(this, "id");
-    __publicField(this, "name");
-    __publicField(this, "icon");
-    __publicField(this, "archetype");
-    __publicField(this, "controlSchema");
-    this.id = options.id;
-    this.name = options.name;
-    this.icon = options.icon ?? "📦";
-    this.archetype = options.archetype;
-    this.controlSchema = options.controlSchema;
-  }
-  /**
-   * Instantiates a new live GameObject from this prefab.
-   */
-  instantiate(pos, arena2) {
-    const GameObjectClass = this.archetype.constructor;
-    let cloneConsumable = null;
-    if (this.archetype.consumableModule) {
-      const src = this.archetype.consumableModule;
-      const totalJoules = src.totalEnergyJoulesProp.get(this.archetype.properties);
-      cloneConsumable = new ConsumableModule({
-        tag: src.tag,
-        totalEnergyJoules: totalJoules,
-        remainingEnergyJoules: totalJoules,
-        consumeRateWatts: src.consumeRateWattsProp.get(this.archetype.properties),
-        healRate: src.healRateProp.get(this.archetype.properties),
-        minScaleFloor: src.minScaleFloor,
-        minRadiusFloor: src.minRadiusFloor,
-        unlimited: src.unlimited
-      });
-      cloneConsumable.initialColliderRadius = src.initialColliderRadius;
-    }
-    let cloneRoll = null;
-    if (this.archetype.rollModule) {
-      const src = this.archetype.rollModule;
-      cloneRoll = new RollModule({
-        enabled: src.enabled,
-        rollResistance: src.rollResistanceProp.get(this.archetype.properties),
-        bumpyRollEnabled: src.bumpyRollEnabled,
-        bumpiness: src.bumpinessProp.get(this.archetype.properties),
-        seed: src.seed
-      });
-    }
-    let cloneGun = null;
-    if (this.archetype.gunModule) {
-      const src = this.archetype.gunModule;
-      cloneGun = new GunModule({
-        enabled: src.enabled,
-        fireRate: src.fireRateProp.get(this.archetype.properties),
-        damagePerBullet: src.damagePerBulletProp.get(this.archetype.properties),
-        bulletSpeed: src.bulletSpeedProp.get(this.archetype.properties),
-        firingSeconds: src.firingSecondsProp.get(this.archetype.properties),
-        cooldownTime: src.cooldownTimeProp.get(this.archetype.properties),
-        cooldownDelay: src.cooldownDelayProp.get(this.archetype.properties),
-        bulletMass: src.bulletMassProp.get(this.archetype.properties),
-        gunLength: src.gunLength,
-        gunWidth: src.gunWidth,
-        bulletColor: src.bulletColor
-      });
-    }
-    const spawnPos = {
-      x: (pos == null ? void 0 : pos.x) ?? this.archetype.position.x,
-      y: (pos == null ? void 0 : pos.y) ?? this.archetype.position.y,
-      z: (pos == null ? void 0 : pos.z) ?? this.archetype.position.z
-    };
-    const instance = new GameObjectClass({
-      name: this.archetype.name,
-      position: spawnPos,
-      color: this.archetype.color,
-      visualShape: this.archetype.visualShape,
-      mass: this.archetype.mass,
-      colliderRadius: this.archetype.consumableModule ? this.archetype.consumableModule.initialColliderRadius || this.archetype.colliderRadius : this.archetype.colliderRadius,
-      bounceMod: this.archetype.bounceMod,
-      hasGravity: this.archetype.hasGravity,
-      hasVerticalPosition: this.archetype.hasVerticalPosition,
-      consumableModule: cloneConsumable,
-      rollModule: cloneRoll,
-      gunModule: cloneGun
-    });
-    instance.prefabId = this.id;
-    instance.overriddenProperties = /* @__PURE__ */ new Set();
-    if (this.archetype instanceof Character && instance instanceof Character) {
-      const srcChar = this.archetype;
-      const targetChar = instance;
-      targetChar.strength = srcChar.strength;
-      if (srcChar.laserModule) {
-        targetChar.laserModule = new LaserModule({
-          damageRate: srcChar.laserModule.damageRateProp.literalValue,
-          maxDamageRate: srcChar.laserModule.maxDamageRateProp.literalValue,
-          thickness: srcChar.laserModule.thicknessProp.literalValue,
-          maxPower: srcChar.laserModule.maxPowerProp.literalValue
-        });
-      }
-      if (srcChar.meleeModule) {
-        targetChar.meleeModule = new MeleeModule({
-          maxForce: srcChar.meleeModule.maxForceProp.literalValue,
-          reach: srcChar.meleeModule.reachProp.literalValue,
-          punchFrequency: srcChar.meleeModule.punchFrequencyProp.literalValue
-        });
-      }
-      if (!srcChar.walkingModule) targetChar.walkingModule = null;
-      if (!srcChar.pickupModule) targetChar.pickupModule = null;
-      if (!srcChar.throwModule) targetChar.throwModule = null;
-      if (!srcChar.jumpModule) targetChar.jumpModule = null;
-      if (!srcChar.climbingModule) targetChar.climbingModule = null;
-      const schemaToApply = this.controlSchema || srcChar.controlSchema;
-      if (schemaToApply) {
-        targetChar.controlSchema = JSON.parse(JSON.stringify(schemaToApply));
-      }
-    }
-    if (arena2 && typeof arena2.syncEntitiesWithWalls === "function") {
-      arena2.syncEntitiesWithWalls([instance]);
-    }
-    return instance;
-  }
-  /**
-   * Updates a property on the prefab archetype and cascades the change to all
-   * live instances that have not overridden this property.
-   */
-  setProperty(propKey, value, liveObjects) {
-    this.applyPropertyToEntity(this.archetype, propKey, value);
-    for (const obj of liveObjects) {
-      if (obj.prefabId === this.id) {
-        if (!obj.overriddenProperties.has(propKey)) {
-          this.applyPropertyToEntity(obj, propKey, value);
-        }
-      }
-    }
-  }
-  applyPropertyToEntity(ent, propKey, value) {
-    switch (propKey) {
-      case "name":
-        ent.name = String(value);
-        break;
-      case "color":
-        ent.color = String(value);
-        break;
-      case "visualShape":
-        ent.visualShape = value === "box" ? "box" : "circle";
-        break;
-      case "mass":
-        ent.mass = Number(value);
-        if (ent.rigidbodyModule) {
-          ent.rigidbodyModule.massProp.literalValue = Number(value);
-          ent.rigidbodyModule.massProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "colliderRadius":
-        ent.colliderRadius = Number(value);
-        if (ent.colliderModule) {
-          ent.colliderModule.radius = Number(value);
-          if (ent.colliderModule.radiusProp) {
-            ent.colliderModule.radiusProp.literalValue = Number(value);
-            ent.colliderModule.radiusProp.set(Number(value), ent.properties);
-          }
-        }
-        if (ent.consumableModule) ent.consumableModule.initialColliderRadius = Number(value);
-        break;
-      case "friction":
-        if (ent.frictionModule) {
-          ent.frictionModule.staticFrictionProp.literalValue = Number(value);
-          ent.frictionModule.staticFrictionProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "dynamicFriction":
-        if (ent.frictionModule) {
-          ent.frictionModule.dynamicFrictionProp.literalValue = Number(value);
-          ent.frictionModule.dynamicFrictionProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "restitution":
-      case "bounceMod":
-        ent.bounceMod = Number(value);
-        if (ent.bounceModule) {
-          ent.bounceModule.bounceModProp.literalValue = Number(value);
-          ent.bounceModule.bounceModProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "rollResistance":
-        if (ent.rollModule) {
-          ent.rollModule.rollResistanceProp.literalValue = Number(value);
-          ent.rollModule.rollResistanceProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "bumpiness":
-        if (ent.rollModule) {
-          ent.rollModule.bumpinessProp.literalValue = Number(value);
-          ent.rollModule.bumpinessProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "consumable_totalEnergy":
-      case "consumableModule.totalEnergyJoules":
-        if (ent.consumableModule) {
-          ent.consumableModule.totalEnergyJoulesProp.literalValue = Number(value);
-          ent.consumableModule.totalEnergyJoulesProp.set(Number(value), ent.properties);
-          if (ent.consumableModule.remainingEnergyJoulesProp.literalValue > Number(value)) {
-            ent.consumableModule.remainingEnergyJoulesProp.literalValue = Number(value);
-            ent.consumableModule.remainingEnergyJoulesProp.set(Number(value), ent.properties);
-          }
-        }
-        break;
-      case "consumable_consumeRate":
-      case "consumableModule.consumeRateWatts":
-        if (ent.consumableModule) {
-          ent.consumableModule.consumeRateWattsProp.literalValue = Number(value);
-          ent.consumableModule.consumeRateWattsProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "consumable_healRate":
-      case "consumableModule.healRate":
-        if (ent.consumableModule) {
-          ent.consumableModule.healRateProp.literalValue = Number(value);
-          ent.consumableModule.healRateProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "consumable_tag":
-      case "consumableModule.tag":
-        if (ent.consumableModule) {
-          ent.consumableModule.tag = String(value);
-        }
-        break;
-      case "consumable_unlimited":
-      case "consumableModule.unlimited":
-        if (ent.consumableModule) {
-          ent.consumableModule.unlimited = Boolean(value);
-        }
-        break;
-      case "gun_fireRate":
-      case "gunModule.fireRate":
-        if (ent.gunModule) {
-          ent.gunModule.fireRateProp.literalValue = Number(value);
-          ent.gunModule.fireRateProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "gun_damagePerBullet":
-      case "gunModule.damagePerBullet":
-        if (ent.gunModule) {
-          ent.gunModule.damagePerBulletProp.literalValue = Number(value);
-          ent.gunModule.damagePerBulletProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "gun_bulletSpeed":
-      case "gunModule.bulletSpeed":
-        if (ent.gunModule) {
-          ent.gunModule.bulletSpeedProp.literalValue = Number(value);
-          ent.gunModule.bulletSpeedProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "gun_firingSeconds":
-      case "gunModule.firingSeconds":
-        if (ent.gunModule) {
-          ent.gunModule.firingSecondsProp.literalValue = Number(value);
-          ent.gunModule.firingSecondsProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "gun_cooldownTime":
-      case "gunModule.cooldownTime":
-        if (ent.gunModule) {
-          ent.gunModule.cooldownTimeProp.literalValue = Number(value);
-          ent.gunModule.cooldownTimeProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "gun_cooldownDelay":
-      case "gunModule.cooldownDelay":
-        if (ent.gunModule) {
-          ent.gunModule.cooldownDelayProp.literalValue = Number(value);
-          ent.gunModule.cooldownDelayProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "gun_bulletMass":
-      case "gunModule.bulletMass":
-        if (ent.gunModule) {
-          ent.gunModule.bulletMassProp.literalValue = Number(value);
-          ent.gunModule.bulletMassProp.set(Number(value), ent.properties);
-        }
-        break;
-      case "gun_gunLength":
-      case "gunModule.gunLength":
-        if (ent.gunModule) ent.gunModule.gunLength = Number(value);
-        break;
-      case "gun_gunWidth":
-      case "gunModule.gunWidth":
-        if (ent.gunModule) ent.gunModule.gunWidth = Number(value);
-        break;
-      case "gun_bulletColor":
-      case "gunModule.bulletColor":
-        if (ent.gunModule) ent.gunModule.bulletColor = String(value);
-        break;
-      default:
-        if (ent.properties && ent.properties.has(propKey)) {
-          ent.properties.set(propKey, Number(value));
-        }
-        break;
-    }
-  }
-}
 class ClimbingModule {
   constructor(options) {
     __publicField(this, "id", "climbing");
@@ -9444,6 +9146,167 @@ function createQuarryStones() {
     })
   ];
 }
+function serializeCharacter(char) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q;
+  const result = {
+    id: char.id,
+    name: char.name,
+    prefabId: char.prefabId || "prefab_player",
+    color: char.color,
+    mass: char.rigidbodyModule ? char.rigidbodyModule.massProp.get(char.properties) : char.mass,
+    colliderRadius: char.colliderModule ? char.colliderModule.radiusProp.get(char.properties) : char.colliderRadius
+  };
+  if (char.controlSchema) {
+    result.controlSchema = JSON.parse(JSON.stringify(char.controlSchema));
+  }
+  if (char.strengthProp) {
+    result.strength = char.strengthProp.get(char.properties);
+  } else if (char.strength !== void 0) {
+    result.strength = char.strength;
+  }
+  if (char.walkingModule) {
+    result.hasWalking = char.walkingModule.enabled;
+    result.walkingModule = {
+      maxWalkForce: char.walkingModule.maxWalkForceProp.get(char.properties),
+      maxWalkSpeed: char.walkingModule.maxWalkSpeedProp.get(char.properties),
+      sprintSpeed: char.walkingModule.maxSprintSpeedProp.get(char.properties),
+      canSprint: char.walkingModule.canSprint,
+      walkInAir: char.walkingModule.walkInAir,
+      walkConsumesEnergy: char.walkingModule.walkConsumesEnergy,
+      walkAllowPartialPower: char.walkingModule.walkAllowPartialPower,
+      sprintConsumesEnergy: char.walkingModule.sprintConsumesEnergy,
+      sprintAllowPartialPower: char.walkingModule.sprintAllowPartialPower,
+      maxWalkPower: char.walkingModule.maxWalkPowerProp ? char.walkingModule.maxWalkPowerProp.get(char.properties) : void 0,
+      maxSprintPower: char.walkingModule.maxSprintPowerProp ? char.walkingModule.maxSprintPowerProp.get(char.properties) : void 0,
+      airFriction: char.walkingModule.airFrictionProp ? char.walkingModule.airFrictionProp.get(char.properties) : void 0
+    };
+  } else {
+    result.hasWalking = false;
+  }
+  if (char.jumpModule) {
+    result.hasJump = char.jumpModule.enabled;
+    result.jumpModule = {
+      jumpImpulse: char.jumpModule.jumpStrengthProp.get(char.properties),
+      maxInitialSpeed: char.jumpModule.maxInitialSpeedProp.get(char.properties),
+      jumpPowerCapacity: char.jumpPowerCapacityProp ? char.jumpPowerCapacityProp.get(char.properties) : void 0,
+      jumpConsumesEnergy: char.jumpConsumesEnergy,
+      jumpAllowPartialPower: char.jumpAllowPartialPower
+    };
+  } else {
+    result.hasJump = false;
+  }
+  if (char.throwModule) {
+    result.hasThrow = char.throwModule.enabled;
+    result.throwModule = {
+      throwForce: char.throwModule.baseThrowForceProp.get(char.properties),
+      throwPowerCapacity: char.throwModule.maxPowerProp.get(char.properties),
+      maxPower: char.throwModule.maxPowerProp.get(char.properties),
+      maxThrowSpeed: char.throwModule.maxThrowSpeedProp.get(char.properties),
+      maxThrowHeight: char.throwModule.maxThrowHeightProp.get(char.properties),
+      consumesEnergy: char.throwModule.consumesEnergy
+    };
+  } else {
+    result.hasThrow = false;
+  }
+  if (char.pickupModule) {
+    result.hasPickup = char.pickupModule.enabled;
+    result.pickupModule = {
+      pickupReach: char.pickupModule.pickupReachProp ? char.pickupModule.pickupReachProp.get(char.properties) : 1.2,
+      maxPower: char.pickupModule.maxPowerProp ? char.pickupModule.maxPowerProp.get(char.properties) : void 0,
+      consumesEnergy: char.pickupModule.consumesEnergy,
+      allowPartialPower: char.pickupModule.allowPartialPower
+    };
+  } else {
+    result.hasPickup = false;
+  }
+  if (char.climbingModule) {
+    result.hasClimbing = char.climbingModule.enabled;
+    result.climbingModule = {
+      climbSpeed: ((_a = char.climbingModule.maxClimbSpeedProp) == null ? void 0 : _a.get(char.properties)) ?? 3.5,
+      maxAdhesion: ((_b = char.climbingModule.maxAdhesionProp) == null ? void 0 : _b.get(char.properties)) ?? 20,
+      maxPower: (_c = char.climbingModule.maxPowerProp) == null ? void 0 : _c.get(char.properties),
+      horizontalClimb: char.climbingModule.horizontalClimb,
+      consumesEnergy: char.climbingModule.consumesEnergy,
+      allowPartialPower: char.climbingModule.allowPartialPower
+    };
+  } else {
+    result.hasClimbing = false;
+  }
+  if (char.healthModule) {
+    result.hasHealth = char.healthModule.enabled;
+    result.healthModule = {
+      maxHp: char.healthModule.getMaxHp(char.properties),
+      currentHp: char.healthModule.getCurrentHp(char.properties),
+      naturalHealRate: char.healthModule.getMaxHealRate(char.properties),
+      joulesPerHp: char.healthModule.joulesPerHpProp ? char.healthModule.joulesPerHpProp.get(char.properties) : void 0,
+      hpPerJoule: char.healthModule.joulesPerHpProp ? char.healthModule.joulesPerHpProp.get(char.properties) : void 0,
+      maxPower: char.healthModule.maxPowerProp ? char.healthModule.maxPowerProp.get(char.properties) : void 0,
+      consumesEnergy: char.healthModule.consumesEnergy,
+      allowPartialPower: char.healthModule.allowPartialPower
+    };
+  } else {
+    result.hasHealth = false;
+  }
+  if (char.laserModule) {
+    result.hasLaser = char.laserModule.enabled;
+    result.laserModule = {
+      maxRange: 15,
+      damageRate: ((_d = char.laserModule.damageRateProp) == null ? void 0 : _d.get(char.properties)) ?? 25,
+      thickness: ((_e = char.laserModule.thicknessProp) == null ? void 0 : _e.get(char.properties)) ?? 0.1,
+      maxPower: ((_f = char.laserModule.maxPowerProp) == null ? void 0 : _f.get(char.properties)) ?? 2e3,
+      allowPartialPower: char.laserModule.allowPartialPower
+    };
+  } else {
+    result.hasLaser = false;
+  }
+  if (char.meleeModule) {
+    result.hasMelee = char.meleeModule.enabled;
+    result.meleeModule = {
+      impactForce: ((_g = char.meleeModule.maxForceProp) == null ? void 0 : _g.get(char.properties)) ?? 350,
+      maxPower: ((_h = char.meleeModule.maxPowerProp) == null ? void 0 : _h.get(char.properties)) ?? 1e3,
+      punchFrequency: ((_i = char.meleeModule.punchFrequencyProp) == null ? void 0 : _i.get(char.properties)) ?? 2.5,
+      reach: ((_j = char.meleeModule.reachProp) == null ? void 0 : _j.get(char.properties)) ?? 1.2,
+      width: ((_k = char.meleeModule.widthProp) == null ? void 0 : _k.get(char.properties)) ?? 0.8,
+      allowPartialPower: char.meleeModule.allowPartialPower
+    };
+  } else {
+    result.hasMelee = false;
+  }
+  if (char.energyPool) {
+    result.hasEnergyPool = char.energyPool.enabled;
+    result.energyPool = {
+      staminaCapacity: ((_l = char.energyPool.maxStaminaProp) == null ? void 0 : _l.get(char.properties)) ?? 5e3,
+      staminaRegenRate: ((_m = char.energyPool.staminaRegenRateProp) == null ? void 0 : _m.get(char.properties)) ?? 500,
+      energyPoolCapacity: ((_n = char.energyPool.maxEnergyProp) == null ? void 0 : _n.get(char.properties)) ?? 1e4,
+      currentStamina: (_o = char.energyPool.currentStaminaProp) == null ? void 0 : _o.get(char.properties),
+      currentEnergy: (_p = char.energyPool.currentEnergyProp) == null ? void 0 : _p.get(char.properties),
+      muscleEfficiency: ((_q = char.energyPool.muscleEfficiencyProp) == null ? void 0 : _q.get(char.properties)) ?? 0.25,
+      infiniteEnergy: char.energyPool.infiniteEnergy,
+      debugAutoRefillOnEmpty: char.energyPool.debugAutoRefillOnEmpty
+    };
+  } else {
+    result.hasEnergyPool = false;
+  }
+  if (char.wallEdgeAssistModule) {
+    result.wallEdgeAssistModule = {
+      hangDistance: char.wallEdgeAssistModule.hangDistanceProp ? char.wallEdgeAssistModule.hangDistanceProp.get(char.properties) : 0.3,
+      preventWalkOff: char.wallEdgeAssistModule.preventWalkOff
+    };
+  }
+  if (char.damageSolverModule) {
+    result.hasDamageSolverModule = char.damageSolverModule.enabled;
+    result.damageSolverModule = {
+      enabled: char.damageSolverModule.enabled,
+      impactSusceptibility: char.damageSolverModule.impactSusceptibilityProp.get(char.properties),
+      piercingMultiplier: char.damageSolverModule.piercingMultiplierProp.get(char.properties),
+      minShockThreshold: char.damageSolverModule.damageThresholdHpProp.get(char.properties),
+      selfImpactWeight: char.damageSolverModule.selfImpactWeightProp.get(char.properties)
+    };
+  } else {
+    result.hasDamageSolverModule = false;
+  }
+  return result;
+}
 function applyCharacterConfig(char, config) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P;
   if (config.controlSchema) {
@@ -10016,13 +9879,598 @@ function deserializeGameObject(config) {
 }
 function serializePrefab(prefab) {
   const schema = prefab.controlSchema || (prefab.archetype instanceof Character ? prefab.archetype.controlSchema : void 0);
+  const isChar = prefab.archetype instanceof Character || prefab.archetype.isCharacter;
   return {
     id: prefab.id,
     name: prefab.name,
     icon: prefab.icon,
-    archetype: serializeGameObject(prefab.archetype),
+    archetype: isChar ? serializeCharacter(prefab.archetype) : serializeGameObject(prefab.archetype),
     ...schema ? { controlSchema: schema } : {}
   };
+}
+class PlayerDeltaBuilder {
+  static setNestedProperty(target, path2, value) {
+    const parts = path2.split(".");
+    let curr = target;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!curr[parts[i]] || typeof curr[parts[i]] !== "object") {
+        curr[parts[i]] = {};
+      }
+      curr = curr[parts[i]];
+    }
+    curr[parts[parts.length - 1]] = value;
+  }
+  static resolvePropertyPath(owner, prop, label) {
+    const isChar = owner instanceof Character || owner.isCharacter;
+    if (isChar) {
+      const char = owner;
+      if (char.walkingModule) {
+        if (prop === char.walkingModule.maxWalkForceProp) return "walkingModule.maxWalkForce";
+        if (prop === char.walkingModule.maxWalkSpeedProp) return "walkingModule.maxWalkSpeed";
+        if (prop === char.walkingModule.maxSprintSpeedProp) return "walkingModule.sprintSpeed";
+        if (prop === char.walkingModule.maxWalkPowerProp || prop === char.walkingModule.walkPowerCapacityProp) return "walkingModule.maxWalkPower";
+        if (prop === char.walkingModule.maxSprintPowerProp || prop === char.walkingModule.sprintPowerCapacityProp) return "walkingModule.maxSprintPower";
+        if (prop === char.walkingModule.airFrictionProp) return "walkingModule.airFriction";
+      }
+      if (char.jumpModule) {
+        if (prop === char.jumpModule.jumpStrengthProp) return "jumpModule.jumpImpulse";
+        if (prop === char.jumpModule.maxInitialSpeedProp) return "jumpModule.maxInitialSpeed";
+      }
+      if (char.jumpPowerCapacityProp && prop === char.jumpPowerCapacityProp) {
+        return "jumpModule.jumpPowerCapacity";
+      }
+      if (char.throwModule) {
+        if (prop === char.throwModule.maxPowerProp) return "throwModule.throwPowerCapacity";
+        if (prop === char.throwModule.maxThrowSpeedProp) return "throwModule.maxThrowSpeed";
+        if (prop === char.throwModule.maxThrowHeightProp) return "throwModule.maxThrowHeight";
+      }
+      if (char.pickupModule) {
+        if (prop === char.pickupModule.pickupReachProp) return "pickupModule.pickupReach";
+        if (prop === char.pickupModule.maxPowerProp) return "pickupModule.maxPower";
+      }
+      if (char.climbingModule) {
+        if (prop === char.climbingModule.maxClimbSpeedProp) return "climbingModule.climbSpeed";
+        if (prop === char.climbingModule.maxPowerProp) return "climbingModule.maxPower";
+        if (prop === char.climbingModule.maxAdhesionProp) return "climbingModule.maxAdhesion";
+      }
+      if (char.laserModule) {
+        if (prop === char.laserModule.damageRateProp) return "laserModule.damageRate";
+        if (prop === char.laserModule.thicknessProp) return "laserModule.thickness";
+        if (prop === char.laserModule.maxPowerProp) return "laserModule.maxPower";
+      }
+      if (char.meleeModule) {
+        if (prop === char.meleeModule.maxForceProp) return "meleeModule.impactForce";
+        if (prop === char.meleeModule.maxPowerProp) return "meleeModule.maxPower";
+        if (prop === char.meleeModule.punchFrequencyProp) return "meleeModule.punchFrequency";
+        if (prop === char.meleeModule.reachProp) return "meleeModule.reach";
+        if (prop === char.meleeModule.widthProp) return "meleeModule.width";
+      }
+      if (char.healthModule) {
+        if (prop === char.healthModule.maxHpProp) return "healthModule.maxHp";
+        if (prop === char.healthModule.currentHpProp) return "healthModule.currentHp";
+        if (prop === char.healthModule.maxHealRateProp) return "healthModule.naturalHealRate";
+        if (prop === char.healthModule.maxPowerProp) return "healthModule.maxPower";
+        if (prop === char.healthModule.joulesPerHpProp) return "healthModule.joulesPerHp";
+      }
+      if (char.energyPool) {
+        if (prop === char.energyPool.currentEnergyProp) return "energyPool.currentEnergy";
+        if (prop === char.energyPool.maxEnergyProp) return "energyPool.energyPoolCapacity";
+        if (prop === char.energyPool.currentStaminaProp) return "energyPool.currentStamina";
+        if (prop === char.energyPool.maxStaminaProp) return "energyPool.staminaCapacity";
+        if (prop === char.energyPool.staminaRegenRateProp) return "energyPool.staminaRegenRate";
+        if (prop === char.energyPool.muscleEfficiencyProp) return "energyPool.muscleEfficiency";
+      }
+      if (char.wallEdgeAssistModule) {
+        if (prop === char.wallEdgeAssistModule.hangDistanceProp) return "wallEdgeAssistModule.hangDistance";
+      }
+      if (char.strengthProp && prop === char.strengthProp) return "strength";
+      if (char.colliderModule && prop === char.colliderModule.radiusProp) return "colliderRadius";
+      if (char.rigidbodyModule && prop === char.rigidbodyModule.massProp) return "mass";
+    }
+    if (owner.rigidbodyModule && prop === owner.rigidbodyModule.massProp) return "mass";
+    if (owner.colliderModule && prop === owner.colliderModule.radiusProp) return "colliderRadius";
+    if (owner.frictionModule) {
+      if (prop === owner.frictionModule.staticFrictionProp) return "friction";
+      if (prop === owner.frictionModule.dynamicFrictionProp) return "dynamicFriction";
+    }
+    if (owner.bounceModule && prop === owner.bounceModule.bounceModProp) return "restitution";
+    if (owner.rollModule) {
+      if (prop === owner.rollModule.rollResistanceProp) return "rollResistance";
+      if (prop === owner.rollModule.bumpinessProp) return "bumpiness";
+    }
+    if (owner.consumableModule) {
+      if (prop === owner.consumableModule.totalEnergyJoulesProp) return "consumableModule.totalEnergyJoules";
+      if (prop === owner.consumableModule.remainingEnergyJoulesProp) return "consumableModule.remainingEnergyJoules";
+      if (prop === owner.consumableModule.consumeRateWattsProp) return "consumableModule.consumeRateWatts";
+      if (prop === owner.consumableModule.healRateProp) return "consumableModule.healRate";
+    }
+    if (owner.gunModule) {
+      if (prop === owner.gunModule.fireRateProp) return "gunModule.fireRate";
+      if (prop === owner.gunModule.damagePerBulletProp) return "gunModule.damagePerBullet";
+      if (prop === owner.gunModule.bulletSpeedProp) return "gunModule.bulletSpeed";
+      if (prop === owner.gunModule.firingSecondsProp) return "gunModule.firingSeconds";
+      if (prop === owner.gunModule.cooldownTimeProp) return "gunModule.cooldownTime";
+      if (prop === owner.gunModule.cooldownDelayProp) return "gunModule.cooldownDelay";
+      if (prop === owner.gunModule.bulletMassProp) return "gunModule.bulletMass";
+    }
+    if (owner.damageAuraModule) {
+      if (prop === owner.damageAuraModule.damageRadiusProp) return "damageAuraModule.damageRadius";
+      if (prop === owner.damageAuraModule.damageRateProp) return "damageAuraModule.damageRate";
+    }
+    if (owner.damageSolverModule) {
+      if (prop === owner.damageSolverModule.impactSusceptibilityProp) return "damageSolverModule.impactSusceptibility";
+      if (prop === owner.damageSolverModule.piercingMultiplierProp) return "damageSolverModule.piercingMultiplier";
+      if (prop === owner.damageSolverModule.damageThresholdHpProp) return "damageSolverModule.minShockThreshold";
+      if (prop === owner.damageSolverModule.selfImpactWeightProp) return "damageSolverModule.selfImpactWeight";
+    }
+    if (prop.referenceKey && prop.referenceKey.trim().length > 0) {
+      return prop.referenceKey.trim();
+    }
+    if (label) {
+      const l = label.trim().toLowerCase();
+      if (l.includes("walk force")) return "walkingModule.maxWalkForce";
+      if (l.includes("walk speed")) return "walkingModule.maxWalkSpeed";
+      if (l.includes("sprint speed")) return "walkingModule.sprintSpeed";
+      if (l.includes("walk power")) return "walkingModule.maxWalkPower";
+      if (l.includes("sprint power")) return "walkingModule.maxSprintPower";
+      if (l.includes("air control") || l.includes("walk in air")) return "walkingModule.walkInAir";
+      if (l.includes("air fric")) return "walkingModule.airFriction";
+      if (l.includes("can sprint")) return "walkingModule.canSprint";
+      if (l.includes("jump impulse") || l.includes("jump strength")) return "jumpModule.jumpImpulse";
+      if (l.includes("takeoff speed")) return "jumpModule.maxInitialSpeed";
+      if (l.includes("jump power")) return "jumpModule.jumpPowerCapacity";
+      if (l.includes("throw speed") || l.includes("throw force")) return "throwModule.maxThrowSpeed";
+      if (l.includes("throw height")) return "throwModule.maxThrowHeight";
+      if (l.includes("throw power") || l.includes("throw wattage")) return "throwModule.throwPowerCapacity";
+      if (l.includes("pickup reach")) return "pickupModule.pickupReach";
+      if (l.includes("pickup power")) return "pickupModule.maxPower";
+      if (l.includes("climb speed")) return "climbingModule.climbSpeed";
+      if (l.includes("climb power")) return "climbingModule.maxPower";
+      if (l.includes("sideways climb") || l.includes("horizontal climb")) return "climbingModule.horizontalClimbMultiplier";
+      if (l.includes("adhesion")) return "climbingModule.wallAdhesionRange";
+      if (l.includes("laser max power") || l.includes("power rating")) return "laserModule.maxPower";
+      if (l.includes("beam range") || l.includes("laser range")) return "laserModule.maxRange";
+      if (l.includes("beam damage") || l.includes("laser damage")) return "laserModule.damageRate";
+      if (l.includes("beam width") || l.includes("beam thickness") || l.includes("laser thickness")) return "laserModule.thickness";
+      if (l.includes("punch force") || l.includes("attack force")) return "meleeModule.impactForce";
+      if (l.includes("attack power") || l.includes("punch power") || l.includes("melee max power")) return "meleeModule.maxPower";
+      if (l.includes("punch freq") || l.includes("attack freq")) return "meleeModule.punchFrequency";
+      if (l.includes("punch reach") || l.includes("attack reach")) return "meleeModule.reach";
+      if (l.includes("attack width") || l.includes("punch width")) return "meleeModule.width";
+      if (l.includes("current hp") || l.includes("current health")) return "healthModule.currentHp";
+      if (l.includes("max hp") || l.includes("max health")) return "healthModule.maxHp";
+      if (l.includes("heal rate") || l.includes("natural heal")) return "healthModule.naturalHealRate";
+      if (l.includes("health power") || l.includes("heal power")) return "healthModule.maxPower";
+      if (l.includes("energy cost per hp") || l.includes("joules/hp") || l.includes("joule per hp") || l.includes("hp per joule")) return "healthModule.joulesPerHp";
+      if (l.includes("current stamina")) return "energyPool.currentStamina";
+      if (l.includes("stamina cap")) return "energyPool.staminaCapacity";
+      if (l.includes("stamina regen")) return "energyPool.staminaRegenRate";
+      if (l.includes("current energy")) return "energyPool.currentEnergy";
+      if (l.includes("energy capacity") || l.includes("calorie")) return "energyPool.energyPoolCapacity";
+      if (l.includes("max power out")) return "energyPool.maxPowerOutput";
+      if (l.includes("muscle") || l.includes("metabolic eff")) return "energyPool.muscleEfficiency";
+      if (l.includes("edge assist") || l.includes("hang radius")) return "wallEdgeAssistModule.hangDistance";
+      if (l.includes("mass")) return "mass";
+      if (l.includes("strength")) return "strength";
+      if (l.includes("collider radius")) return "colliderRadius";
+      if (l.includes("friction")) return "friction";
+      if (l.includes("bounciness") || l.includes("restitution")) return "restitution";
+      if (l.includes("roll resist")) return "rollResistance";
+    }
+    return label || "prop";
+  }
+  static buildSinglePropertyPlayerDelta(propKey, value) {
+    const norm = (propKey || "").trim();
+    let canonical = norm;
+    const aliasMap = {
+      walkInAir: "walkingModule.walkInAir",
+      "Air Control (Walk in Air)": "walkingModule.walkInAir",
+      canSprint: "walkingModule.canSprint",
+      "Can Sprint": "walkingModule.canSprint",
+      "Can Sprint (Shift / Gamepad)": "walkingModule.canSprint",
+      walkConsumesEnergy: "walkingModule.walkConsumesEnergy",
+      "Walk Consumes Energy": "walkingModule.walkConsumesEnergy",
+      walkAllowPartialPower: "walkingModule.walkAllowPartialPower",
+      sprintConsumesEnergy: "walkingModule.sprintConsumesEnergy",
+      "Sprint Consumes Energy": "walkingModule.sprintConsumesEnergy",
+      sprintAllowPartialPower: "walkingModule.sprintAllowPartialPower",
+      maxWalkForce: "walkingModule.maxWalkForce",
+      walkForce: "walkingModule.maxWalkForce",
+      "Max Walk Force (N)": "walkingModule.maxWalkForce",
+      maxWalkSpeed: "walkingModule.maxWalkSpeed",
+      walkSpeed: "walkingModule.maxWalkSpeed",
+      "Max Walk Speed (u/s)": "walkingModule.maxWalkSpeed",
+      sprintSpeed: "walkingModule.sprintSpeed",
+      maxSprintSpeed: "walkingModule.sprintSpeed",
+      "Max Sprint Speed (u/s)": "walkingModule.sprintSpeed",
+      walkPowerCapacity: "walkingModule.maxWalkPower",
+      maxWalkPower: "walkingModule.maxWalkPower",
+      "Max Walk Power (Watts)": "walkingModule.maxWalkPower",
+      sprintPowerCapacity: "walkingModule.maxSprintPower",
+      maxSprintPower: "walkingModule.maxSprintPower",
+      "Max Sprint Power (Watts)": "walkingModule.maxSprintPower",
+      airFriction: "walkingModule.airFriction",
+      jumpImpulse: "jumpModule.jumpImpulse",
+      jumpStrength: "jumpModule.jumpImpulse",
+      "Jump Impulse (N·s)": "jumpModule.jumpImpulse",
+      "Jump Strength (N·s)": "jumpModule.jumpImpulse",
+      maxInitialSpeed: "jumpModule.maxInitialSpeed",
+      "Max Takeoff Speed (u/s)": "jumpModule.maxInitialSpeed",
+      jumpPowerCapacity: "jumpModule.jumpPowerCapacity",
+      maxJumpPower: "jumpModule.jumpPowerCapacity",
+      "Max Jump Power (Watts)": "jumpModule.jumpPowerCapacity",
+      jumpConsumesEnergy: "jumpModule.jumpConsumesEnergy",
+      jumpAllowPartialPower: "jumpModule.jumpAllowPartialPower",
+      throwForce: "throwModule.maxThrowSpeed",
+      maxThrowSpeed: "throwModule.maxThrowSpeed",
+      "Max Throw Speed (u/s)": "throwModule.maxThrowSpeed",
+      maxThrowHeight: "throwModule.maxThrowHeight",
+      "Max Throw Height (u)": "throwModule.maxThrowHeight",
+      throwPowerCapacity: "throwModule.throwPowerCapacity",
+      maxPower: "throwModule.throwPowerCapacity",
+      maxThrowPower: "throwModule.throwPowerCapacity",
+      throwWattage: "throwModule.throwPowerCapacity",
+      "Max Throw Power (Watts)": "throwModule.throwPowerCapacity",
+      throwConsumesEnergy: "throwModule.consumesEnergy",
+      pickupReach: "pickupModule.pickupReach",
+      "Pickup Reach (3D) (u)": "pickupModule.pickupReach",
+      maxPickupPower: "pickupModule.maxPower",
+      pickupPowerCapacity: "pickupModule.maxPower",
+      "Max Pickup Power (Watts)": "pickupModule.maxPower",
+      pickupConsumesEnergy: "pickupModule.consumesEnergy",
+      pickupAllowPartialPower: "pickupModule.allowPartialPower",
+      climbSpeed: "climbingModule.climbSpeed",
+      "Max Climb Speed (u/s)": "climbingModule.climbSpeed",
+      climbPowerCapacity: "climbingModule.maxPower",
+      maxClimbPower: "climbingModule.maxPower",
+      "Max Climb Power (Watts)": "climbingModule.maxPower",
+      climbConsumesEnergy: "climbingModule.consumesEnergy",
+      climbAllowPartialPower: "climbingModule.allowPartialPower",
+      horizontalClimbMultiplier: "climbingModule.horizontalClimbMultiplier",
+      wallAdhesionRange: "climbingModule.wallAdhesionRange",
+      maxHp: "healthModule.maxHp",
+      "Max Health (HP)": "healthModule.maxHp",
+      naturalHealRate: "healthModule.naturalHealRate",
+      "Natural Heal Rate (HP/s)": "healthModule.naturalHealRate",
+      healthMaxPower: "healthModule.maxPower",
+      healthConsumesEnergy: "healthModule.consumesEnergy",
+      healthAllowPartialPower: "healthModule.allowPartialPower",
+      joulesPerHp: "healthModule.joulesPerHp",
+      "Energy Cost per HP (Joules/HP)": "healthModule.joulesPerHp",
+      hpPerJoule: "healthModule.joulesPerHp",
+      "Healing Efficiency (HP/Joule)": "healthModule.joulesPerHp",
+      laserMaxPower: "laserModule.maxPower",
+      laserPowerCapacity: "laserModule.maxPower",
+      laserMaxRange: "laserModule.maxRange",
+      laserDamageRate: "laserModule.damageRate",
+      laserThickness: "laserModule.thickness",
+      laserAllowPartialPower: "laserModule.allowPartialPower",
+      meleeImpactForce: "meleeModule.impactForce",
+      meleeMaxPower: "meleeModule.maxPower",
+      meleePunchFrequency: "meleeModule.punchFrequency",
+      meleeReach: "meleeModule.reach",
+      meleeWidth: "meleeModule.width",
+      meleeAllowPartialPower: "meleeModule.allowPartialPower",
+      currentHp: "healthModule.currentHp",
+      "Current Health (HP)": "healthModule.currentHp",
+      currentStamina: "energyPool.currentStamina",
+      "Current Stamina (Joules)": "energyPool.currentStamina",
+      "Current Stamina (J)": "energyPool.currentStamina",
+      staminaCapacity: "energyPool.staminaCapacity",
+      "Stamina Capacity (J)": "energyPool.staminaCapacity",
+      staminaRegenRate: "energyPool.staminaRegenRate",
+      "Stamina Regen Rate (W)": "energyPool.staminaRegenRate",
+      currentEnergy: "energyPool.currentEnergy",
+      "Current Energy (J)": "energyPool.currentEnergy",
+      energyPoolCapacity: "energyPool.energyPoolCapacity",
+      "Energy Pool (Calorie) Capacity (J)": "energyPool.energyPoolCapacity",
+      maxPowerOutput: "energyPool.maxPowerOutput",
+      muscleEfficiency: "energyPool.muscleEfficiency",
+      "Muscle Metabolic Efficiency (Ratio)": "energyPool.muscleEfficiency",
+      assistRadius: "wallEdgeAssistModule.hangDistance",
+      hangDistance: "wallEdgeAssistModule.hangDistance",
+      "Edge Assist Radius (u)": "wallEdgeAssistModule.hangDistance"
+    };
+    if (aliasMap[norm]) {
+      canonical = aliasMap[norm];
+    }
+    const res = {};
+    if (canonical.includes(".")) {
+      PlayerDeltaBuilder.setNestedProperty(res, canonical, value);
+    } else {
+      res[canonical] = value;
+    }
+    return res;
+  }
+}
+class Prefab {
+  constructor(options) {
+    __publicField(this, "id");
+    __publicField(this, "name");
+    __publicField(this, "icon");
+    __publicField(this, "archetype");
+    __publicField(this, "controlSchema");
+    this.id = options.id;
+    this.name = options.name;
+    this.icon = options.icon ?? "📦";
+    this.archetype = options.archetype;
+    this.controlSchema = options.controlSchema;
+  }
+  /**
+   * Instantiates a new live GameObject from this prefab.
+   */
+  instantiate(pos, arena2) {
+    const GameObjectClass = this.archetype.constructor;
+    let cloneConsumable = null;
+    if (this.archetype.consumableModule) {
+      const src = this.archetype.consumableModule;
+      const totalJoules = src.totalEnergyJoulesProp.get(this.archetype.properties);
+      cloneConsumable = new ConsumableModule({
+        tag: src.tag,
+        totalEnergyJoules: totalJoules,
+        remainingEnergyJoules: totalJoules,
+        consumeRateWatts: src.consumeRateWattsProp.get(this.archetype.properties),
+        healRate: src.healRateProp.get(this.archetype.properties),
+        minScaleFloor: src.minScaleFloor,
+        minRadiusFloor: src.minRadiusFloor,
+        unlimited: src.unlimited
+      });
+      cloneConsumable.initialColliderRadius = src.initialColliderRadius;
+    }
+    let cloneRoll = null;
+    if (this.archetype.rollModule) {
+      const src = this.archetype.rollModule;
+      cloneRoll = new RollModule({
+        enabled: src.enabled,
+        rollResistance: src.rollResistanceProp.get(this.archetype.properties),
+        bumpyRollEnabled: src.bumpyRollEnabled,
+        bumpiness: src.bumpinessProp.get(this.archetype.properties),
+        seed: src.seed
+      });
+    }
+    let cloneGun = null;
+    if (this.archetype.gunModule) {
+      const src = this.archetype.gunModule;
+      cloneGun = new GunModule({
+        enabled: src.enabled,
+        fireRate: src.fireRateProp.get(this.archetype.properties),
+        damagePerBullet: src.damagePerBulletProp.get(this.archetype.properties),
+        bulletSpeed: src.bulletSpeedProp.get(this.archetype.properties),
+        firingSeconds: src.firingSecondsProp.get(this.archetype.properties),
+        cooldownTime: src.cooldownTimeProp.get(this.archetype.properties),
+        cooldownDelay: src.cooldownDelayProp.get(this.archetype.properties),
+        bulletMass: src.bulletMassProp.get(this.archetype.properties),
+        gunLength: src.gunLength,
+        gunWidth: src.gunWidth,
+        bulletColor: src.bulletColor
+      });
+    }
+    const spawnPos = {
+      x: (pos == null ? void 0 : pos.x) ?? this.archetype.position.x,
+      y: (pos == null ? void 0 : pos.y) ?? this.archetype.position.y,
+      z: (pos == null ? void 0 : pos.z) ?? this.archetype.position.z
+    };
+    const instance = new GameObjectClass({
+      name: this.archetype.name,
+      position: spawnPos,
+      color: this.archetype.color,
+      visualShape: this.archetype.visualShape,
+      mass: this.archetype.mass,
+      colliderRadius: this.archetype.consumableModule ? this.archetype.consumableModule.initialColliderRadius || this.archetype.colliderRadius : this.archetype.colliderRadius,
+      bounceMod: this.archetype.bounceMod,
+      hasGravity: this.archetype.hasGravity,
+      hasVerticalPosition: this.archetype.hasVerticalPosition,
+      consumableModule: cloneConsumable,
+      rollModule: cloneRoll,
+      gunModule: cloneGun
+    });
+    instance.prefabId = this.id;
+    instance.overriddenProperties = /* @__PURE__ */ new Set();
+    if (this.archetype instanceof Character && instance instanceof Character) {
+      const srcChar = this.archetype;
+      const targetChar = instance;
+      const charConfig = serializeCharacter(srcChar);
+      applyCharacterConfig(targetChar, charConfig);
+      targetChar.prefabId = this.id;
+      targetChar.position.x = spawnPos.x;
+      targetChar.position.y = spawnPos.y;
+      targetChar.position.z = spawnPos.z;
+      const schemaToApply = this.controlSchema || srcChar.controlSchema;
+      if (schemaToApply) {
+        targetChar.controlSchema = JSON.parse(JSON.stringify(schemaToApply));
+      }
+    }
+    if (arena2 && typeof arena2.syncEntitiesWithWalls === "function") {
+      arena2.syncEntitiesWithWalls([instance]);
+    }
+    return instance;
+  }
+  /**
+   * Updates a property on the prefab archetype and cascades the change to all
+   * live instances that have not overridden this property.
+   */
+  setProperty(propKey, value, liveObjects) {
+    this.applyPropertyToEntity(this.archetype, propKey, value);
+    for (const obj of liveObjects) {
+      if (obj.prefabId === this.id) {
+        if (!obj.overriddenProperties.has(propKey)) {
+          this.applyPropertyToEntity(obj, propKey, value);
+        }
+      }
+    }
+  }
+  applyPropertyToEntity(ent, propKey, value) {
+    if (ent instanceof Character) {
+      const charDelta = PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(propKey, value);
+      if (charDelta) {
+        applyCharacterConfig(ent, charDelta);
+      }
+    }
+    switch (propKey) {
+      case "name":
+        ent.name = String(value);
+        break;
+      case "color":
+        ent.color = String(value);
+        break;
+      case "visualShape":
+        ent.visualShape = value === "box" ? "box" : "circle";
+        break;
+      case "mass":
+        ent.mass = Number(value);
+        if (ent.rigidbodyModule) {
+          ent.rigidbodyModule.massProp.literalValue = Number(value);
+          ent.rigidbodyModule.massProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "colliderRadius":
+        ent.colliderRadius = Number(value);
+        if (ent.colliderModule) {
+          ent.colliderModule.radius = Number(value);
+          if (ent.colliderModule.radiusProp) {
+            ent.colliderModule.radiusProp.literalValue = Number(value);
+            ent.colliderModule.radiusProp.set(Number(value), ent.properties);
+          }
+        }
+        if (ent.consumableModule) ent.consumableModule.initialColliderRadius = Number(value);
+        break;
+      case "friction":
+        if (ent.frictionModule) {
+          ent.frictionModule.staticFrictionProp.literalValue = Number(value);
+          ent.frictionModule.staticFrictionProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "dynamicFriction":
+        if (ent.frictionModule) {
+          ent.frictionModule.dynamicFrictionProp.literalValue = Number(value);
+          ent.frictionModule.dynamicFrictionProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "restitution":
+      case "bounceMod":
+        ent.bounceMod = Number(value);
+        if (ent.bounceModule) {
+          ent.bounceModule.bounceModProp.literalValue = Number(value);
+          ent.bounceModule.bounceModProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "rollResistance":
+        if (ent.rollModule) {
+          ent.rollModule.rollResistanceProp.literalValue = Number(value);
+          ent.rollModule.rollResistanceProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "bumpiness":
+        if (ent.rollModule) {
+          ent.rollModule.bumpinessProp.literalValue = Number(value);
+          ent.rollModule.bumpinessProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "consumable_totalEnergy":
+      case "consumableModule.totalEnergyJoules":
+        if (ent.consumableModule) {
+          ent.consumableModule.totalEnergyJoulesProp.literalValue = Number(value);
+          ent.consumableModule.totalEnergyJoulesProp.set(Number(value), ent.properties);
+          if (ent.consumableModule.remainingEnergyJoulesProp.literalValue > Number(value)) {
+            ent.consumableModule.remainingEnergyJoulesProp.literalValue = Number(value);
+            ent.consumableModule.remainingEnergyJoulesProp.set(Number(value), ent.properties);
+          }
+        }
+        break;
+      case "consumable_consumeRate":
+      case "consumableModule.consumeRateWatts":
+        if (ent.consumableModule) {
+          ent.consumableModule.consumeRateWattsProp.literalValue = Number(value);
+          ent.consumableModule.consumeRateWattsProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "consumable_healRate":
+      case "consumableModule.healRate":
+        if (ent.consumableModule) {
+          ent.consumableModule.healRateProp.literalValue = Number(value);
+          ent.consumableModule.healRateProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "consumable_tag":
+      case "consumableModule.tag":
+        if (ent.consumableModule) {
+          ent.consumableModule.tag = String(value);
+        }
+        break;
+      case "consumable_unlimited":
+      case "consumableModule.unlimited":
+        if (ent.consumableModule) {
+          ent.consumableModule.unlimited = Boolean(value);
+        }
+        break;
+      case "gun_fireRate":
+      case "gunModule.fireRate":
+        if (ent.gunModule) {
+          ent.gunModule.fireRateProp.literalValue = Number(value);
+          ent.gunModule.fireRateProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "gun_damagePerBullet":
+      case "gunModule.damagePerBullet":
+        if (ent.gunModule) {
+          ent.gunModule.damagePerBulletProp.literalValue = Number(value);
+          ent.gunModule.damagePerBulletProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "gun_bulletSpeed":
+      case "gunModule.bulletSpeed":
+        if (ent.gunModule) {
+          ent.gunModule.bulletSpeedProp.literalValue = Number(value);
+          ent.gunModule.bulletSpeedProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "gun_firingSeconds":
+      case "gunModule.firingSeconds":
+        if (ent.gunModule) {
+          ent.gunModule.firingSecondsProp.literalValue = Number(value);
+          ent.gunModule.firingSecondsProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "gun_cooldownTime":
+      case "gunModule.cooldownTime":
+        if (ent.gunModule) {
+          ent.gunModule.cooldownTimeProp.literalValue = Number(value);
+          ent.gunModule.cooldownTimeProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "gun_cooldownDelay":
+      case "gunModule.cooldownDelay":
+        if (ent.gunModule) {
+          ent.gunModule.cooldownDelayProp.literalValue = Number(value);
+          ent.gunModule.cooldownDelayProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "gun_bulletMass":
+      case "gunModule.bulletMass":
+        if (ent.gunModule) {
+          ent.gunModule.bulletMassProp.literalValue = Number(value);
+          ent.gunModule.bulletMassProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "gun_gunLength":
+      case "gunModule.gunLength":
+        if (ent.gunModule) ent.gunModule.gunLength = Number(value);
+        break;
+      case "gun_gunWidth":
+      case "gunModule.gunWidth":
+        if (ent.gunModule) ent.gunModule.gunWidth = Number(value);
+        break;
+      case "gun_bulletColor":
+      case "gunModule.bulletColor":
+        if (ent.gunModule) ent.gunModule.bulletColor = String(value);
+        break;
+      default:
+        if (ent.properties && ent.properties.has(propKey)) {
+          ent.properties.set(propKey, Number(value));
+        }
+        break;
+    }
+  }
 }
 const DefaultControlBlocks = [
   {
@@ -10989,7 +11437,24 @@ class PrefabManager {
     this.prefabs.clear();
     for (const cfg of configs) {
       if (!cfg || !cfg.id || !cfg.archetype) continue;
-      const archetype = deserializeGameObject(cfg.archetype);
+      const arc = cfg.archetype;
+      const isCharacterConfig = cfg.id === "prefab_player" || cfg.id === "prefab_hunter" || cfg.id === "prefab_fighter" || Boolean(arc.walkingModule || arc.jumpModule || arc.isCharacter);
+      let archetype;
+      if (isCharacterConfig) {
+        const char = new Character({
+          id: arc.id || `archetype_${cfg.id}`,
+          name: arc.name || cfg.name,
+          color: arc.color || "#f59e0b",
+          colliderRadius: arc.colliderRadius ?? 0.44,
+          mass: arc.mass ?? 1.2,
+          strength: arc.strength ?? 1
+        });
+        char.prefabId = cfg.id;
+        applyCharacterConfig(char, arc);
+        archetype = char;
+      } else {
+        archetype = deserializeGameObject(cfg.archetype);
+      }
       const prefab = new Prefab({
         id: cfg.id,
         name: cfg.name,
@@ -14505,301 +14970,6 @@ const _ControlSchemaArbiter = class _ControlSchemaArbiter {
 // Reticle steering offset state per character ID
 __publicField(_ControlSchemaArbiter, "cursorReticleOffsets", /* @__PURE__ */ new Map());
 let ControlSchemaArbiter = _ControlSchemaArbiter;
-class PlayerDeltaBuilder {
-  static setNestedProperty(target, path2, value) {
-    const parts = path2.split(".");
-    let curr = target;
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (!curr[parts[i]] || typeof curr[parts[i]] !== "object") {
-        curr[parts[i]] = {};
-      }
-      curr = curr[parts[i]];
-    }
-    curr[parts[parts.length - 1]] = value;
-  }
-  static resolvePropertyPath(owner, prop, label) {
-    const isChar = owner instanceof Character || owner.isCharacter;
-    if (isChar) {
-      const char = owner;
-      if (char.walkingModule) {
-        if (prop === char.walkingModule.maxWalkForceProp) return "walkingModule.maxWalkForce";
-        if (prop === char.walkingModule.maxWalkSpeedProp) return "walkingModule.maxWalkSpeed";
-        if (prop === char.walkingModule.maxSprintSpeedProp) return "walkingModule.sprintSpeed";
-        if (prop === char.walkingModule.maxWalkPowerProp || prop === char.walkingModule.walkPowerCapacityProp) return "walkingModule.maxWalkPower";
-        if (prop === char.walkingModule.maxSprintPowerProp || prop === char.walkingModule.sprintPowerCapacityProp) return "walkingModule.maxSprintPower";
-        if (prop === char.walkingModule.airFrictionProp) return "walkingModule.airFriction";
-      }
-      if (char.jumpModule) {
-        if (prop === char.jumpModule.jumpStrengthProp) return "jumpModule.jumpImpulse";
-        if (prop === char.jumpModule.maxInitialSpeedProp) return "jumpModule.maxInitialSpeed";
-      }
-      if (char.jumpPowerCapacityProp && prop === char.jumpPowerCapacityProp) {
-        return "jumpModule.jumpPowerCapacity";
-      }
-      if (char.throwModule) {
-        if (prop === char.throwModule.maxPowerProp) return "throwModule.throwPowerCapacity";
-        if (prop === char.throwModule.maxThrowSpeedProp) return "throwModule.maxThrowSpeed";
-        if (prop === char.throwModule.maxThrowHeightProp) return "throwModule.maxThrowHeight";
-      }
-      if (char.pickupModule) {
-        if (prop === char.pickupModule.pickupReachProp) return "pickupModule.pickupReach";
-        if (prop === char.pickupModule.maxPowerProp) return "pickupModule.maxPower";
-      }
-      if (char.climbingModule) {
-        if (prop === char.climbingModule.maxClimbSpeedProp) return "climbingModule.climbSpeed";
-        if (prop === char.climbingModule.maxPowerProp) return "climbingModule.maxPower";
-        if (prop === char.climbingModule.maxAdhesionProp) return "climbingModule.maxAdhesion";
-      }
-      if (char.laserModule) {
-        if (prop === char.laserModule.damageRateProp) return "laserModule.damageRate";
-        if (prop === char.laserModule.thicknessProp) return "laserModule.thickness";
-        if (prop === char.laserModule.maxPowerProp) return "laserModule.maxPower";
-      }
-      if (char.meleeModule) {
-        if (prop === char.meleeModule.maxForceProp) return "meleeModule.impactForce";
-        if (prop === char.meleeModule.maxPowerProp) return "meleeModule.maxPower";
-        if (prop === char.meleeModule.punchFrequencyProp) return "meleeModule.punchFrequency";
-        if (prop === char.meleeModule.reachProp) return "meleeModule.reach";
-        if (prop === char.meleeModule.widthProp) return "meleeModule.width";
-      }
-      if (char.healthModule) {
-        if (prop === char.healthModule.maxHpProp) return "healthModule.maxHp";
-        if (prop === char.healthModule.currentHpProp) return "healthModule.currentHp";
-        if (prop === char.healthModule.maxHealRateProp) return "healthModule.naturalHealRate";
-        if (prop === char.healthModule.maxPowerProp) return "healthModule.maxPower";
-        if (prop === char.healthModule.joulesPerHpProp) return "healthModule.joulesPerHp";
-      }
-      if (char.energyPool) {
-        if (prop === char.energyPool.currentEnergyProp) return "energyPool.currentEnergy";
-        if (prop === char.energyPool.maxEnergyProp) return "energyPool.energyPoolCapacity";
-        if (prop === char.energyPool.currentStaminaProp) return "energyPool.currentStamina";
-        if (prop === char.energyPool.maxStaminaProp) return "energyPool.staminaCapacity";
-        if (prop === char.energyPool.staminaRegenRateProp) return "energyPool.staminaRegenRate";
-        if (prop === char.energyPool.muscleEfficiencyProp) return "energyPool.muscleEfficiency";
-      }
-      if (char.wallEdgeAssistModule) {
-        if (prop === char.wallEdgeAssistModule.hangDistanceProp) return "wallEdgeAssistModule.hangDistance";
-      }
-      if (char.strengthProp && prop === char.strengthProp) return "strength";
-      if (char.colliderModule && prop === char.colliderModule.radiusProp) return "colliderRadius";
-      if (char.rigidbodyModule && prop === char.rigidbodyModule.massProp) return "mass";
-    }
-    if (owner.rigidbodyModule && prop === owner.rigidbodyModule.massProp) return "mass";
-    if (owner.colliderModule && prop === owner.colliderModule.radiusProp) return "colliderRadius";
-    if (owner.frictionModule) {
-      if (prop === owner.frictionModule.staticFrictionProp) return "friction";
-      if (prop === owner.frictionModule.dynamicFrictionProp) return "dynamicFriction";
-    }
-    if (owner.bounceModule && prop === owner.bounceModule.bounceModProp) return "restitution";
-    if (owner.rollModule) {
-      if (prop === owner.rollModule.rollResistanceProp) return "rollResistance";
-      if (prop === owner.rollModule.bumpinessProp) return "bumpiness";
-    }
-    if (owner.consumableModule) {
-      if (prop === owner.consumableModule.totalEnergyJoulesProp) return "consumableModule.totalEnergyJoules";
-      if (prop === owner.consumableModule.remainingEnergyJoulesProp) return "consumableModule.remainingEnergyJoules";
-      if (prop === owner.consumableModule.consumeRateWattsProp) return "consumableModule.consumeRateWatts";
-      if (prop === owner.consumableModule.healRateProp) return "consumableModule.healRate";
-    }
-    if (owner.gunModule) {
-      if (prop === owner.gunModule.fireRateProp) return "gunModule.fireRate";
-      if (prop === owner.gunModule.damagePerBulletProp) return "gunModule.damagePerBullet";
-      if (prop === owner.gunModule.bulletSpeedProp) return "gunModule.bulletSpeed";
-      if (prop === owner.gunModule.firingSecondsProp) return "gunModule.firingSeconds";
-      if (prop === owner.gunModule.cooldownTimeProp) return "gunModule.cooldownTime";
-      if (prop === owner.gunModule.cooldownDelayProp) return "gunModule.cooldownDelay";
-      if (prop === owner.gunModule.bulletMassProp) return "gunModule.bulletMass";
-    }
-    if (owner.damageAuraModule) {
-      if (prop === owner.damageAuraModule.damageRadiusProp) return "damageAuraModule.damageRadius";
-      if (prop === owner.damageAuraModule.damageRateProp) return "damageAuraModule.damageRate";
-    }
-    if (owner.damageSolverModule) {
-      if (prop === owner.damageSolverModule.impactSusceptibilityProp) return "damageSolverModule.impactSusceptibility";
-      if (prop === owner.damageSolverModule.piercingMultiplierProp) return "damageSolverModule.piercingMultiplier";
-      if (prop === owner.damageSolverModule.damageThresholdHpProp) return "damageSolverModule.minShockThreshold";
-      if (prop === owner.damageSolverModule.selfImpactWeightProp) return "damageSolverModule.selfImpactWeight";
-    }
-    if (prop.referenceKey && prop.referenceKey.trim().length > 0) {
-      return prop.referenceKey.trim();
-    }
-    if (label) {
-      const l = label.trim().toLowerCase();
-      if (l.includes("walk force")) return "walkingModule.maxWalkForce";
-      if (l.includes("walk speed")) return "walkingModule.maxWalkSpeed";
-      if (l.includes("sprint speed")) return "walkingModule.sprintSpeed";
-      if (l.includes("walk power")) return "walkingModule.maxWalkPower";
-      if (l.includes("sprint power")) return "walkingModule.maxSprintPower";
-      if (l.includes("air control") || l.includes("walk in air")) return "walkingModule.walkInAir";
-      if (l.includes("air fric")) return "walkingModule.airFriction";
-      if (l.includes("can sprint")) return "walkingModule.canSprint";
-      if (l.includes("jump impulse") || l.includes("jump strength")) return "jumpModule.jumpImpulse";
-      if (l.includes("takeoff speed")) return "jumpModule.maxInitialSpeed";
-      if (l.includes("jump power")) return "jumpModule.jumpPowerCapacity";
-      if (l.includes("throw speed") || l.includes("throw force")) return "throwModule.maxThrowSpeed";
-      if (l.includes("throw height")) return "throwModule.maxThrowHeight";
-      if (l.includes("throw power") || l.includes("throw wattage")) return "throwModule.throwPowerCapacity";
-      if (l.includes("pickup reach")) return "pickupModule.pickupReach";
-      if (l.includes("pickup power")) return "pickupModule.maxPower";
-      if (l.includes("climb speed")) return "climbingModule.climbSpeed";
-      if (l.includes("climb power")) return "climbingModule.maxPower";
-      if (l.includes("sideways climb") || l.includes("horizontal climb")) return "climbingModule.horizontalClimbMultiplier";
-      if (l.includes("adhesion")) return "climbingModule.wallAdhesionRange";
-      if (l.includes("laser max power") || l.includes("power rating")) return "laserModule.maxPower";
-      if (l.includes("beam range") || l.includes("laser range")) return "laserModule.maxRange";
-      if (l.includes("beam damage") || l.includes("laser damage")) return "laserModule.damageRate";
-      if (l.includes("beam width") || l.includes("beam thickness") || l.includes("laser thickness")) return "laserModule.thickness";
-      if (l.includes("punch force") || l.includes("attack force")) return "meleeModule.impactForce";
-      if (l.includes("attack power") || l.includes("punch power") || l.includes("melee max power")) return "meleeModule.maxPower";
-      if (l.includes("punch freq") || l.includes("attack freq")) return "meleeModule.punchFrequency";
-      if (l.includes("punch reach") || l.includes("attack reach")) return "meleeModule.reach";
-      if (l.includes("attack width") || l.includes("punch width")) return "meleeModule.width";
-      if (l.includes("current hp") || l.includes("current health")) return "healthModule.currentHp";
-      if (l.includes("max hp") || l.includes("max health")) return "healthModule.maxHp";
-      if (l.includes("heal rate") || l.includes("natural heal")) return "healthModule.naturalHealRate";
-      if (l.includes("health power") || l.includes("heal power")) return "healthModule.maxPower";
-      if (l.includes("energy cost per hp") || l.includes("joules/hp") || l.includes("joule per hp") || l.includes("hp per joule")) return "healthModule.joulesPerHp";
-      if (l.includes("current stamina")) return "energyPool.currentStamina";
-      if (l.includes("stamina cap")) return "energyPool.staminaCapacity";
-      if (l.includes("stamina regen")) return "energyPool.staminaRegenRate";
-      if (l.includes("current energy")) return "energyPool.currentEnergy";
-      if (l.includes("energy capacity") || l.includes("calorie")) return "energyPool.energyPoolCapacity";
-      if (l.includes("max power out")) return "energyPool.maxPowerOutput";
-      if (l.includes("muscle") || l.includes("metabolic eff")) return "energyPool.muscleEfficiency";
-      if (l.includes("edge assist") || l.includes("hang radius")) return "wallEdgeAssistModule.hangDistance";
-      if (l.includes("mass")) return "mass";
-      if (l.includes("strength")) return "strength";
-      if (l.includes("collider radius")) return "colliderRadius";
-      if (l.includes("friction")) return "friction";
-      if (l.includes("bounciness") || l.includes("restitution")) return "restitution";
-      if (l.includes("roll resist")) return "rollResistance";
-    }
-    return label || "prop";
-  }
-  static buildSinglePropertyPlayerDelta(propKey, value) {
-    const norm = (propKey || "").trim();
-    let canonical = norm;
-    const aliasMap = {
-      walkInAir: "walkingModule.walkInAir",
-      "Air Control (Walk in Air)": "walkingModule.walkInAir",
-      canSprint: "walkingModule.canSprint",
-      "Can Sprint": "walkingModule.canSprint",
-      "Can Sprint (Shift / Gamepad)": "walkingModule.canSprint",
-      walkConsumesEnergy: "walkingModule.walkConsumesEnergy",
-      "Walk Consumes Energy": "walkingModule.walkConsumesEnergy",
-      walkAllowPartialPower: "walkingModule.walkAllowPartialPower",
-      sprintConsumesEnergy: "walkingModule.sprintConsumesEnergy",
-      "Sprint Consumes Energy": "walkingModule.sprintConsumesEnergy",
-      sprintAllowPartialPower: "walkingModule.sprintAllowPartialPower",
-      maxWalkForce: "walkingModule.maxWalkForce",
-      walkForce: "walkingModule.maxWalkForce",
-      "Max Walk Force (N)": "walkingModule.maxWalkForce",
-      maxWalkSpeed: "walkingModule.maxWalkSpeed",
-      walkSpeed: "walkingModule.maxWalkSpeed",
-      "Max Walk Speed (u/s)": "walkingModule.maxWalkSpeed",
-      sprintSpeed: "walkingModule.sprintSpeed",
-      maxSprintSpeed: "walkingModule.sprintSpeed",
-      "Max Sprint Speed (u/s)": "walkingModule.sprintSpeed",
-      walkPowerCapacity: "walkingModule.maxWalkPower",
-      maxWalkPower: "walkingModule.maxWalkPower",
-      "Max Walk Power (Watts)": "walkingModule.maxWalkPower",
-      sprintPowerCapacity: "walkingModule.maxSprintPower",
-      maxSprintPower: "walkingModule.maxSprintPower",
-      "Max Sprint Power (Watts)": "walkingModule.maxSprintPower",
-      airFriction: "walkingModule.airFriction",
-      jumpImpulse: "jumpModule.jumpImpulse",
-      jumpStrength: "jumpModule.jumpImpulse",
-      "Jump Impulse (N·s)": "jumpModule.jumpImpulse",
-      "Jump Strength (N·s)": "jumpModule.jumpImpulse",
-      maxInitialSpeed: "jumpModule.maxInitialSpeed",
-      "Max Takeoff Speed (u/s)": "jumpModule.maxInitialSpeed",
-      jumpPowerCapacity: "jumpModule.jumpPowerCapacity",
-      maxJumpPower: "jumpModule.jumpPowerCapacity",
-      "Max Jump Power (Watts)": "jumpModule.jumpPowerCapacity",
-      jumpConsumesEnergy: "jumpModule.jumpConsumesEnergy",
-      jumpAllowPartialPower: "jumpModule.jumpAllowPartialPower",
-      throwForce: "throwModule.maxThrowSpeed",
-      maxThrowSpeed: "throwModule.maxThrowSpeed",
-      "Max Throw Speed (u/s)": "throwModule.maxThrowSpeed",
-      maxThrowHeight: "throwModule.maxThrowHeight",
-      "Max Throw Height (u)": "throwModule.maxThrowHeight",
-      throwPowerCapacity: "throwModule.throwPowerCapacity",
-      maxPower: "throwModule.throwPowerCapacity",
-      maxThrowPower: "throwModule.throwPowerCapacity",
-      throwWattage: "throwModule.throwPowerCapacity",
-      "Max Throw Power (Watts)": "throwModule.throwPowerCapacity",
-      throwConsumesEnergy: "throwModule.consumesEnergy",
-      pickupReach: "pickupModule.pickupReach",
-      "Pickup Reach (3D) (u)": "pickupModule.pickupReach",
-      maxPickupPower: "pickupModule.maxPower",
-      pickupPowerCapacity: "pickupModule.maxPower",
-      "Max Pickup Power (Watts)": "pickupModule.maxPower",
-      pickupConsumesEnergy: "pickupModule.consumesEnergy",
-      pickupAllowPartialPower: "pickupModule.allowPartialPower",
-      climbSpeed: "climbingModule.climbSpeed",
-      "Max Climb Speed (u/s)": "climbingModule.climbSpeed",
-      climbPowerCapacity: "climbingModule.maxPower",
-      maxClimbPower: "climbingModule.maxPower",
-      "Max Climb Power (Watts)": "climbingModule.maxPower",
-      climbConsumesEnergy: "climbingModule.consumesEnergy",
-      climbAllowPartialPower: "climbingModule.allowPartialPower",
-      horizontalClimbMultiplier: "climbingModule.horizontalClimbMultiplier",
-      wallAdhesionRange: "climbingModule.wallAdhesionRange",
-      maxHp: "healthModule.maxHp",
-      "Max Health (HP)": "healthModule.maxHp",
-      naturalHealRate: "healthModule.naturalHealRate",
-      "Natural Heal Rate (HP/s)": "healthModule.naturalHealRate",
-      healthMaxPower: "healthModule.maxPower",
-      healthConsumesEnergy: "healthModule.consumesEnergy",
-      healthAllowPartialPower: "healthModule.allowPartialPower",
-      joulesPerHp: "healthModule.joulesPerHp",
-      "Energy Cost per HP (Joules/HP)": "healthModule.joulesPerHp",
-      hpPerJoule: "healthModule.joulesPerHp",
-      "Healing Efficiency (HP/Joule)": "healthModule.joulesPerHp",
-      laserMaxPower: "laserModule.maxPower",
-      laserPowerCapacity: "laserModule.maxPower",
-      laserMaxRange: "laserModule.maxRange",
-      laserDamageRate: "laserModule.damageRate",
-      laserThickness: "laserModule.thickness",
-      laserAllowPartialPower: "laserModule.allowPartialPower",
-      meleeImpactForce: "meleeModule.impactForce",
-      meleeMaxPower: "meleeModule.maxPower",
-      meleePunchFrequency: "meleeModule.punchFrequency",
-      meleeReach: "meleeModule.reach",
-      meleeWidth: "meleeModule.width",
-      meleeAllowPartialPower: "meleeModule.allowPartialPower",
-      currentHp: "healthModule.currentHp",
-      "Current Health (HP)": "healthModule.currentHp",
-      currentStamina: "energyPool.currentStamina",
-      "Current Stamina (Joules)": "energyPool.currentStamina",
-      "Current Stamina (J)": "energyPool.currentStamina",
-      staminaCapacity: "energyPool.staminaCapacity",
-      "Stamina Capacity (J)": "energyPool.staminaCapacity",
-      staminaRegenRate: "energyPool.staminaRegenRate",
-      "Stamina Regen Rate (W)": "energyPool.staminaRegenRate",
-      currentEnergy: "energyPool.currentEnergy",
-      "Current Energy (J)": "energyPool.currentEnergy",
-      energyPoolCapacity: "energyPool.energyPoolCapacity",
-      "Energy Pool (Calorie) Capacity (J)": "energyPool.energyPoolCapacity",
-      maxPowerOutput: "energyPool.maxPowerOutput",
-      muscleEfficiency: "energyPool.muscleEfficiency",
-      "Muscle Metabolic Efficiency (Ratio)": "energyPool.muscleEfficiency",
-      assistRadius: "wallEdgeAssistModule.hangDistance",
-      hangDistance: "wallEdgeAssistModule.hangDistance",
-      "Edge Assist Radius (u)": "wallEdgeAssistModule.hangDistance"
-    };
-    if (aliasMap[norm]) {
-      canonical = aliasMap[norm];
-    }
-    const res = {};
-    if (canonical.includes(".")) {
-      PlayerDeltaBuilder.setNestedProperty(res, canonical, value);
-    } else {
-      res[canonical] = value;
-    }
-    return res;
-  }
-}
 class DevConfigPersistence {
   static async saveIndividualProperty(panel, owner, prop, value, label) {
     if (panel.isOnlineLocked) {
@@ -14813,15 +14983,20 @@ class DevConfigPersistence {
     const isChar = owner instanceof Character || owner.isCharacter;
     if (isChar) {
       const char = owner;
-      const playerPrefab = prefabManager.get("prefab_player");
+      const targetPrefabId = char.prefabId || "prefab_player";
+      const playerPrefab = prefabManager.get(targetPrefabId);
       if (playerPrefab) {
         playerPrefab.setProperty(canonicalPath, value, getAllCharacters ? getAllCharacters() : [char]);
       }
       const playerDelta = PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(canonicalPath, value);
       const delta = {
         clientVersion: panel.currentConfigVersion,
-        sections: ["player"],
-        player: playerDelta
+        sections: ["player", "prefabs"],
+        player: playerDelta,
+        prefabsDelta: {
+          replaceAll: prefabManager.getAll().map(serializePrefab)
+        },
+        prefabs: prefabManager.getAll().map(serializePrefab)
       };
       const resp = await fetch("/api/dev/save-config", {
         method: "POST",
@@ -14835,7 +15010,7 @@ class DevConfigPersistence {
       panel.currentConfigVersion = res.version ?? panel.currentConfigVersion + 1;
       dirtyState.player = false;
       panel.updateDirtyBadge();
-      panel.showSaveToast(`💾 Saved ${label || canonicalPath}: ${Number(value.toFixed(2))} to Player Prefab & Config`);
+      panel.showSaveToast(`💾 Saved ${label || canonicalPath}: ${Number(value.toFixed(2))} to ${playerPrefab ? playerPrefab.name : "Player"} Prefab & Config`);
     } else {
       let affectedObjects = [owner];
       let prefabsUpsert = void 0;
@@ -14893,15 +15068,20 @@ class DevConfigPersistence {
       const isChar = owner instanceof Character || owner.isCharacter;
       if (isChar) {
         const char = owner;
-        const playerPrefab = prefabManager.get("prefab_player");
+        const targetPrefabId = char.prefabId || "prefab_player";
+        const playerPrefab = prefabManager.get(targetPrefabId);
         if (playerPrefab) {
           playerPrefab.setProperty(keyPath, value, getAllCharacters ? getAllCharacters() : [char]);
         }
         const playerDelta = PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(keyPath, value);
         const delta = {
           clientVersion: panel.currentConfigVersion,
-          sections: ["player"],
-          player: playerDelta
+          sections: ["player", "prefabs"],
+          player: playerDelta,
+          prefabsDelta: {
+            replaceAll: prefabManager.getAll().map(serializePrefab)
+          },
+          prefabs: prefabManager.getAll().map(serializePrefab)
         };
         const resp = await fetch("/api/dev/save-config", {
           method: "POST",
@@ -14913,7 +15093,7 @@ class DevConfigPersistence {
         panel.currentConfigVersion = res.version ?? panel.currentConfigVersion + 1;
         dirtyState.player = false;
         panel.updateDirtyBadge();
-        panel.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} to Player Prefab & Config`);
+        panel.showSaveToast(`💾 Saved ${label}: ${value ? "ON" : "OFF"} to ${playerPrefab ? playerPrefab.name : "Player"} Prefab & Config`);
       } else {
         let affectedObjects = [owner];
         let prefabsUpsert = void 0;
@@ -14968,17 +15148,28 @@ class DevConfigPersistence {
     }
     const objects2 = panel.objects;
     const dirtyState = panel.dirtyState;
-    prefab.setProperty(propKey, value, objects2);
+    const getAllCharacters = panel.getAllCharacters;
+    const isChar = prefab.archetype instanceof Character;
+    if (isChar) {
+      prefab.setProperty(propKey, value, getAllCharacters ? getAllCharacters() : objects2);
+    } else {
+      prefab.setProperty(propKey, value, objects2);
+    }
     const affectedObjects = objects2.filter((o) => o.prefabId === prefab.id && !o.overriddenProperties.has(propKey));
+    const sections = ["prefabs", "objects"];
+    if (isChar) sections.push("player");
     const delta = {
       clientVersion: panel.currentConfigVersion,
-      sections: ["prefabs", "objects"],
+      sections,
       prefabsDelta: {
+        replaceAll: prefabManager.getAll().map(serializePrefab),
         upsert: [serializePrefab(prefab)]
       },
+      prefabs: prefabManager.getAll().map(serializePrefab),
       objectsDelta: {
         upsert: affectedObjects.map(serializeGameObject)
-      }
+      },
+      player: isChar ? PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(propKey, value) : void 0
     };
     const resp = await fetch("/api/dev/save-config", {
       method: "POST",
@@ -15005,15 +15196,21 @@ class DevConfigPersistence {
     const objects2 = panel.objects;
     const dirtyState = panel.dirtyState;
     const affectedObjects = objects2.filter((o) => o.prefabId === prefab.id);
+    const isChar = prefab.archetype instanceof Character;
+    const sections = ["prefabs", "objects"];
+    if (isChar) sections.push("player");
     const delta = {
       clientVersion: panel.currentConfigVersion,
-      sections: ["prefabs", "objects"],
+      sections,
       prefabsDelta: {
+        replaceAll: prefabManager.getAll().map(serializePrefab),
         upsert: [serializePrefab(prefab)]
       },
+      prefabs: prefabManager.getAll().map(serializePrefab),
       objectsDelta: {
         upsert: affectedObjects.map(serializeGameObject)
-      }
+      },
+      player: isChar ? serializeCharacter(prefab.archetype) : void 0
     };
     const resp = await fetch("/api/dev/save-config", {
       method: "POST",
@@ -19631,13 +19828,13 @@ const PLAYER_COLORS = [
   "#3b82f6"
   // P6: Blue
 ];
-const version = 302;
-const lastSaved = "2026-11-04T01:37:43.557Z";
+const version = 306;
+const lastSaved = "2026-11-04T01:43:01.687Z";
 const arena = { "width": 30, "height": 30, "wallHeight": 1, "presetId": "standard", "tileGrid": [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]] };
 const globalPhysics = { "gravity": 30, "collisionDamageScale": 0.1, "collisionMode": "dynamic" };
 const player = /* @__PURE__ */ JSON.parse('{"name":"Player 1","prefabId":"prefab_player","color":"#f59e0b","mass":1.2,"colliderRadius":0.44,"hasWalking":true,"walkingModule":{"walkInAir":true,"canSprint":true,"maxWalkForce":35,"maxWalkSpeed":5.2,"sprintSpeed":8.06,"walkPowerCapacity":400,"sprintPowerCapacity":1200,"airFriction":1,"walkConsumesEnergy":false,"walkAllowPartialPower":false,"sprintConsumesEnergy":true,"sprintAllowPartialPower":true,"maxWalkPower":400,"maxSprintPower":1200},"hasJump":true,"jumpModule":{"jumpImpulse":16.5,"maxInitialSpeed":8.8,"jumpPowerCapacity":1200,"jumpConsumesEnergy":true,"jumpAllowPartialPower":true},"hasThrow":true,"throwModule":{"throwPowerCapacity":1200,"maxPower":1200,"maxThrowSpeed":69,"throwForce":69,"maxThrowHeight":5,"consumesEnergy":true},"hasHealth":true,"healthModule":{"maxHp":100,"naturalHealRate":2,"joulesPerHp":80,"maxPower":500,"currentHp":100,"hpPerJoule":80,"consumesEnergy":true,"allowPartialPower":true},"hasEnergyPool":true,"energyPool":{"staminaCapacity":5000,"staminaRegenRate":500,"energyPoolCapacity":10000,"currentStamina":5000,"currentEnergy":10000,"muscleEfficiency":0.25,"infiniteEnergy":false,"debugAutoRefillOnEmpty":false},"hasMelee":true,"meleeModule":{"impactForce":350,"maxPower":500,"allowPartialPower":true,"punchFrequency":4,"reach":1.2,"width":0.8},"hasLaser":true,"laserModule":{"maxPower":2000,"maxRange":15,"damageRate":50,"thickness":0.35,"allowPartialPower":true},"damageSolverModule":{"selfImpactWeight":0,"minShockThreshold":0,"enabled":true,"impactSusceptibility":1,"piercingMultiplier":1},"id":"obj-a0git3s","controlSchema":{"id":"default","name":"Default (Action Context)","description":"Standard twin-stick and WASD setup with smart contextual action triggers.","activeDevice":"keyboardMouse","keyboardMouse":{"aiming":{"mode":"faceMouseCursor"},"locomotion":{"mode":"forwardFacingDrive","forwardTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"}},"rules":[{"id":"rule-mvutadk33p6","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutadk3","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingPlainObject"}],"condition":{"type":"holdingPlainObject"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvutfwetv21","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"throw","stageGroup":"action"},{"type":"tagPressed","param":"tag-kbm-ffc1ts"}],"condition":{"type":"stagedActionIs","param":"throw","stageGroup":"action"},"actions":[{"moduleId":"throw","intent":"releaseThrow"}],"action":{"moduleId":"throw","intent":"releaseThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"releaseThrow"}}],"children":[]},{"id":"rule-mvutbcys4cb","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagHeld","param":"tag-kbm-ffc1ts"},"actions":[],"body":[{"type":"nestedThread","threadId":"subthread-mvutc9vqisq","rules":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"stagedActionIs","param":"laser","stageGroup":"action"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"itemAbility","stageGroup":"action"}]}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"},{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"grab","stageGroup":"action"}]}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"},{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}}],"children":[]}]}],"children":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser"}],"condition":{"type":"stagedActionIs","param":"laser"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]}]},{"id":"rule-mvuxjb3jumc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuxjb3j","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagReleased","param":"tag-kbm-ffc1ts"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyuaktqyz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyuakt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-scjxrr"}],"condition":{"type":"tagHeld","param":"tag-kbm-scjxrr"},"actions":[{"moduleId":"locomotion","intent":"jump"}],"action":{"moduleId":"locomotion","intent":"jump"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"jump"}}],"children":[]},{"id":"rule-mvuyukiqe8r","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyukiq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-i3csb0"}],"condition":{"type":"tagPressed","param":"tag-kbm-i3csb0"},"actions":[{"moduleId":"melee","intent":"punch"}],"action":{"moduleId":"melee","intent":"punch"},"body":[{"type":"action","action":{"moduleId":"melee","intent":"punch"}}],"children":[]},{"id":"rule-mvuyutgqxj8","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-mxj04b"}],"condition":{"type":"tagHeld","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},{"moduleId":"laser","intent":"aimLaser"}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}}},{"type":"action","action":{"moduleId":"laser","intent":"aimLaser"}}],"children":[]},{"id":"rule-mvuz1v84zsz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-mxj04b"},{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyy7gta43","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-5ftccu"}],"condition":{"type":"tagHeld","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvuyzn14ezj","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-5ftccu"},{"type":"stagedActionIs","param":"throw","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuz2yjunae","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz2yju","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-6o3l7h"}],"condition":{"type":"tagHeld","param":"tag-kbm-6o3l7h"},"actions":[{"moduleId":"locomotion","intent":"holdSprint"}],"action":{"moduleId":"locomotion","intent":"holdSprint"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"holdSprint"}}],"children":[]},{"id":"rule-mvuz5lavrjc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz5lav","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"emptyHanded"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]},{"id":"rule-mvuz7b3sp8t","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz7b3s","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"holdingObject"},{"type":"targetInReach"},{"type":"stagedActionIs","stageGroup":"interact","param":"none"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"swap"},{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}],"action":{"moduleId":"pickup","intent":"swap"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"swap"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}}],"children":[]},{"id":"rule-mvuz63kzy0m","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz63kz","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-5j0zp9"}],"condition":{"type":"tagPressed","param":"tag-kbm-5j0zp9"},"actions":[{"moduleId":"pickup","intent":"dropItem"}],"action":{"moduleId":"pickup","intent":"dropItem"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"dropItem"}}],"children":[]},{"id":"rule-mvv00aqr8yr","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvv00aqr","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-tn6irx"}],"condition":{"type":"tagReleased","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}}],"children":[]}],"tags":[{"id":"tag-kbm-ffc1ts","name":"Action","trigger":{"device":"mouse","code":"MouseRight","mode":"hold"}},{"id":"tag-kbm-5j0zp9","name":"Drop Item","trigger":{"device":"keyboard","code":"KeyQ","mode":"press"}},{"id":"tag-kbm-5ftccu","name":" Throw Mode","trigger":{"device":"keyboard","code":"KeyA","mode":"hold"}},{"id":"tag-kbm-tn6irx","name":"Interact","trigger":{"device":"keyboard","code":"KeyF","mode":"press"}},{"id":"tag-kbm-scjxrr","name":"Jump","trigger":{"device":"keyboard","code":"Space","mode":"hold"}},{"id":"tag-kbm-6o3l7h","name":"Sprint","trigger":{"device":"keyboard","code":"ShiftLeft","mode":"press"}},{"id":"tag-kbm-i3csb0","name":"Melee","trigger":{"device":"keyboard","code":"KeyD","mode":"press"}},{"id":"tag-kbm-mxj04b","name":"Laser","trigger":{"device":"keyboard","code":"KeyS","mode":"press"}}],"channels":{"locomotion":{"mode":"forwardFacingDrive","upKeys":["KeyW","ArrowUp"],"downKeys":["KeyS","ArrowDown"],"leftKeys":["KeyA","ArrowLeft"],"rightKeys":["KeyD","ArrowRight"],"sprintKey":"ShiftLeft","sprintMode":"hold","jumpKey":"Space"},"aiming":{"mode":"faceMouseCursor","rawMouseDragEnabled":true},"interaction":{"enabled":true,"trigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"claimPolicy":"requireCleanPress","allowSwapWhenHolding":true},"throw":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"fireOnReleaseAim":false,"arcModulationSource":"mouseDragY","arcDragHoldThresholdMs":200,"claimPolicy":"requireCleanPress"},"consume":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyE","mode":"hold"},"claimPolicy":"requireCleanPress"},"melee":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyF","mode":"press"},"claimPolicy":"requireCleanPress"},"laser":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","chordModifiers":["AltLeft"],"mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"},"powerModulationSource":"mouseWheel"}},"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}],"blocks":[{"type":"walkSprint","id":"block-walk","name":"Walk & Sprint","enabled":true,"moveKeys":{"upKey":"KeyW","downKey":"KeyS","leftKey":"KeyA","rightKey":"MouseLeft"},"sprint":{"code":"ShiftLeft","mode":"hold"},"mode":"walkToMouse","forwardTrigger":{"code":"MouseLeft"},"reverseKey":null,"strafeLeftKey":null,"strafeRightKey":null,"cursorSteerTrigger":{"code":"GamepadLB"},"cursorSteerMode":"whenHoldingButton"},{"type":"jump","id":"block-jump","name":"Jump","enabled":true,"jump":{"code":"Space","requireCleanPress":false},"requireCleanPress":false},{"type":"itemInteraction","id":"block-items","name":"Item Interaction","enabled":true,"pickup":{"code":null},"drop":{"code":"KeyQ"},"swap":{"code":"KeyF"},"consume":{"code":"KeyE","requireCleanPress":false},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"MouseRight","gateButtons":[]},"fireWeapon":{"code":"MouseRight","requireCleanPress":true}},{"type":"throw","id":"block-throw","name":"Throwing & Ballistics","enabled":true,"mode":"chargeAndRelease","chargeTrigger":{"code":"MouseRight","requireCleanPress":false},"aimTrigger":{"code":"MouseRight","requireCleanPress":false},"fireTrigger":{"code":"MouseLeft","requireCleanPress":true},"quickTrigger":{"code":"MouseRight"},"cancelTrigger":{"code":"KeyX","requireCleanPress":true},"arcModulation":{"source":"mouseDeltaY","autoCursorLock":true,"sensitivity":0.005},"enableProximityCancel":true,"cancelRadius":1.5,"triggerMargin":0.15,"throwOverrideTrigger":{"code":"KeyT"}},{"type":"melee","id":"block-melee","name":"Melee Combat","enabled":true,"punch":{"code":"KeyS"}},{"type":"laser","id":"block-laser","name":"Laser Beam","enabled":true,"aimTrigger":{"code":"KeyD","gateButtons":[]},"aimMode":"mouseWorldPos","fireTrigger":{"code":"MouseRight","autoFireWhenAiming":false},"powerLevel":{"source":"mouseWheel","sensitivity":1}},{"type":"facing","id":"block-facing","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"gamepad":{"leftStick":{"primaryMode":"directLocomotion","dynamicOverride":{"triggerCondition":"whenLtHeld","overrideMode":"cursorSteer"},"cursorSteerSpeed":14,"cursorClampRadius":7.5},"rightStick":{"mode":"twinStickAim"},"rules":[{"id":"pad-laser-aim-lt","name":"Aim Laser (LT)","enabled":true,"priority":105,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"aimLaser"},"tagId":"tag-pad-qq9kph"},{"id":"pad-laser-fire","name":"Fire Laser (RT)","enabled":true,"priority":100,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"fireLaser"},"tagId":"tag-pad-yg4ita"},{"id":"pad-throw-aim-lt","name":"Aim Throw Trajectory (LT)","enabled":true,"priority":95,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"aimThrow"},"tagId":"tag-pad-qq9kph"},{"id":"pad-throw-release","name":"Throw Held Item (RT)","enabled":true,"priority":90,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"release"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"releaseThrow"},"tagId":"tag-pad-yg4ita"},{"id":"pad-pickup-rt","name":"Pick Up Object (RT)","enabled":true,"priority":80,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"press"},"condition":{"type":"targetInReach"},"action":{"moduleId":"throwPickup","intent":"pickupReach"},"tagId":"tag-pad-yg4ita"},{"id":"pad-melee-b","name":"Melee Punch (B)","enabled":true,"priority":75,"trigger":{"device":"gamepad","code":"GamepadB","mode":"press"},"condition":{"type":"emptyHanded"},"action":{"moduleId":"melee","intent":"punch"},"tagId":"tag-pad-wbxscb"},{"id":"pad-jump","name":"Jump (A)","enabled":true,"priority":70,"trigger":{"device":"gamepad","code":"GamepadA","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"jump"},"tagId":"tag-pad-i8r8qh"},{"id":"pad-sprint-toggle","name":"Toggle Sprint (LS)","enabled":true,"priority":60,"trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"toggleSprint"},"tagId":"tag-pad-r7p78d"},{"id":"pad-drop","name":"Drop Item (X)","enabled":true,"priority":50,"trigger":{"device":"gamepad","code":"GamepadX","mode":"press"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"dropItem"},"tagId":"tag-pad-1wlz43"}],"tags":[{"id":"tag-pad-qq9kph","name":"Aim Laser","trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"}},{"id":"tag-pad-yg4ita","name":"Fire Laser","trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"}},{"id":"tag-pad-wbxscb","name":"Melee Punch","trigger":{"device":"gamepad","code":"GamepadB","mode":"press"}},{"id":"tag-pad-i8r8qh","name":"Jump","trigger":{"device":"gamepad","code":"GamepadA","mode":"hold"}},{"id":"tag-pad-r7p78d","name":"Toggle Sprint","trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"}},{"id":"tag-pad-1wlz43","name":"Drop Item","trigger":{"device":"gamepad","code":"GamepadX","mode":"press"}}],"blocks":[{"type":"walkSprint","id":"block-walk-gp","name":"Walk & Sprint","enabled":true,"mode":"analogStick","moveKeys":{"upKey":"GamepadDpadUp","downKey":"GamepadDpadDown","leftKey":"GamepadDpadLeft","rightKey":"GamepadDpadRight","requireCleanPress":false},"sprint":{"code":"GamepadLS","mode":"toggle","requireCleanPress":true},"forwardTrigger":{"code":"GamepadLT"},"cursorSteerTrigger":{"code":"GamepadLT"},"cursorSteerMode":"whenHoldingButton","reverseKey":"KeyS","strafeLeftKey":"KeyA","strafeRightKey":"KeyD","rawDirectionWhileWalking":true,"stickCursorInFront":true,"cursorMaxDistance":4,"lockCursorDistanceToMax":true},{"type":"jump","id":"block-jump-gp","name":"Jump","enabled":true,"jump":{"code":"GamepadA","requireCleanPress":false},"requireCleanPress":false},{"type":"itemInteraction","id":"block-items-gp","name":"Item Interaction","enabled":true,"pickup":{"code":null,"requireCleanPress":true},"drop":{"code":"GamepadY","requireCleanPress":true},"swap":{"code":"GamepadB","requireCleanPress":true},"consume":{"code":"GamepadRB","requireCleanPress":false},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"GamepadRT"}},{"type":"throw","id":"block-throw-gp","name":"Throwing & Ballistics","enabled":true,"mode":"triggerPullForce","chargeTrigger":{"code":"GamepadRT","requireCleanPress":true},"aimTrigger":{"code":"GamepadLT","requireCleanPress":false},"fireTrigger":{"code":"GamepadRT","requireCleanPress":true},"quickTrigger":{"code":"GamepadRT","requireCleanPress":true},"cancelTrigger":{"code":null,"requireCleanPress":true},"triggerMargin":0.15,"arcModulation":{"source":"none","autoCursorLock":false,"sensitivity":0.005},"enableProximityCancel":true,"cancelRadius":1.5},{"type":"melee","id":"block-melee-gp","name":"Melee Combat","enabled":true,"punch":{"code":"GamepadX","requireCleanPress":true}},{"type":"laser","id":"block-laser-gp","name":"Laser Beam","enabled":true,"aimTrigger":{"code":null,"requireCleanPress":false},"aimMode":"mouseWorldPos","fireTrigger":{"code":"GamepadRT","autoFireWhenAiming":false,"requireCleanPress":false},"powerLevel":{"source":"none","sensitivity":1}},{"type":"facing","id":"block-facing-gp","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"touch":{"widgets":[{"id":"touch-move-stick","type":"joystick","label":"Move","anchor":"bottomLeft","offset":{"x":90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[{"id":"deadzone","minDeflection":0,"maxDeflection":0.15,"signalId":"idle"},{"id":"walk","minDeflection":0.15,"maxDeflection":0.65,"signalId":"walk"},{"id":"sprint","minDeflection":0.65,"maxDeflection":1,"signalId":"sprint"}]},{"id":"touch-aim-stick","type":"joystick","label":"Aim","anchor":"bottomRight","offset":{"x":-90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[]},{"id":"touch-jump-btn","type":"actionButton","label":"JUMP","anchor":"bottomRight","offset":{"x":-80,"y":190},"radius":35,"centering":"fixed","snapBackOnRelease":true,"rings":[],"tapAction":"jump"}],"rules":[],"tags":[]},"stages":["none","laser","throw","itemAbility","grab"],"stageGroups":[{"name":"action","stages":["none","laser","throw","itemAbility","grab"]},{"name":"interact","stages":["none","dirty"]}],"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}]},"strength":1,"hasPickup":true,"pickupModule":{"pickupReach":1.3,"maxPower":250,"consumesEnergy":false,"allowPartialPower":false},"hasClimbing":false,"wallEdgeAssistModule":{"hangDistance":0.1,"preventWalkOff":false},"hasDamageSolverModule":true}');
-const objects = /* @__PURE__ */ JSON.parse('[{"id":"stone-ground-1","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":4.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":101}},{"id":"stone-ground-2","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":4.8,"y":8.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0.45},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":102}},{"id":"stone-ground-3","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":8.2,"y":4.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":103}},{"id":"stone-ground-4","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":11.8,"y":9.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":104}},{"id":"stone-ground-5","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":15.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":105}},{"id":"stone-ground-6","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":15.8,"y":8.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":106}},{"id":"stone-elevated-1","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":6.5,"y":2.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":107}},{"id":"stone-elevated-2","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":13.5,"y":11.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":108}},{"id":"obj-u5fhrng","name":"Apple","prefabId":"prefab_apple","position":{"x":15,"y":7,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"super-apple-center","name":"Super Apple","prefabId":"prefab_super_apple","position":{"x":15,"y":15,"z":0},"color":"#ff1493","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.45,"colliderRadius":0.3,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.45,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.3},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","unlimited":true,"totalEnergyJoules":10000,"remainingEnergyJoules":10000,"consumeRateWatts":2000,"healRate":0,"minScaleFloor":1,"minRadiusFloor":0.3}},{"id":"obj-zblid1b","name":"Apple","prefabId":"prefab_apple","position":{"x":7,"y":15,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-3veyg9h","name":"Apple","prefabId":"prefab_apple","position":{"x":23,"y":15,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-mcnn4yg","name":"Apple","prefabId":"prefab_apple","position":{"x":15,"y":23,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"gun-starter-pistol","name":"Tactical Pistol","prefabId":"prefab_pistol","position":{"x":17.61,"y":22.2,"z":0},"color":"#475569","visualShape":"box","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":2,"damagePerBullet":25,"bulletSpeed":32,"firingSeconds":2,"cooldownTime":1.2,"bulletMass":0.08,"gunLength":0.55,"gunWidth":0.22,"bulletColor":"#f59e0b"}},{"id":"gun-starter-blaster","name":"Rapid Blaster","prefabId":"prefab_blaster","position":{"x":19.01,"y":15.74,"z":0},"color":"#0284c7","visualShape":"box","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.55,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.55,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":10,"damagePerBullet":4,"bulletSpeed":28,"firingSeconds":3,"cooldownTime":1.8,"bulletMass":0.04,"gunLength":0.6,"gunWidth":0.24,"bulletColor":"#38bdf8"}},{"id":"obj-bbm4etd","name":"Tactical Pistol","prefabId":"prefab_pistol","position":{"x":13.34,"y":20.56,"z":0},"color":"#475569","visualShape":"box","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":4,"damagePerBullet":13,"bulletSpeed":32,"firingSeconds":2,"cooldownTime":1.2,"bulletMass":0.08,"gunLength":0.55,"gunWidth":0.22,"bulletColor":"#f59e0b"}},{"id":"obj-wpzi705","name":"Tactical Pistol","prefabId":"prefab_pistol","position":{"x":15,"y":16.5,"z":0},"color":"#475569","visualShape":"box","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":4,"damagePerBullet":13,"bulletSpeed":32,"firingSeconds":2,"cooldownTime":1.2,"bulletMass":0.08,"gunLength":0.55,"gunWidth":0.22,"bulletColor":"#f59e0b"}},{"id":"obj-ionklvu","name":"Tactical Pistol","prefabId":"prefab_pistol","position":{"x":14.97,"y":16.51,"z":0},"color":"#475569","visualShape":"box","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":4,"damagePerBullet":13,"bulletSpeed":32,"firingSeconds":2,"cooldownTime":1.2,"bulletMass":0.08,"gunLength":0.55,"gunWidth":0.22,"bulletColor":"#f59e0b"}}]');
-const prefabs = /* @__PURE__ */ JSON.parse('[{"id":"prefab_apple","name":"Apple","icon":"🍏","archetype":{"id":"archetype_apple","name":"Apple","position":{"x":0,"y":0,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}}},{"id":"prefab_super_apple","name":"Super Apple","icon":"💖","archetype":{"id":"archetype_super_apple","name":"Super Apple","position":{"x":0,"y":0,"z":0},"color":"#ff1493","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.45,"colliderRadius":0.3,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.45,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.3},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","unlimited":true,"totalEnergyJoules":10000,"remainingEnergyJoules":10000,"consumeRateWatts":2000,"healRate":0,"minScaleFloor":1,"minRadiusFloor":0.3}}},{"id":"prefab_stone","name":"Stone","icon":"🪨","archetype":{"id":"archetype_stone","name":"Stone","position":{"x":0,"y":0,"z":0},"color":"#78716c","visualShape":"circle","mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":100}}},{"id":"prefab_player","name":"Player","icon":"🧙","archetype":{"id":"archetype_player","name":"Player","position":{"x":5,"y":7,"z":0},"color":"#f59e0b","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":false,"hasHealthModule":true,"hasDamageAuraModule":false,"hasDamageSolverModule":true,"mass":1.2,"colliderRadius":0.44,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":2,"dynamicGroundFrictionMod":2,"rigidbodyModule":{"enabled":true,"mass":1.2,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.44},"frictionModule":{"enabled":true,"staticFrictionMod":2,"dynamicFrictionMod":2},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"healthModule":{"enabled":true,"maxHp":100,"currentHp":100,"naturalHealRate":5},"damageSolverModule":{"enabled":true,"impactSusceptibility":1,"minShockThreshold":5,"selfImpactWeight":0}},"controlSchema":{"id":"default","name":"Default (Action Context)","description":"Standard twin-stick and WASD setup with smart contextual action triggers.","activeDevice":"keyboardMouse","keyboardMouse":{"aiming":{"mode":"faceMouseCursor"},"locomotion":{"mode":"forwardFacingDrive","forwardTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"}},"rules":[{"id":"rule-mvutadk33p6","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutadk3","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingPlainObject"}],"condition":{"type":"holdingPlainObject"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvutfwetv21","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"throw","stageGroup":"action"},{"type":"tagPressed","param":"tag-kbm-ffc1ts"}],"condition":{"type":"stagedActionIs","param":"throw","stageGroup":"action"},"actions":[{"moduleId":"throw","intent":"releaseThrow"}],"action":{"moduleId":"throw","intent":"releaseThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"releaseThrow"}}],"children":[]},{"id":"rule-mvutbcys4cb","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagHeld","param":"tag-kbm-ffc1ts"},"actions":[],"body":[{"type":"nestedThread","threadId":"subthread-mvutc9vqisq","rules":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"stagedActionIs","param":"laser","stageGroup":"action"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"itemAbility","stageGroup":"action"}]}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"},{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"grab","stageGroup":"action"}]}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"},{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}}],"children":[]}]}],"children":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser"}],"condition":{"type":"stagedActionIs","param":"laser"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]}]},{"id":"rule-mvuxjb3jumc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuxjb3j","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagReleased","param":"tag-kbm-ffc1ts"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyuaktqyz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyuakt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-scjxrr"}],"condition":{"type":"tagHeld","param":"tag-kbm-scjxrr"},"actions":[{"moduleId":"locomotion","intent":"jump"}],"action":{"moduleId":"locomotion","intent":"jump"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"jump"}}],"children":[]},{"id":"rule-mvuyukiqe8r","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyukiq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-i3csb0"}],"condition":{"type":"tagPressed","param":"tag-kbm-i3csb0"},"actions":[{"moduleId":"melee","intent":"punch"}],"action":{"moduleId":"melee","intent":"punch"},"body":[{"type":"action","action":{"moduleId":"melee","intent":"punch"}}],"children":[]},{"id":"rule-mvuyutgqxj8","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-mxj04b"}],"condition":{"type":"tagHeld","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},{"moduleId":"laser","intent":"aimLaser"}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}}},{"type":"action","action":{"moduleId":"laser","intent":"aimLaser"}}],"children":[]},{"id":"rule-mvuz1v84zsz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-mxj04b"},{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyy7gta43","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-5ftccu"}],"condition":{"type":"tagHeld","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvuyzn14ezj","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-5ftccu"},{"type":"stagedActionIs","param":"throw","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuz2yjunae","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz2yju","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-6o3l7h"}],"condition":{"type":"tagHeld","param":"tag-kbm-6o3l7h"},"actions":[{"moduleId":"locomotion","intent":"holdSprint"}],"action":{"moduleId":"locomotion","intent":"holdSprint"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"holdSprint"}}],"children":[]},{"id":"rule-mvuz5lavrjc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz5lav","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"emptyHanded"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]},{"id":"rule-mvuz7b3sp8t","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz7b3s","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"holdingObject"},{"type":"targetInReach"},{"type":"stagedActionIs","stageGroup":"interact","param":"none"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"swap"},{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}],"action":{"moduleId":"pickup","intent":"swap"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"swap"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}}],"children":[]},{"id":"rule-mvuz63kzy0m","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz63kz","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-5j0zp9"}],"condition":{"type":"tagPressed","param":"tag-kbm-5j0zp9"},"actions":[{"moduleId":"pickup","intent":"dropItem"}],"action":{"moduleId":"pickup","intent":"dropItem"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"dropItem"}}],"children":[]},{"id":"rule-mvv00aqr8yr","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvv00aqr","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-tn6irx"}],"condition":{"type":"tagReleased","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}}],"children":[]}],"tags":[{"id":"tag-kbm-ffc1ts","name":"Action","trigger":{"device":"mouse","code":"MouseRight","mode":"hold"}},{"id":"tag-kbm-5j0zp9","name":"Drop Item","trigger":{"device":"keyboard","code":"KeyQ","mode":"press"}},{"id":"tag-kbm-5ftccu","name":" Throw Mode","trigger":{"device":"keyboard","code":"KeyA","mode":"hold"}},{"id":"tag-kbm-tn6irx","name":"Interact","trigger":{"device":"keyboard","code":"KeyF","mode":"press"}},{"id":"tag-kbm-scjxrr","name":"Jump","trigger":{"device":"keyboard","code":"Space","mode":"hold"}},{"id":"tag-kbm-6o3l7h","name":"Sprint","trigger":{"device":"keyboard","code":"ShiftLeft","mode":"press"}},{"id":"tag-kbm-i3csb0","name":"Melee","trigger":{"device":"keyboard","code":"KeyD","mode":"press"}},{"id":"tag-kbm-mxj04b","name":"Laser","trigger":{"device":"keyboard","code":"KeyS","mode":"press"}}],"channels":{"locomotion":{"mode":"forwardFacingDrive","upKeys":["KeyW","ArrowUp"],"downKeys":["KeyS","ArrowDown"],"leftKeys":["KeyA","ArrowLeft"],"rightKeys":["KeyD","ArrowRight"],"sprintKey":"ShiftLeft","sprintMode":"hold","jumpKey":"Space"},"aiming":{"mode":"faceMouseCursor","rawMouseDragEnabled":true},"interaction":{"enabled":true,"trigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"claimPolicy":"requireCleanPress","allowSwapWhenHolding":true},"throw":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"fireOnReleaseAim":false,"arcModulationSource":"mouseDragY","arcDragHoldThresholdMs":200,"claimPolicy":"requireCleanPress"},"consume":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyE","mode":"hold"},"claimPolicy":"requireCleanPress"},"melee":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyF","mode":"press"},"claimPolicy":"requireCleanPress"},"laser":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","chordModifiers":["AltLeft"],"mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"},"powerModulationSource":"mouseWheel"}},"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}],"blocks":[{"type":"walkSprint","id":"block-walk","name":"Walk & Sprint","enabled":true,"moveKeys":{"upKey":"KeyW","downKey":"KeyS","leftKey":"KeyA","rightKey":"MouseLeft"},"sprint":{"code":"ShiftLeft","mode":"hold"},"mode":"walkToMouse","forwardTrigger":{"code":"MouseLeft"},"reverseKey":null,"strafeLeftKey":null,"strafeRightKey":null,"cursorSteerTrigger":{"code":"GamepadLB"},"cursorSteerMode":"whenHoldingButton"},{"type":"jump","id":"block-jump","name":"Jump","enabled":true,"jump":{"code":"Space","requireCleanPress":false},"requireCleanPress":false},{"type":"itemInteraction","id":"block-items","name":"Item Interaction","enabled":true,"pickup":{"code":null},"drop":{"code":"KeyQ"},"swap":{"code":"KeyF"},"consume":{"code":"KeyE","requireCleanPress":false},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"MouseRight","gateButtons":[]},"fireWeapon":{"code":"MouseRight","requireCleanPress":true}},{"type":"throw","id":"block-throw","name":"Throwing & Ballistics","enabled":true,"mode":"chargeAndRelease","chargeTrigger":{"code":"MouseRight","requireCleanPress":false},"aimTrigger":{"code":"MouseRight","requireCleanPress":false},"fireTrigger":{"code":"MouseLeft","requireCleanPress":true},"quickTrigger":{"code":"MouseRight"},"cancelTrigger":{"code":"KeyX","requireCleanPress":true},"arcModulation":{"source":"mouseDeltaY","autoCursorLock":true,"sensitivity":0.005},"enableProximityCancel":true,"cancelRadius":1.5,"triggerMargin":0.15,"throwOverrideTrigger":{"code":"KeyT"}},{"type":"melee","id":"block-melee","name":"Melee Combat","enabled":true,"punch":{"code":"KeyS"}},{"type":"laser","id":"block-laser","name":"Laser Beam","enabled":true,"aimTrigger":{"code":"KeyD","gateButtons":[]},"aimMode":"mouseWorldPos","fireTrigger":{"code":"MouseRight","autoFireWhenAiming":false},"powerLevel":{"source":"mouseWheel","sensitivity":1}},{"type":"facing","id":"block-facing","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"gamepad":{"leftStick":{"primaryMode":"directLocomotion","dynamicOverride":{"triggerCondition":"whenLtHeld","overrideMode":"cursorSteer"},"cursorSteerSpeed":14,"cursorClampRadius":7.5},"rightStick":{"mode":"twinStickAim"},"rules":[{"id":"pad-laser-aim-lt","name":"Aim Laser (LT)","enabled":true,"priority":105,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"aimLaser"},"tagId":"tag-pad-qq9kph"},{"id":"pad-laser-fire","name":"Fire Laser (RT)","enabled":true,"priority":100,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"fireLaser"},"tagId":"tag-pad-yg4ita"},{"id":"pad-throw-aim-lt","name":"Aim Throw Trajectory (LT)","enabled":true,"priority":95,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"aimThrow"},"tagId":"tag-pad-qq9kph"},{"id":"pad-throw-release","name":"Throw Held Item (RT)","enabled":true,"priority":90,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"release"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"releaseThrow"},"tagId":"tag-pad-yg4ita"},{"id":"pad-pickup-rt","name":"Pick Up Object (RT)","enabled":true,"priority":80,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"press"},"condition":{"type":"targetInReach"},"action":{"moduleId":"throwPickup","intent":"pickupReach"},"tagId":"tag-pad-yg4ita"},{"id":"pad-melee-b","name":"Melee Punch (B)","enabled":true,"priority":75,"trigger":{"device":"gamepad","code":"GamepadB","mode":"press"},"condition":{"type":"emptyHanded"},"action":{"moduleId":"melee","intent":"punch"},"tagId":"tag-pad-wbxscb"},{"id":"pad-jump","name":"Jump (A)","enabled":true,"priority":70,"trigger":{"device":"gamepad","code":"GamepadA","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"jump"},"tagId":"tag-pad-i8r8qh"},{"id":"pad-sprint-toggle","name":"Toggle Sprint (LS)","enabled":true,"priority":60,"trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"toggleSprint"},"tagId":"tag-pad-r7p78d"},{"id":"pad-drop","name":"Drop Item (X)","enabled":true,"priority":50,"trigger":{"device":"gamepad","code":"GamepadX","mode":"press"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"dropItem"},"tagId":"tag-pad-1wlz43"}],"tags":[{"id":"tag-pad-qq9kph","name":"Aim Laser","trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"}},{"id":"tag-pad-yg4ita","name":"Fire Laser","trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"}},{"id":"tag-pad-wbxscb","name":"Melee Punch","trigger":{"device":"gamepad","code":"GamepadB","mode":"press"}},{"id":"tag-pad-i8r8qh","name":"Jump","trigger":{"device":"gamepad","code":"GamepadA","mode":"hold"}},{"id":"tag-pad-r7p78d","name":"Toggle Sprint","trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"}},{"id":"tag-pad-1wlz43","name":"Drop Item","trigger":{"device":"gamepad","code":"GamepadX","mode":"press"}}],"blocks":[{"type":"walkSprint","id":"block-walk-gp","name":"Walk & Sprint","enabled":true,"mode":"analogStick","moveKeys":{"upKey":"GamepadDpadUp","downKey":"GamepadDpadDown","leftKey":"GamepadDpadLeft","rightKey":"GamepadDpadRight","requireCleanPress":false},"sprint":{"code":"GamepadLS","mode":"toggle","requireCleanPress":true},"forwardTrigger":{"code":"GamepadLT"},"cursorSteerTrigger":{"code":"GamepadLT"},"cursorSteerMode":"whenHoldingButton","reverseKey":"KeyS","strafeLeftKey":"KeyA","strafeRightKey":"KeyD","rawDirectionWhileWalking":true,"stickCursorInFront":true,"cursorMaxDistance":4,"lockCursorDistanceToMax":true},{"type":"jump","id":"block-jump-gp","name":"Jump","enabled":true,"jump":{"code":"GamepadA","requireCleanPress":false},"requireCleanPress":false},{"type":"itemInteraction","id":"block-items-gp","name":"Item Interaction","enabled":true,"pickup":{"code":null,"requireCleanPress":true},"drop":{"code":"GamepadY","requireCleanPress":true},"swap":{"code":"GamepadB","requireCleanPress":true},"consume":{"code":"GamepadRB","requireCleanPress":false},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"GamepadRT"}},{"type":"throw","id":"block-throw-gp","name":"Throwing & Ballistics","enabled":true,"mode":"triggerPullForce","chargeTrigger":{"code":"GamepadRT","requireCleanPress":true},"aimTrigger":{"code":"GamepadLT","requireCleanPress":false},"fireTrigger":{"code":"GamepadRT","requireCleanPress":true},"quickTrigger":{"code":"GamepadRT","requireCleanPress":true},"cancelTrigger":{"code":null,"requireCleanPress":true},"triggerMargin":0.15,"arcModulation":{"source":"none","autoCursorLock":false,"sensitivity":0.005},"enableProximityCancel":true,"cancelRadius":1.5},{"type":"melee","id":"block-melee-gp","name":"Melee Combat","enabled":true,"punch":{"code":"GamepadX","requireCleanPress":true}},{"type":"laser","id":"block-laser-gp","name":"Laser Beam","enabled":true,"aimTrigger":{"code":null,"requireCleanPress":false},"aimMode":"mouseWorldPos","fireTrigger":{"code":"GamepadRT","autoFireWhenAiming":false,"requireCleanPress":false},"powerLevel":{"source":"none","sensitivity":1}},{"type":"facing","id":"block-facing-gp","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"touch":{"widgets":[{"id":"touch-move-stick","type":"joystick","label":"Move","anchor":"bottomLeft","offset":{"x":90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[{"id":"deadzone","minDeflection":0,"maxDeflection":0.15,"signalId":"idle"},{"id":"walk","minDeflection":0.15,"maxDeflection":0.65,"signalId":"walk"},{"id":"sprint","minDeflection":0.65,"maxDeflection":1,"signalId":"sprint"}]},{"id":"touch-aim-stick","type":"joystick","label":"Aim","anchor":"bottomRight","offset":{"x":-90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[]},{"id":"touch-jump-btn","type":"actionButton","label":"JUMP","anchor":"bottomRight","offset":{"x":-80,"y":190},"radius":35,"centering":"fixed","snapBackOnRelease":true,"rings":[],"tapAction":"jump"}],"rules":[],"tags":[]},"stages":["none","laser","throw","itemAbility","grab"],"stageGroups":[{"name":"action","stages":["none","laser","throw","itemAbility","grab"]},{"name":"interact","stages":["none","dirty"]}],"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}]}},{"id":"prefab_blaster","name":"Rapid Blaster","icon":"⚡","archetype":{"id":"archetype_blaster","name":"Rapid Blaster","position":{"x":0,"y":0,"z":0},"color":"#0284c7","visualShape":"box","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.55,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.55,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":10,"damagePerBullet":12,"bulletSpeed":28,"firingSeconds":3,"cooldownTime":1.8,"cooldownDelay":0.4,"bulletMass":0.04,"gunLength":0.6,"gunWidth":0.24,"bulletColor":"#38bdf8"}}}]');
+const objects = /* @__PURE__ */ JSON.parse('[{"id":"stone-ground-1","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":4.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":101}},{"id":"stone-ground-2","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":4.8,"y":8.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0.45},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":102}},{"id":"stone-ground-3","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":8.2,"y":4.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":103}},{"id":"stone-ground-4","name":"Throwing Stone","prefabId":"prefab_stone","position":{"x":11.8,"y":9.5,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":104}},{"id":"stone-ground-5","name":"Small Throwing Stone","prefabId":"prefab_stone","position":{"x":15.2,"y":5.8,"z":0},"color":"#a8a29e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.18,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.18},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":105}},{"id":"stone-ground-6","name":"Heavy Stone","prefabId":"prefab_stone","position":{"x":15.8,"y":8.5,"z":0},"color":"#57534e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":1.25,"colliderRadius":0.28,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":1.25,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.28},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.5,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":106}},{"id":"stone-elevated-1","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":6.5,"y":2.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":107}},{"id":"stone-elevated-2","name":"Rampart Stone","prefabId":"prefab_stone","position":{"x":13.5,"y":11.5,"z":1},"color":"#78716c","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.9,"colliderRadius":0.23,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.9,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.23},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":1},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":108}},{"id":"obj-u5fhrng","name":"Apple","prefabId":"prefab_apple","position":{"x":15,"y":7,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"super-apple-center","name":"Super Apple","prefabId":"prefab_super_apple","position":{"x":15,"y":15,"z":0},"color":"#ff1493","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.45,"colliderRadius":0.3,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.45,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.3},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","unlimited":true,"totalEnergyJoules":10000,"remainingEnergyJoules":10000,"consumeRateWatts":2000,"healRate":0,"minScaleFloor":1,"minRadiusFloor":0.3}},{"id":"obj-zblid1b","name":"Apple","prefabId":"prefab_apple","position":{"x":7,"y":15,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-3veyg9h","name":"Apple","prefabId":"prefab_apple","position":{"x":23,"y":15,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"obj-mcnn4yg","name":"Apple","prefabId":"prefab_apple","position":{"x":15,"y":23,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12}},{"id":"gun-starter-pistol","name":"Tactical Pistol","prefabId":"prefab_pistol","position":{"x":17.61,"y":22.2,"z":0},"color":"#475569","visualShape":"box","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":2,"damagePerBullet":25,"bulletSpeed":32,"firingSeconds":2,"cooldownTime":1.2,"bulletMass":0.08,"gunLength":0.55,"gunWidth":0.22,"bulletColor":"#f59e0b"}},{"id":"gun-starter-blaster","name":"Rapid Blaster","prefabId":"prefab_blaster","position":{"x":19.01,"y":15.74,"z":0},"color":"#0284c7","visualShape":"box","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.55,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.55,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":10,"damagePerBullet":4,"bulletSpeed":28,"firingSeconds":3,"cooldownTime":1.8,"cooldownDelay":0.5,"bulletMass":0.04,"gunLength":0.6,"gunWidth":0.24,"bulletColor":"#38bdf8"}},{"id":"obj-bbm4etd","name":"Tactical Pistol","prefabId":"prefab_pistol","position":{"x":13.34,"y":20.56,"z":0},"color":"#475569","visualShape":"box","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":4,"damagePerBullet":13,"bulletSpeed":32,"firingSeconds":2,"cooldownTime":1.2,"bulletMass":0.08,"gunLength":0.55,"gunWidth":0.22,"bulletColor":"#f59e0b"}},{"id":"obj-wpzi705","name":"Tactical Pistol","prefabId":"prefab_pistol","position":{"x":15,"y":16.5,"z":0},"color":"#475569","visualShape":"box","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":4,"damagePerBullet":13,"bulletSpeed":32,"firingSeconds":2,"cooldownTime":1.2,"bulletMass":0.08,"gunLength":0.55,"gunWidth":0.22,"bulletColor":"#f59e0b"}},{"id":"obj-ionklvu","name":"Tactical Pistol","prefabId":"prefab_pistol","position":{"x":14.97,"y":16.51,"z":0},"color":"#475569","visualShape":"box","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.65,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.65,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":4,"damagePerBullet":13,"bulletSpeed":32,"firingSeconds":2,"cooldownTime":1.2,"bulletMass":0.08,"gunLength":0.55,"gunWidth":0.22,"bulletColor":"#f59e0b"}},{"id":"obj-tyzgche","name":"Rapid Blaster","prefabId":"prefab_blaster","position":{"x":19.5,"y":10.5,"z":0},"color":"#0284c7","visualShape":"box","isSleeping":true,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.55,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.55,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":10,"damagePerBullet":12,"bulletSpeed":28,"firingSeconds":3,"cooldownTime":1.8,"cooldownDelay":0.4,"bulletMass":0.04,"gunLength":0.6,"gunWidth":0.24,"bulletColor":"#38bdf8"}},{"id":"obj-xejujcp","name":"Test Cannonball","prefabId":"prefab_1793756559553_889","position":{"x":18.77,"y":2.89,"z":0.45},"color":"#f59e0b","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":false,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.5,"colliderRadius":0.14,"bounceMod":0.85,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.5,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.14},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.85,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0.45}}]');
+const prefabs = /* @__PURE__ */ JSON.parse('[{"id":"prefab_apple","name":"Apple","icon":"🍏","archetype":{"id":"archetype_apple","name":"Apple","position":{"x":0,"y":0,"z":0},"color":"#22c55e","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasGunModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.35,"colliderRadius":0.25,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.35,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.25},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":4000,"remainingEnergyJoules":4000,"consumeRateWatts":1200,"healRate":0,"minScaleFloor":0.35,"minRadiusFloor":0.12,"unlimited":false}}},{"id":"prefab_super_apple","name":"Super Apple","icon":"💖","archetype":{"id":"archetype_super_apple","name":"Super Apple","position":{"x":0,"y":0,"z":0},"color":"#ff1493","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":true,"hasGunModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.45,"colliderRadius":0.3,"bounceMod":0.2,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.45,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.3},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.2,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"consumableModule":{"enabled":true,"tag":"food","totalEnergyJoules":10000,"remainingEnergyJoules":10000,"consumeRateWatts":2000,"healRate":0,"minScaleFloor":1,"minRadiusFloor":0.3,"unlimited":true}}},{"id":"prefab_stone","name":"Stone","icon":"🪨","archetype":{"id":"archetype_stone","name":"Stone","position":{"x":0,"y":0,"z":0},"color":"#78716c","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":true,"hasConsumableModule":false,"hasGunModule":false,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.85,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.85,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"rollModule":{"enabled":true,"rollResistance":0.45,"bumpyRollEnabled":true,"bumpiness":0.28,"seed":100}}},{"id":"prefab_player","name":"Player","icon":"🧙","archetype":{"id":"obj-a0git3s","name":"Player 1","position":{"x":5,"y":7,"z":0},"color":"#f59e0b","visualShape":"circle","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":false,"hasHealthModule":true,"hasDamageAuraModule":false,"hasDamageSolverModule":true,"mass":1.2,"colliderRadius":0.44,"bounceMod":0.1,"verticalBounce":true,"staticGroundFrictionMod":2,"dynamicGroundFrictionMod":2,"rigidbodyModule":{"enabled":true,"mass":1.2,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.44},"frictionModule":{"enabled":true,"staticFrictionMod":2,"dynamicFrictionMod":2},"bounceModule":{"enabled":true,"bounceMod":0.1,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"healthModule":{"maxHp":100,"naturalHealRate":2,"joulesPerHp":80,"maxPower":500,"currentHp":100,"hpPerJoule":80,"consumesEnergy":true,"allowPartialPower":true},"damageSolverModule":{"selfImpactWeight":0,"minShockThreshold":0,"enabled":true,"impactSusceptibility":1,"piercingMultiplier":1},"prefabId":"prefab_player","hasWalking":true,"walkingModule":{"walkInAir":true,"canSprint":true,"maxWalkForce":35,"maxWalkSpeed":5.2,"sprintSpeed":8.06,"walkPowerCapacity":400,"sprintPowerCapacity":1200,"airFriction":1,"walkConsumesEnergy":false,"walkAllowPartialPower":false,"sprintConsumesEnergy":true,"sprintAllowPartialPower":true,"maxWalkPower":400,"maxSprintPower":1200},"hasJump":true,"jumpModule":{"jumpImpulse":16.5,"maxInitialSpeed":8.8,"jumpPowerCapacity":1200,"jumpConsumesEnergy":true,"jumpAllowPartialPower":true},"hasThrow":true,"throwModule":{"throwPowerCapacity":1200,"maxPower":1200,"maxThrowSpeed":69,"throwForce":69,"maxThrowHeight":5,"consumesEnergy":true},"hasHealth":true,"hasEnergyPool":true,"energyPool":{"staminaCapacity":5000,"staminaRegenRate":500,"energyPoolCapacity":10000,"currentStamina":5000,"currentEnergy":10000,"muscleEfficiency":0.25,"infiniteEnergy":false,"debugAutoRefillOnEmpty":false},"hasMelee":true,"meleeModule":{"impactForce":350,"maxPower":500,"allowPartialPower":true,"punchFrequency":4,"reach":1.2,"width":0.8},"hasLaser":true,"laserModule":{"maxPower":2000,"maxRange":15,"damageRate":50,"thickness":0.35,"allowPartialPower":true},"controlSchema":{"id":"default","name":"Default (Action Context)","description":"Standard twin-stick and WASD setup with smart contextual action triggers.","activeDevice":"keyboardMouse","keyboardMouse":{"aiming":{"mode":"faceMouseCursor"},"locomotion":{"mode":"forwardFacingDrive","forwardTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"}},"rules":[{"id":"rule-mvutadk33p6","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutadk3","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingPlainObject"}],"condition":{"type":"holdingPlainObject"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvutfwetv21","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"throw","stageGroup":"action"},{"type":"tagPressed","param":"tag-kbm-ffc1ts"}],"condition":{"type":"stagedActionIs","param":"throw","stageGroup":"action"},"actions":[{"moduleId":"throw","intent":"releaseThrow"}],"action":{"moduleId":"throw","intent":"releaseThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"releaseThrow"}}],"children":[]},{"id":"rule-mvutbcys4cb","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagHeld","param":"tag-kbm-ffc1ts"},"actions":[],"body":[{"type":"nestedThread","threadId":"subthread-mvutc9vqisq","rules":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"stagedActionIs","param":"laser","stageGroup":"action"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"itemAbility","stageGroup":"action"}]}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"},{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"grab","stageGroup":"action"}]}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"},{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}}],"children":[]}]}],"children":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser"}],"condition":{"type":"stagedActionIs","param":"laser"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]}]},{"id":"rule-mvuxjb3jumc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuxjb3j","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagReleased","param":"tag-kbm-ffc1ts"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyuaktqyz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyuakt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-scjxrr"}],"condition":{"type":"tagHeld","param":"tag-kbm-scjxrr"},"actions":[{"moduleId":"locomotion","intent":"jump"}],"action":{"moduleId":"locomotion","intent":"jump"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"jump"}}],"children":[]},{"id":"rule-mvuyukiqe8r","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyukiq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-i3csb0"}],"condition":{"type":"tagPressed","param":"tag-kbm-i3csb0"},"actions":[{"moduleId":"melee","intent":"punch"}],"action":{"moduleId":"melee","intent":"punch"},"body":[{"type":"action","action":{"moduleId":"melee","intent":"punch"}}],"children":[]},{"id":"rule-mvuyutgqxj8","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-mxj04b"}],"condition":{"type":"tagHeld","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},{"moduleId":"laser","intent":"aimLaser"}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}}},{"type":"action","action":{"moduleId":"laser","intent":"aimLaser"}}],"children":[]},{"id":"rule-mvuz1v84zsz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-mxj04b"},{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyy7gta43","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-5ftccu"}],"condition":{"type":"tagHeld","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvuyzn14ezj","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-5ftccu"},{"type":"stagedActionIs","param":"throw","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuz2yjunae","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz2yju","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-6o3l7h"}],"condition":{"type":"tagHeld","param":"tag-kbm-6o3l7h"},"actions":[{"moduleId":"locomotion","intent":"holdSprint"}],"action":{"moduleId":"locomotion","intent":"holdSprint"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"holdSprint"}}],"children":[]},{"id":"rule-mvuz5lavrjc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz5lav","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"emptyHanded"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]},{"id":"rule-mvuz7b3sp8t","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz7b3s","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"holdingObject"},{"type":"targetInReach"},{"type":"stagedActionIs","stageGroup":"interact","param":"none"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"swap"},{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}],"action":{"moduleId":"pickup","intent":"swap"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"swap"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}}],"children":[]},{"id":"rule-mvuz63kzy0m","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz63kz","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-5j0zp9"}],"condition":{"type":"tagPressed","param":"tag-kbm-5j0zp9"},"actions":[{"moduleId":"pickup","intent":"dropItem"}],"action":{"moduleId":"pickup","intent":"dropItem"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"dropItem"}}],"children":[]},{"id":"rule-mvv00aqr8yr","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvv00aqr","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-tn6irx"}],"condition":{"type":"tagReleased","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}}],"children":[]}],"tags":[{"id":"tag-kbm-ffc1ts","name":"Action","trigger":{"device":"mouse","code":"MouseRight","mode":"hold"}},{"id":"tag-kbm-5j0zp9","name":"Drop Item","trigger":{"device":"keyboard","code":"KeyQ","mode":"press"}},{"id":"tag-kbm-5ftccu","name":" Throw Mode","trigger":{"device":"keyboard","code":"KeyA","mode":"hold"}},{"id":"tag-kbm-tn6irx","name":"Interact","trigger":{"device":"keyboard","code":"KeyF","mode":"press"}},{"id":"tag-kbm-scjxrr","name":"Jump","trigger":{"device":"keyboard","code":"Space","mode":"hold"}},{"id":"tag-kbm-6o3l7h","name":"Sprint","trigger":{"device":"keyboard","code":"ShiftLeft","mode":"press"}},{"id":"tag-kbm-i3csb0","name":"Melee","trigger":{"device":"keyboard","code":"KeyD","mode":"press"}},{"id":"tag-kbm-mxj04b","name":"Laser","trigger":{"device":"keyboard","code":"KeyS","mode":"press"}}],"channels":{"locomotion":{"mode":"forwardFacingDrive","upKeys":["KeyW","ArrowUp"],"downKeys":["KeyS","ArrowDown"],"leftKeys":["KeyA","ArrowLeft"],"rightKeys":["KeyD","ArrowRight"],"sprintKey":"ShiftLeft","sprintMode":"hold","jumpKey":"Space"},"aiming":{"mode":"faceMouseCursor","rawMouseDragEnabled":true},"interaction":{"enabled":true,"trigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"claimPolicy":"requireCleanPress","allowSwapWhenHolding":true},"throw":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"fireOnReleaseAim":false,"arcModulationSource":"mouseDragY","arcDragHoldThresholdMs":200,"claimPolicy":"requireCleanPress"},"consume":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyE","mode":"hold"},"claimPolicy":"requireCleanPress"},"melee":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyF","mode":"press"},"claimPolicy":"requireCleanPress"},"laser":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","chordModifiers":["AltLeft"],"mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"},"powerModulationSource":"mouseWheel"}},"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}],"blocks":[{"type":"walkSprint","id":"block-walk","name":"Walk & Sprint","enabled":true,"moveKeys":{"upKey":"KeyW","downKey":"KeyS","leftKey":"KeyA","rightKey":"MouseLeft"},"sprint":{"code":"ShiftLeft","mode":"hold"},"mode":"walkToMouse","forwardTrigger":{"code":"MouseLeft"},"reverseKey":null,"strafeLeftKey":null,"strafeRightKey":null,"cursorSteerTrigger":{"code":"GamepadLB"},"cursorSteerMode":"whenHoldingButton"},{"type":"jump","id":"block-jump","name":"Jump","enabled":true,"jump":{"code":"Space","requireCleanPress":false},"requireCleanPress":false},{"type":"itemInteraction","id":"block-items","name":"Item Interaction","enabled":true,"pickup":{"code":null},"drop":{"code":"KeyQ"},"swap":{"code":"KeyF"},"consume":{"code":"KeyE","requireCleanPress":false},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"MouseRight","gateButtons":[]},"fireWeapon":{"code":"MouseRight","requireCleanPress":true}},{"type":"throw","id":"block-throw","name":"Throwing & Ballistics","enabled":true,"mode":"chargeAndRelease","chargeTrigger":{"code":"MouseRight","requireCleanPress":false},"aimTrigger":{"code":"MouseRight","requireCleanPress":false},"fireTrigger":{"code":"MouseLeft","requireCleanPress":true},"quickTrigger":{"code":"MouseRight"},"cancelTrigger":{"code":"KeyX","requireCleanPress":true},"arcModulation":{"source":"mouseDeltaY","autoCursorLock":true,"sensitivity":0.005},"enableProximityCancel":true,"cancelRadius":1.5,"triggerMargin":0.15,"throwOverrideTrigger":{"code":"KeyT"}},{"type":"melee","id":"block-melee","name":"Melee Combat","enabled":true,"punch":{"code":"KeyS"}},{"type":"laser","id":"block-laser","name":"Laser Beam","enabled":true,"aimTrigger":{"code":"KeyD","gateButtons":[]},"aimMode":"mouseWorldPos","fireTrigger":{"code":"MouseRight","autoFireWhenAiming":false},"powerLevel":{"source":"mouseWheel","sensitivity":1}},{"type":"facing","id":"block-facing","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"gamepad":{"leftStick":{"primaryMode":"directLocomotion","dynamicOverride":{"triggerCondition":"whenLtHeld","overrideMode":"cursorSteer"},"cursorSteerSpeed":14,"cursorClampRadius":7.5},"rightStick":{"mode":"twinStickAim"},"rules":[{"id":"pad-laser-aim-lt","name":"Aim Laser (LT)","enabled":true,"priority":105,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"aimLaser"},"tagId":"tag-pad-qq9kph"},{"id":"pad-laser-fire","name":"Fire Laser (RT)","enabled":true,"priority":100,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"fireLaser"},"tagId":"tag-pad-yg4ita"},{"id":"pad-throw-aim-lt","name":"Aim Throw Trajectory (LT)","enabled":true,"priority":95,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"aimThrow"},"tagId":"tag-pad-qq9kph"},{"id":"pad-throw-release","name":"Throw Held Item (RT)","enabled":true,"priority":90,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"release"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"releaseThrow"},"tagId":"tag-pad-yg4ita"},{"id":"pad-pickup-rt","name":"Pick Up Object (RT)","enabled":true,"priority":80,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"press"},"condition":{"type":"targetInReach"},"action":{"moduleId":"throwPickup","intent":"pickupReach"},"tagId":"tag-pad-yg4ita"},{"id":"pad-melee-b","name":"Melee Punch (B)","enabled":true,"priority":75,"trigger":{"device":"gamepad","code":"GamepadB","mode":"press"},"condition":{"type":"emptyHanded"},"action":{"moduleId":"melee","intent":"punch"},"tagId":"tag-pad-wbxscb"},{"id":"pad-jump","name":"Jump (A)","enabled":true,"priority":70,"trigger":{"device":"gamepad","code":"GamepadA","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"jump"},"tagId":"tag-pad-i8r8qh"},{"id":"pad-sprint-toggle","name":"Toggle Sprint (LS)","enabled":true,"priority":60,"trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"toggleSprint"},"tagId":"tag-pad-r7p78d"},{"id":"pad-drop","name":"Drop Item (X)","enabled":true,"priority":50,"trigger":{"device":"gamepad","code":"GamepadX","mode":"press"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"dropItem"},"tagId":"tag-pad-1wlz43"}],"tags":[{"id":"tag-pad-qq9kph","name":"Aim Laser","trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"}},{"id":"tag-pad-yg4ita","name":"Fire Laser","trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"}},{"id":"tag-pad-wbxscb","name":"Melee Punch","trigger":{"device":"gamepad","code":"GamepadB","mode":"press"}},{"id":"tag-pad-i8r8qh","name":"Jump","trigger":{"device":"gamepad","code":"GamepadA","mode":"hold"}},{"id":"tag-pad-r7p78d","name":"Toggle Sprint","trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"}},{"id":"tag-pad-1wlz43","name":"Drop Item","trigger":{"device":"gamepad","code":"GamepadX","mode":"press"}}],"blocks":[{"type":"walkSprint","id":"block-walk-gp","name":"Walk & Sprint","enabled":true,"mode":"analogStick","moveKeys":{"upKey":"GamepadDpadUp","downKey":"GamepadDpadDown","leftKey":"GamepadDpadLeft","rightKey":"GamepadDpadRight","requireCleanPress":false},"sprint":{"code":"GamepadLS","mode":"toggle","requireCleanPress":true},"forwardTrigger":{"code":"GamepadLT"},"cursorSteerTrigger":{"code":"GamepadLT"},"cursorSteerMode":"whenHoldingButton","reverseKey":"KeyS","strafeLeftKey":"KeyA","strafeRightKey":"KeyD","rawDirectionWhileWalking":true,"stickCursorInFront":true,"cursorMaxDistance":4,"lockCursorDistanceToMax":true},{"type":"jump","id":"block-jump-gp","name":"Jump","enabled":true,"jump":{"code":"GamepadA","requireCleanPress":false},"requireCleanPress":false},{"type":"itemInteraction","id":"block-items-gp","name":"Item Interaction","enabled":true,"pickup":{"code":null,"requireCleanPress":true},"drop":{"code":"GamepadY","requireCleanPress":true},"swap":{"code":"GamepadB","requireCleanPress":true},"consume":{"code":"GamepadRB","requireCleanPress":false},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"GamepadRT"}},{"type":"throw","id":"block-throw-gp","name":"Throwing & Ballistics","enabled":true,"mode":"triggerPullForce","chargeTrigger":{"code":"GamepadRT","requireCleanPress":true},"aimTrigger":{"code":"GamepadLT","requireCleanPress":false},"fireTrigger":{"code":"GamepadRT","requireCleanPress":true},"quickTrigger":{"code":"GamepadRT","requireCleanPress":true},"cancelTrigger":{"code":null,"requireCleanPress":true},"triggerMargin":0.15,"arcModulation":{"source":"none","autoCursorLock":false,"sensitivity":0.005},"enableProximityCancel":true,"cancelRadius":1.5},{"type":"melee","id":"block-melee-gp","name":"Melee Combat","enabled":true,"punch":{"code":"GamepadX","requireCleanPress":true}},{"type":"laser","id":"block-laser-gp","name":"Laser Beam","enabled":true,"aimTrigger":{"code":null,"requireCleanPress":false},"aimMode":"mouseWorldPos","fireTrigger":{"code":"GamepadRT","autoFireWhenAiming":false,"requireCleanPress":false},"powerLevel":{"source":"none","sensitivity":1}},{"type":"facing","id":"block-facing-gp","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"touch":{"widgets":[{"id":"touch-move-stick","type":"joystick","label":"Move","anchor":"bottomLeft","offset":{"x":90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[{"id":"deadzone","minDeflection":0,"maxDeflection":0.15,"signalId":"idle"},{"id":"walk","minDeflection":0.15,"maxDeflection":0.65,"signalId":"walk"},{"id":"sprint","minDeflection":0.65,"maxDeflection":1,"signalId":"sprint"}]},{"id":"touch-aim-stick","type":"joystick","label":"Aim","anchor":"bottomRight","offset":{"x":-90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[]},{"id":"touch-jump-btn","type":"actionButton","label":"JUMP","anchor":"bottomRight","offset":{"x":-80,"y":190},"radius":35,"centering":"fixed","snapBackOnRelease":true,"rings":[],"tapAction":"jump"}],"rules":[],"tags":[]},"stages":["none","laser","throw","itemAbility","grab"],"stageGroups":[{"name":"action","stages":["none","laser","throw","itemAbility","grab"]},{"name":"interact","stages":["none","dirty"]}],"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}]},"strength":1,"hasPickup":true,"pickupModule":{"pickupReach":1.3,"maxPower":250,"consumesEnergy":false,"allowPartialPower":false},"hasClimbing":false,"wallEdgeAssistModule":{"hangDistance":0.1,"preventWalkOff":false}},"controlSchema":{"id":"default","name":"Default (Action Context)","description":"Standard twin-stick and WASD setup with smart contextual action triggers.","activeDevice":"keyboardMouse","keyboardMouse":{"aiming":{"mode":"faceMouseCursor"},"locomotion":{"mode":"forwardFacingDrive","forwardTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"}},"rules":[{"id":"rule-mvutadk33p6","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutadk3","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingPlainObject"}],"condition":{"type":"holdingPlainObject"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvutfwetv21","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"throw","stageGroup":"action"},{"type":"tagPressed","param":"tag-kbm-ffc1ts"}],"condition":{"type":"stagedActionIs","param":"throw","stageGroup":"action"},"actions":[{"moduleId":"throw","intent":"releaseThrow"}],"action":{"moduleId":"throw","intent":"releaseThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"releaseThrow"}}],"children":[]},{"id":"rule-mvutbcys4cb","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvutbcys","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagHeld","param":"tag-kbm-ffc1ts"},"actions":[],"body":[{"type":"nestedThread","threadId":"subthread-mvutc9vqisq","rules":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"stagedActionIs","param":"laser","stageGroup":"action"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"itemAbility","stageGroup":"action"}]}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"},{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"itemAbility","group":"action"}}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"},{"type":"group","op":"or","conditions":[{"type":"stagedActionIs","param":"none","stageGroup":"action"},{"type":"stagedActionIs","param":"grab","stageGroup":"action"}]}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"},{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"grab","group":"action"}}}],"children":[]}]}],"children":[{"id":"rule-mvutd4mgd4n","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"stagedActionIs","param":"laser"}],"condition":{"type":"stagedActionIs","param":"laser"},"actions":[{"moduleId":"laser","intent":"fireLaser"}],"action":{"moduleId":"laser","intent":"fireLaser"},"body":[{"type":"action","action":{"moduleId":"laser","intent":"fireLaser"}}],"children":[]},{"id":"rule-mvutdcii7fj","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"holdingItemWithPrimaryAbility"}],"condition":{"type":"holdingItemWithPrimaryAbility"},"actions":[{"moduleId":"heldItem","intent":"primaryItemAbility"}],"action":{"moduleId":"heldItem","intent":"primaryItemAbility"},"body":[{"type":"action","action":{"moduleId":"heldItem","intent":"primaryItemAbility"}}],"children":[]},{"id":"rule-mvutegn9ot6","name":"Action Branch","enabled":true,"priority":50,"threadId":"subthread-mvutc9vqisq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"emptyHanded"}],"condition":{"type":"emptyHanded"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]}]},{"id":"rule-mvuxjb3jumc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuxjb3j","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-ffc1ts"}],"condition":{"type":"tagReleased","param":"tag-kbm-ffc1ts"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyuaktqyz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyuakt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-scjxrr"}],"condition":{"type":"tagHeld","param":"tag-kbm-scjxrr"},"actions":[{"moduleId":"locomotion","intent":"jump"}],"action":{"moduleId":"locomotion","intent":"jump"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"jump"}}],"children":[]},{"id":"rule-mvuyukiqe8r","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyukiq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-i3csb0"}],"condition":{"type":"tagPressed","param":"tag-kbm-i3csb0"},"actions":[{"moduleId":"melee","intent":"punch"}],"action":{"moduleId":"melee","intent":"punch"},"body":[{"type":"action","action":{"moduleId":"melee","intent":"punch"}}],"children":[]},{"id":"rule-mvuyutgqxj8","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-mxj04b"}],"condition":{"type":"tagHeld","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},{"moduleId":"laser","intent":"aimLaser"}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"laser","group":"action"}}},{"type":"action","action":{"moduleId":"laser","intent":"aimLaser"}}],"children":[]},{"id":"rule-mvuz1v84zsz","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyutgq","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-mxj04b"},{"type":"stagedActionIs","param":"laser","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-mxj04b"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuyy7gta43","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-5ftccu"}],"condition":{"type":"tagHeld","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"throw","intent":"aimThrow"},{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}],"action":{"moduleId":"throw","intent":"aimThrow"},"body":[{"type":"action","action":{"moduleId":"throw","intent":"aimThrow"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"throw","group":"action"}}}],"children":[]},{"id":"rule-mvuyzn14ezj","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuyy7gt","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-5ftccu"},{"type":"stagedActionIs","param":"throw","stageGroup":"action"}],"condition":{"type":"tagReleased","param":"tag-kbm-5ftccu"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"stage":"none","group":"action"}}}],"children":[]},{"id":"rule-mvuz2yjunae","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz2yju","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-6o3l7h"}],"condition":{"type":"tagHeld","param":"tag-kbm-6o3l7h"},"actions":[{"moduleId":"locomotion","intent":"holdSprint"}],"action":{"moduleId":"locomotion","intent":"holdSprint"},"body":[{"type":"action","action":{"moduleId":"locomotion","intent":"holdSprint"}}],"children":[]},{"id":"rule-mvuz5lavrjc","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz5lav","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"emptyHanded"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"pickupReach"}],"action":{"moduleId":"pickup","intent":"pickupReach"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"pickupReach"}}],"children":[]},{"id":"rule-mvuz7b3sp8t","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz7b3s","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagHeld","param":"tag-kbm-tn6irx"},{"type":"holdingObject"},{"type":"targetInReach"},{"type":"stagedActionIs","stageGroup":"interact","param":"none"}],"condition":{"type":"tagHeld","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"pickup","intent":"swap"},{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}],"action":{"moduleId":"pickup","intent":"swap"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"swap"}},{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"dirty"}}}],"children":[]},{"id":"rule-mvuz63kzy0m","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvuz63kz","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagPressed","param":"tag-kbm-5j0zp9"}],"condition":{"type":"tagPressed","param":"tag-kbm-5j0zp9"},"actions":[{"moduleId":"pickup","intent":"dropItem"}],"action":{"moduleId":"pickup","intent":"dropItem"},"body":[{"type":"action","action":{"moduleId":"pickup","intent":"dropItem"}}],"children":[]},{"id":"rule-mvv00aqr8yr","name":"Action Branch","enabled":true,"priority":50,"threadId":"thread-mvv00aqr","trigger":{"device":"keyboard","code":"Always","mode":"hold"},"conditions":[{"type":"tagReleased","param":"tag-kbm-tn6irx"}],"condition":{"type":"tagReleased","param":"tag-kbm-tn6irx"},"actions":[{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}],"action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}},"body":[{"type":"action","action":{"moduleId":"staging","intent":"setStage","args":{"group":"interact","stage":"none"}}}],"children":[]}],"tags":[{"id":"tag-kbm-ffc1ts","name":"Action","trigger":{"device":"mouse","code":"MouseRight","mode":"hold"}},{"id":"tag-kbm-5j0zp9","name":"Drop Item","trigger":{"device":"keyboard","code":"KeyQ","mode":"press"}},{"id":"tag-kbm-5ftccu","name":" Throw Mode","trigger":{"device":"keyboard","code":"KeyA","mode":"hold"}},{"id":"tag-kbm-tn6irx","name":"Interact","trigger":{"device":"keyboard","code":"KeyF","mode":"press"}},{"id":"tag-kbm-scjxrr","name":"Jump","trigger":{"device":"keyboard","code":"Space","mode":"hold"}},{"id":"tag-kbm-6o3l7h","name":"Sprint","trigger":{"device":"keyboard","code":"ShiftLeft","mode":"press"}},{"id":"tag-kbm-i3csb0","name":"Melee","trigger":{"device":"keyboard","code":"KeyD","mode":"press"}},{"id":"tag-kbm-mxj04b","name":"Laser","trigger":{"device":"keyboard","code":"KeyS","mode":"press"}}],"channels":{"locomotion":{"mode":"forwardFacingDrive","upKeys":["KeyW","ArrowUp"],"downKeys":["KeyS","ArrowDown"],"leftKeys":["KeyA","ArrowLeft"],"rightKeys":["KeyD","ArrowRight"],"sprintKey":"ShiftLeft","sprintMode":"hold","jumpKey":"Space"},"aiming":{"mode":"faceMouseCursor","rawMouseDragEnabled":true},"interaction":{"enabled":true,"trigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"claimPolicy":"requireCleanPress","allowSwapWhenHolding":true},"throw":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"press"},"fireOnReleaseAim":false,"arcModulationSource":"mouseDragY","arcDragHoldThresholdMs":200,"claimPolicy":"requireCleanPress"},"consume":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyE","mode":"hold"},"claimPolicy":"requireCleanPress"},"melee":{"enabled":true,"trigger":{"device":"keyboard","code":"KeyF","mode":"press"},"claimPolicy":"requireCleanPress"},"laser":{"enabled":true,"aimTrigger":{"device":"mouse","code":"MouseRight","chordModifiers":["AltLeft"],"mode":"hold"},"fireTrigger":{"device":"mouse","code":"MouseLeft","mode":"hold"},"powerModulationSource":"mouseWheel"}},"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}],"blocks":[{"type":"walkSprint","id":"block-walk","name":"Walk & Sprint","enabled":true,"moveKeys":{"upKey":"KeyW","downKey":"KeyS","leftKey":"KeyA","rightKey":"MouseLeft"},"sprint":{"code":"ShiftLeft","mode":"hold"},"mode":"walkToMouse","forwardTrigger":{"code":"MouseLeft"},"reverseKey":null,"strafeLeftKey":null,"strafeRightKey":null,"cursorSteerTrigger":{"code":"GamepadLB"},"cursorSteerMode":"whenHoldingButton"},{"type":"jump","id":"block-jump","name":"Jump","enabled":true,"jump":{"code":"Space","requireCleanPress":false},"requireCleanPress":false},{"type":"itemInteraction","id":"block-items","name":"Item Interaction","enabled":true,"pickup":{"code":null},"drop":{"code":"KeyQ"},"swap":{"code":"KeyF"},"consume":{"code":"KeyE","requireCleanPress":false},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"MouseRight","gateButtons":[]},"fireWeapon":{"code":"MouseRight","requireCleanPress":true}},{"type":"throw","id":"block-throw","name":"Throwing & Ballistics","enabled":true,"mode":"chargeAndRelease","chargeTrigger":{"code":"MouseRight","requireCleanPress":false},"aimTrigger":{"code":"MouseRight","requireCleanPress":false},"fireTrigger":{"code":"MouseLeft","requireCleanPress":true},"quickTrigger":{"code":"MouseRight"},"cancelTrigger":{"code":"KeyX","requireCleanPress":true},"arcModulation":{"source":"mouseDeltaY","autoCursorLock":true,"sensitivity":0.005},"enableProximityCancel":true,"cancelRadius":1.5,"triggerMargin":0.15,"throwOverrideTrigger":{"code":"KeyT"}},{"type":"melee","id":"block-melee","name":"Melee Combat","enabled":true,"punch":{"code":"KeyS"}},{"type":"laser","id":"block-laser","name":"Laser Beam","enabled":true,"aimTrigger":{"code":"KeyD","gateButtons":[]},"aimMode":"mouseWorldPos","fireTrigger":{"code":"MouseRight","autoFireWhenAiming":false},"powerLevel":{"source":"mouseWheel","sensitivity":1}},{"type":"facing","id":"block-facing","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"gamepad":{"leftStick":{"primaryMode":"directLocomotion","dynamicOverride":{"triggerCondition":"whenLtHeld","overrideMode":"cursorSteer"},"cursorSteerSpeed":14,"cursorClampRadius":7.5},"rightStick":{"mode":"twinStickAim"},"rules":[{"id":"pad-laser-aim-lt","name":"Aim Laser (LT)","enabled":true,"priority":105,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"aimLaser"},"tagId":"tag-pad-qq9kph"},{"id":"pad-laser-fire","name":"Fire Laser (RT)","enabled":true,"priority":100,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"},"condition":{"type":"always"},"action":{"moduleId":"laser","intent":"fireLaser"},"tagId":"tag-pad-yg4ita"},{"id":"pad-throw-aim-lt","name":"Aim Throw Trajectory (LT)","enabled":true,"priority":95,"trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"aimThrow"},"tagId":"tag-pad-qq9kph"},{"id":"pad-throw-release","name":"Throw Held Item (RT)","enabled":true,"priority":90,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"release"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"releaseThrow"},"tagId":"tag-pad-yg4ita"},{"id":"pad-pickup-rt","name":"Pick Up Object (RT)","enabled":true,"priority":80,"trigger":{"device":"gamepad","code":"GamepadRT","mode":"press"},"condition":{"type":"targetInReach"},"action":{"moduleId":"throwPickup","intent":"pickupReach"},"tagId":"tag-pad-yg4ita"},{"id":"pad-melee-b","name":"Melee Punch (B)","enabled":true,"priority":75,"trigger":{"device":"gamepad","code":"GamepadB","mode":"press"},"condition":{"type":"emptyHanded"},"action":{"moduleId":"melee","intent":"punch"},"tagId":"tag-pad-wbxscb"},{"id":"pad-jump","name":"Jump (A)","enabled":true,"priority":70,"trigger":{"device":"gamepad","code":"GamepadA","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"jump"},"tagId":"tag-pad-i8r8qh"},{"id":"pad-sprint-toggle","name":"Toggle Sprint (LS)","enabled":true,"priority":60,"trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"},"condition":{"type":"always"},"action":{"moduleId":"locomotion","intent":"toggleSprint"},"tagId":"tag-pad-r7p78d"},{"id":"pad-drop","name":"Drop Item (X)","enabled":true,"priority":50,"trigger":{"device":"gamepad","code":"GamepadX","mode":"press"},"condition":{"type":"holdingObject"},"action":{"moduleId":"throwPickup","intent":"dropItem"},"tagId":"tag-pad-1wlz43"}],"tags":[{"id":"tag-pad-qq9kph","name":"Aim Laser","trigger":{"device":"gamepad","code":"GamepadLT","mode":"hold"}},{"id":"tag-pad-yg4ita","name":"Fire Laser","trigger":{"device":"gamepad","code":"GamepadRT","mode":"hold"}},{"id":"tag-pad-wbxscb","name":"Melee Punch","trigger":{"device":"gamepad","code":"GamepadB","mode":"press"}},{"id":"tag-pad-i8r8qh","name":"Jump","trigger":{"device":"gamepad","code":"GamepadA","mode":"hold"}},{"id":"tag-pad-r7p78d","name":"Toggle Sprint","trigger":{"device":"gamepad","code":"GamepadLS","mode":"press"}},{"id":"tag-pad-1wlz43","name":"Drop Item","trigger":{"device":"gamepad","code":"GamepadX","mode":"press"}}],"blocks":[{"type":"walkSprint","id":"block-walk-gp","name":"Walk & Sprint","enabled":true,"mode":"analogStick","moveKeys":{"upKey":"GamepadDpadUp","downKey":"GamepadDpadDown","leftKey":"GamepadDpadLeft","rightKey":"GamepadDpadRight","requireCleanPress":false},"sprint":{"code":"GamepadLS","mode":"toggle","requireCleanPress":true},"forwardTrigger":{"code":"GamepadLT"},"cursorSteerTrigger":{"code":"GamepadLT"},"cursorSteerMode":"whenHoldingButton","reverseKey":"KeyS","strafeLeftKey":"KeyA","strafeRightKey":"KeyD","rawDirectionWhileWalking":true,"stickCursorInFront":true,"cursorMaxDistance":4,"lockCursorDistanceToMax":true},{"type":"jump","id":"block-jump-gp","name":"Jump","enabled":true,"jump":{"code":"GamepadA","requireCleanPress":false},"requireCleanPress":false},{"type":"itemInteraction","id":"block-items-gp","name":"Item Interaction","enabled":true,"pickup":{"code":null,"requireCleanPress":true},"drop":{"code":"GamepadY","requireCleanPress":true},"swap":{"code":"GamepadB","requireCleanPress":true},"consume":{"code":"GamepadRB","requireCleanPress":false},"swapRequiresHolding":false,"triggerPickupWhenEmptyHanded":true,"additionalPickup":{"code":"GamepadRT"}},{"type":"throw","id":"block-throw-gp","name":"Throwing & Ballistics","enabled":true,"mode":"triggerPullForce","chargeTrigger":{"code":"GamepadRT","requireCleanPress":true},"aimTrigger":{"code":"GamepadLT","requireCleanPress":false},"fireTrigger":{"code":"GamepadRT","requireCleanPress":true},"quickTrigger":{"code":"GamepadRT","requireCleanPress":true},"cancelTrigger":{"code":null,"requireCleanPress":true},"triggerMargin":0.15,"arcModulation":{"source":"none","autoCursorLock":false,"sensitivity":0.005},"enableProximityCancel":true,"cancelRadius":1.5},{"type":"melee","id":"block-melee-gp","name":"Melee Combat","enabled":true,"punch":{"code":"GamepadX","requireCleanPress":true}},{"type":"laser","id":"block-laser-gp","name":"Laser Beam","enabled":true,"aimTrigger":{"code":null,"requireCleanPress":false},"aimMode":"mouseWorldPos","fireTrigger":{"code":"GamepadRT","autoFireWhenAiming":false,"requireCleanPress":false},"powerLevel":{"source":"none","sensitivity":1}},{"type":"facing","id":"block-facing-gp","name":"Aim / Heading Facing","enabled":true,"mode":"mouseWorldPos"}]},"touch":{"widgets":[{"id":"touch-move-stick","type":"joystick","label":"Move","anchor":"bottomLeft","offset":{"x":90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[{"id":"deadzone","minDeflection":0,"maxDeflection":0.15,"signalId":"idle"},{"id":"walk","minDeflection":0.15,"maxDeflection":0.65,"signalId":"walk"},{"id":"sprint","minDeflection":0.65,"maxDeflection":1,"signalId":"sprint"}]},{"id":"touch-aim-stick","type":"joystick","label":"Aim","anchor":"bottomRight","offset":{"x":-90,"y":90},"radius":65,"centering":"floating","snapBackOnRelease":true,"rings":[]},{"id":"touch-jump-btn","type":"actionButton","label":"JUMP","anchor":"bottomRight","offset":{"x":-80,"y":190},"radius":35,"centering":"fixed","snapBackOnRelease":true,"rings":[],"tapAction":"jump"}],"rules":[],"tags":[]},"stages":["none","laser","throw","itemAbility","grab"],"stageGroups":[{"name":"action","stages":["none","laser","throw","itemAbility","grab"]},{"name":"interact","stages":["none","dirty"]}],"pipeline":[{"id":"pipe-facing","name":"Aim / Facing Heading","enabled":true,"source":{"type":"2d_vector","source":"mouseWorldPos"},"processor":{"type":"facing","mode":"fromMousePos"},"target":"character.facing"},{"id":"pipe-loco-move","name":"WASD Movement Vector","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseLeft"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.forwardThrust"},{"id":"pipe-loco-sprint","name":"Sprint","enabled":true,"source":{"type":"button","device":"keyboard","code":"ShiftLeft"},"processor":{"type":"button","triggerMode":"hold"},"target":"locomotion.sprint"},{"id":"pipe-loco-jump","name":"Jump / Hop","enabled":true,"source":{"type":"button","device":"keyboard","code":"Space"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"locomotion.jump"},{"id":"pipe-pickup-grab","name":"Grab Ground Item","enabled":true,"condition":"emptyHanded","source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.grab"},{"id":"pipe-pickup-drop","name":"Drop Held Item","enabled":true,"condition":"holdingItem","source":{"type":"button","device":"keyboard","code":"KeyQ"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"pickup.drop"},{"id":"pipe-consume-bite","name":"Bite / Eat Held Item","enabled":true,"condition":"holdingConsumable","source":{"type":"button","device":"keyboard","code":"KeyE"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"consume.bite"},{"id":"pipe-melee-punch","name":"Melee Punch","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyS"},"processor":{"type":"button","triggerMode":"down","requireCleanPress":true,"claimOnFire":true},"target":"melee.punch"},{"id":"pipe-laser-aim","name":"Laser Aim Chord","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyD","additionalCodes":[]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.aim"},{"id":"pipe-laser-fire","name":"Laser Fire","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight","additionalCodes":["KeyD"]},"processor":{"type":"button","triggerMode":"hold","claimOnFire":true},"target":"laser.fire"},{"id":"pipe-laser-power","name":"Laser Power Modulation","enabled":true,"source":{"type":"1d_scalar","source":"mouseWheel"},"processor":{"type":"1d_scalar","mode":"accumulator","sensitivity":0.005,"clampMin":0,"clampMax":1,"initialValue":0.5,"autoCursorLock":false,"gateButton":{"device":"keyboard","code":"KeyD","mode":"hold"}},"target":"laser.power"},{"id":"pipe-mvxlcfjepx7","name":"New Binding","enabled":true,"source":{"type":"button","device":"keyboard","code":"KeyF"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"pickup.swap"},{"id":"pipe-mvxm2asjf1q","name":"New Binding","enabled":true,"source":{"type":"button","device":"mouse","code":"MouseRight"},"processor":{"type":"button","triggerMode":"hold","requireCleanPress":true,"claimOnFire":true},"target":"throw.chargeBow"}]}},{"id":"prefab_blaster","name":"Rapid Blaster","icon":"⚡","archetype":{"id":"archetype_blaster","name":"Rapid Blaster","position":{"x":0,"y":0,"z":0},"color":"#0284c7","visualShape":"box","isSleeping":false,"hasRigidbody":true,"hasCollider":true,"hasFriction":true,"hasBounce":true,"hasVerticalPosition":true,"hasGravity":true,"hasRollModule":false,"hasConsumableModule":false,"hasGunModule":true,"hasHealthModule":false,"hasDamageAuraModule":false,"hasDamageSolverModule":false,"mass":0.55,"colliderRadius":0.22,"bounceMod":0.15,"verticalBounce":true,"staticGroundFrictionMod":1,"dynamicGroundFrictionMod":1,"rigidbodyModule":{"enabled":true,"mass":0.55,"collisionMode":"dynamic","hasVerticalVelocity":true},"colliderModule":{"enabled":true,"radius":0.22},"frictionModule":{"enabled":true,"staticFrictionMod":1,"dynamicFrictionMod":1},"bounceModule":{"enabled":true,"bounceMod":0.15,"verticalBounce":true},"verticalPositionModule":{"enabled":true,"z":0},"gravityModule":{"enabled":true},"gunModule":{"enabled":true,"fireRate":10,"damagePerBullet":12,"bulletSpeed":28,"firingSeconds":3,"cooldownTime":1.8,"cooldownDelay":0.4,"bulletMass":0.04,"gunLength":0.6,"gunWidth":0.24,"bulletColor":"#38bdf8"}}}]');
 const spawners = [{ "id": "spawner_apple_default", "name": "Apple Spawner", "enabled": true, "prefabId": "prefab_apple", "intervalMinutes": 0.15, "maxCount": 10, "designatedSpawnPoints": [{ "x": 15, "y": 7, "z": 0 }, { "x": 15, "y": 23, "z": 0 }, { "x": 7, "y": 15, "z": 0 }, { "x": 23, "y": 15, "z": 0 }, { "x": 8.5, "y": 8.5, "z": 0 }, { "x": 21.5, "y": 8.5, "z": 0 }, { "x": 8.5, "y": 21.5, "z": 0 }, { "x": 21.5, "y": 21.5, "z": 0 }, { "x": 15, "y": 2.2, "z": 0 }, { "x": 15, "y": 27.8, "z": 0 }, { "x": 2.2, "y": 15, "z": 0 }, { "x": 27.8, "y": 15, "z": 0 }, { "x": 4.5, "y": 4.5, "z": 1 }, { "x": 25.5, "y": 4.5, "z": 1 }, { "x": 4.5, "y": 25.5, "z": 1 }, { "x": 25.5, "y": 25.5, "z": 1 }] }, { "id": "spawner_super_apple_default", "name": "Super Apple Spawner", "enabled": true, "prefabId": "prefab_super_apple", "intervalMinutes": 1, "maxCount": 1, "designatedSpawnPoints": [{ "x": 15, "y": 15, "z": 0 }, { "x": 8.5, "y": 8.5, "z": 0 }, { "x": 21.5, "y": 8.5, "z": 0 }, { "x": 8.5, "y": 21.5, "z": 0 }, { "x": 21.5, "y": 21.5, "z": 0 }] }, { "id": "spawner_gun_default", "name": "Gun Weapon Spawner", "enabled": true, "prefabId": "prefab_blaster", "intervalMinutes": 0.5, "maxCount": 2, "designatedSpawnPoints": [{ "x": 13.5, "y": 15, "z": 0 }, { "x": 16.5, "y": 15, "z": 0 }, { "x": 15, "y": 13.5, "z": 0 }, { "x": 15, "y": 16.5, "z": 0 }, { "x": 10.5, "y": 10.5, "z": 0 }, { "x": 19.5, "y": 10.5, "z": 0 }, { "x": 10.5, "y": 19.5, "z": 0 }, { "x": 19.5, "y": 19.5, "z": 0 }] }];
 const initialWorldConfig = {
   version,

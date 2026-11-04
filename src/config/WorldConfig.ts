@@ -284,7 +284,7 @@ export interface SerializedPrefabConfig {
   id: string;
   name: string;
   icon?: string;
-  archetype: SerializedGameObjectConfig;
+  archetype: SerializedGameObjectConfig | SerializedCharacterConfig;
   controlSchema?: ControlSchema;
 }
 
@@ -1268,11 +1268,14 @@ export function mergeWorldConfigDelta(base: WorldConfig, delta: WorldConfigDelta
  */
 export function serializePrefab(prefab: { id: string; name: string; icon?: string; archetype: GameObject; controlSchema?: ControlSchema }): SerializedPrefabConfig {
   const schema = prefab.controlSchema || (prefab.archetype instanceof Character ? prefab.archetype.controlSchema : undefined);
+  const isChar = prefab.archetype instanceof Character || (prefab.archetype as any).isCharacter;
   return {
     id: prefab.id,
     name: prefab.name,
     icon: prefab.icon,
-    archetype: serializeGameObject(prefab.archetype),
+    archetype: isChar
+      ? (serializeCharacter(prefab.archetype as Character) as any)
+      : serializeGameObject(prefab.archetype),
     ...(schema ? { controlSchema: schema } : {}),
   };
 }
