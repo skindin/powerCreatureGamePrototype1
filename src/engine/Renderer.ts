@@ -819,7 +819,12 @@ export class Renderer {
       for (const char of characters) {
         if (isRemoteForThisView(char)) continue;
 
-        if (char.activeTrajectory?.landPoint) {
+        const isHoldingGun = Boolean(
+          char.heldObject?.gunModule &&
+          char.heldObject.gunModule.enabled &&
+          !(char.isChargingThrow || char.isAimingWallClear || char.isHoldingThrowRelease || char.isTriggerPullThrowing)
+        );
+        if (char.activeTrajectory?.landPoint && !isHoldingGun) {
           activeAimTargets.push({
             x: char.activeTrajectory.landPoint.x,
             y: char.activeTrajectory.landPoint.y,
@@ -956,7 +961,14 @@ export class Renderer {
           char.isLaserFiring ||
           (char.laserModule && (char.laserModule.isAiming || char.laserModule.isFiring))
         );
-        if (char.activeTrajectory && !isLaserMode) {
+        const isHoldingGun = Boolean(
+          char.heldObject?.gunModule &&
+          char.heldObject.gunModule.enabled
+        );
+        const isThrowOverride = isHoldingGun && Boolean(
+          char.isChargingThrow || char.isAimingWallClear || char.isHoldingThrowRelease || char.isTriggerPullThrowing
+        );
+        if (char.activeTrajectory && !isLaserMode && (!isHoldingGun || isThrowOverride)) {
           // Is this character's cursor currently unhidden and visible?
           const cursor = Array.isArray(activeAimCursorsOrIsGamepad)
             ? activeAimCursorsOrIsGamepad.find((c) => c.character === char)
@@ -975,8 +987,16 @@ export class Renderer {
           const cursorX = cursor.x * ppu;
           const cursorY = cursor.y * ppu;
 
-          // Draw precision aim reticle if character is not holding an object (when holding, drawTrajectory already drew it with cursorTarget)
-          if (!cChar.activeTrajectory) {
+          const isCursorHoldingGun = Boolean(
+            cChar.heldObject?.gunModule &&
+            cChar.heldObject.gunModule.enabled
+          );
+          const isCursorThrowOverride = isCursorHoldingGun && Boolean(
+            cChar.isChargingThrow || cChar.isAimingWallClear || cChar.isHoldingThrowRelease || cChar.isTriggerPullThrowing
+          );
+
+          // Draw precision aim reticle if character is not throwing an object (when holding gun, show clean reticle)
+          if (!cChar.activeTrajectory || (isCursorHoldingGun && !isCursorThrowOverride)) {
             const reticleColor = cChar.isThrowCancelZone ? "#ef4444" : cursor.color;
             this.trajectoryRenderer.drawAimReticle(cursorX, cursorY, reticleColor);
           }
@@ -991,7 +1011,14 @@ export class Renderer {
             character.isLaserFiring ||
             (character.laserModule && (character.laserModule.isAiming || character.laserModule.isFiring))
           );
-          if (character.activeTrajectory && !isCharLaserMode) {
+          const isCharHoldingGun = Boolean(
+            character.heldObject?.gunModule &&
+            character.heldObject.gunModule.enabled
+          );
+          const isCharThrowOverride = isCharHoldingGun && Boolean(
+            character.isChargingThrow || character.isAimingWallClear || character.isHoldingThrowRelease || character.isTriggerPullThrowing
+          );
+          if (character.activeTrajectory && !isCharLaserMode && (!isCharHoldingGun || isCharThrowOverride)) {
             this.trajectoryRenderer.drawTrajectory(character.activeTrajectory, ppu, arena, this.viewSettings, activeAimCursor, character);
           } else if (isUsingGamepad && activeAimCursor) {
             this.trajectoryRenderer.drawAimReticle(activeAimCursor.x * ppu, activeAimCursor.y * ppu, character.playerColor);

@@ -5694,15 +5694,19 @@ class ThrowCapability {
     }
   }
   static updateTrajectoryPreview(char, isAimingInput, aimTargetPos, canAimThrow, isLaserModeActive, arena2, entities, autoLock = false, lockedAimPos = null, aimLockDelta = 0) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
     const preservedFacing = char.facingAngle;
     char.isAiming = isAimingInput;
     char.aimTarget = isAimingInput ? aimTargetPos : null;
-    if (!isLaserModeActive && char.heldObject && canAimThrow && char.throwModule && char.throwModule.enabled && char.hasStrength && isAimingInput && aimTargetPos) {
-      const throwBlock = (_e = ((_b = (_a = char.controlSchema) == null ? void 0 : _a.gamepad) == null ? void 0 : _b.blocks) || ((_d = (_c = char.controlSchema) == null ? void 0 : _c.keyboardMouse) == null ? void 0 : _d.blocks)) == null ? void 0 : _e.find(
+    const isHoldingGun = Boolean(((_a = char.heldObject) == null ? void 0 : _a.gunModule) && char.heldObject.gunModule.enabled);
+    const isThrowOverrideActive = isHoldingGun && Boolean(
+      char.isChargingThrow || char.isAimingWallClear || char.isHoldingThrowRelease || char.isTriggerPullThrowing
+    );
+    if (!isLaserModeActive && (!isHoldingGun || isThrowOverrideActive) && char.heldObject && canAimThrow && char.throwModule && char.throwModule.enabled && char.hasStrength && isAimingInput && aimTargetPos) {
+      const throwBlock = (_f = ((_c = (_b = char.controlSchema) == null ? void 0 : _b.gamepad) == null ? void 0 : _c.blocks) || ((_e = (_d = char.controlSchema) == null ? void 0 : _d.keyboardMouse) == null ? void 0 : _e.blocks)) == null ? void 0 : _f.find(
         (b) => b.type === "throw"
       );
-      const cancelRadius = (throwBlock == null ? void 0 : throwBlock.cancelRadius) ?? Math.max(1, (char.colliderRadius ?? 0.35) + (((_f = char.heldObject) == null ? void 0 : _f.colliderRadius) ?? 0.26) + 0.3);
+      const cancelRadius = (throwBlock == null ? void 0 : throwBlock.cancelRadius) ?? Math.max(1, (char.colliderRadius ?? 0.35) + (((_g = char.heldObject) == null ? void 0 : _g.colliderRadius) ?? 0.26) + 0.3);
       const aimDx = aimTargetPos.x - char.position.x;
       const aimDy = aimTargetPos.y - char.position.y;
       const distToAim = Math.hypot(aimDx, aimDy);
@@ -5725,7 +5729,7 @@ class ThrowCapability {
           aimLockDelta
         );
         const startRatio = char.savedArcRatio ?? char.throwModule.savedArcRatio ?? 0.5;
-        const flattestBlocked = Boolean((_g = clearTraj == null ? void 0 : clearTraj.flattestPoints) == null ? void 0 : _g.some((pt) => pt.collidesWall));
+        const flattestBlocked = Boolean((_h = clearTraj == null ? void 0 : clearTraj.flattestPoints) == null ? void 0 : _h.some((pt) => pt.collidesWall));
         const now = performance.now();
         const start = char.throwChargeStartTime ?? now;
         const holdMs = Math.max(0, now - start);
@@ -5792,7 +5796,7 @@ class ThrowCapability {
           aimLockDelta
         );
         const startRatio = char.savedArcRatio ?? char.throwModule.savedArcRatio ?? 0.5;
-        const flattestBlocked = Boolean((_h = clearTraj == null ? void 0 : clearTraj.flattestPoints) == null ? void 0 : _h.some((pt) => pt.collidesWall));
+        const flattestBlocked = Boolean((_i = clearTraj == null ? void 0 : clearTraj.flattestPoints) == null ? void 0 : _i.some((pt) => pt.collidesWall));
         const targetRatio = flattestBlocked ? 1 : 0;
         const f = char.triggerThrowPower ?? 0;
         const scaledRatio = startRatio + (targetRatio - startRatio) * f;

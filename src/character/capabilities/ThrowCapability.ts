@@ -87,8 +87,14 @@ export class ThrowCapability {
     char.isAiming = isAimingInput;
     char.aimTarget = isAimingInput ? aimTargetPos : null;
 
+    const isHoldingGun = Boolean(char.heldObject?.gunModule && char.heldObject.gunModule.enabled);
+    const isThrowOverrideActive = isHoldingGun && Boolean(
+      char.isChargingThrow || char.isAimingWallClear || char.isHoldingThrowRelease || char.isTriggerPullThrowing
+    );
+
     if (
       !isLaserModeActive &&
+      (!isHoldingGun || isThrowOverrideActive) &&
       char.heldObject &&
       canAimThrow &&
       char.throwModule &&

@@ -723,15 +723,7 @@ export class ModularBlockEvaluator {
             char.triggerThrowPower = 0;
             char.throwChargeStartTime = null;
             char.throwChargeProgress = 0;
-            const effAim = getEffectiveAimPos();
-            if (execCtx.arena) {
-              char.activeTrajectory = BulletManager.getInstance().calculateBulletTrajectory(
-                char,
-                char.heldObject!.gunModule!,
-                effAim,
-                execCtx.arena
-              );
-            }
+            char.activeTrajectory = null;
             break;
           }
 
