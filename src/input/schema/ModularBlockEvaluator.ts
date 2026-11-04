@@ -1078,6 +1078,8 @@ export class ModularBlockEvaluator {
             (char as any)._pickupPressCode = null;
             (char as any)._throwRequiresFreshPress = false;
             (char as any)._fireRequiresFreshPress = false;
+            (char as any)._isConsumeToggledOn = false;
+            (char as any)._toggledConsumeItemId = null;
             claimSlot(b.drop, b.id, "pickup.drop", true);
           }
 
@@ -1089,6 +1091,8 @@ export class ModularBlockEvaluator {
               // Swap key must NOT drop or trigger unless another object is near enough to swap it with!
               if (grabTargetObjectId) {
                 isSwap = true;
+                (char as any)._isConsumeToggledOn = false;
+                (char as any)._toggledConsumeItemId = null;
                 if (b.swap?.code) {
                   (char as any)._pickupPressCode = b.swap.code;
                   (char as any)._throwRequiresFreshPress = true;
@@ -1099,6 +1103,8 @@ export class ModularBlockEvaluator {
             } else if (b.triggerPickupWhenEmptyHanded && grabTargetObjectId) {
               isSwap = true;
               isGrabHeld = true;
+              (char as any)._isConsumeToggledOn = false;
+              (char as any)._toggledConsumeItemId = null;
               if (b.swap?.code) {
                 (char as any)._pickupPressCode = b.swap.code;
                 (char as any)._throwRequiresFreshPress = true;
@@ -1108,10 +1114,49 @@ export class ModularBlockEvaluator {
             }
           }
 
-          // Consume / Eat
-          if (execCtx.heldItemIsEdible && isSlotActive(b.consume, "hold", false, b.id, "consume.bite")) {
-            isUsingItem = true;
-            claimSlot(b.consume, b.id, "consume.bite", false);
+          // Reset toggle if item left hand or was replaced by a different item
+          const currentHeldItemId = char.heldObject?.id ?? null;
+          if (!currentHeldItemId || currentHeldItemId !== (char as any)._toggledConsumeItemId || isDrop || isSwap) {
+            (char as any)._isConsumeToggledOn = false;
+            (char as any)._toggledConsumeItemId = null;
+          }
+
+          // Consume / Eat / Primary Item Ability (Default: "toggle" mode; can be configured to "hold")
+          const isToggleMode = b.consumeMode !== "hold" && (b.consume as any)?.mode !== "hold";
+          const canConsumeHeld = Boolean(
+            execCtx.heldItemIsEdible ||
+            execCtx.heldItemHasPrimaryAbility ||
+            (char.heldObject && char.hasPrimaryItemAbility?.())
+          );
+
+          if (isToggleMode) {
+            if (isSlotActive(b.consume, "down", true, b.id, "consume.toggle")) {
+              if ((char as any)._isConsumeToggledOn) {
+                // Pressing again while eating toggles eating OFF
+                (char as any)._isConsumeToggledOn = false;
+                (char as any)._toggledConsumeItemId = null;
+              } else if (canConsumeHeld && currentHeldItemId) {
+                // Pressing while holding an edible/primary ability item toggles eating ON
+                (char as any)._isConsumeToggledOn = true;
+                (char as any)._toggledConsumeItemId = currentHeldItemId;
+              }
+              claimSlot(b.consume, b.id, "consume.toggle", true);
+            }
+
+            if ((char as any)._isConsumeToggledOn && currentHeldItemId && currentHeldItemId === (char as any)._toggledConsumeItemId) {
+              if (canConsumeHeld) {
+                isUsingItem = true;
+              } else {
+                (char as any)._isConsumeToggledOn = false;
+                (char as any)._toggledConsumeItemId = null;
+              }
+            }
+          } else {
+            // Traditional hold mode: active only while holding the button
+            if (canConsumeHeld && isSlotActive(b.consume, "hold", false, b.id, "consume.bite")) {
+              isUsingItem = true;
+              claimSlot(b.consume, b.id, "consume.bite", false);
+            }
           }
 
           // Fire Weapon / Shoot Gun
@@ -1344,6 +1389,12 @@ export class ModularBlockEvaluator {
       const meleeDist = Math.hypot(meleeDx, meleeDy) || 1;
       meleeAimDirX = meleeDx / meleeDist;
       meleeAimDirY = meleeDy / meleeDist;
+    }
+
+    if (isDrop || isThrow || isSwap || !char.heldObject) {
+      (char as any)._isConsumeToggledOn = false;
+      (char as any)._toggledConsumeItemId = null;
+      isUsingItem = false;
     }
 
     return {

@@ -11278,7 +11278,8 @@ const DefaultControlBlocks = [
     pickup: { code: "MouseLeft", requireCleanPress: true },
     drop: { code: "KeyQ", requireCleanPress: true },
     swap: { code: "KeyF", requireCleanPress: true },
-    consume: { code: "KeyE", requireCleanPress: false },
+    consume: { code: "KeyE", requireCleanPress: false, mode: "toggle" },
+    consumeMode: "toggle",
     fireWeapon: { code: "MouseRight", requireCleanPress: false },
     swapRequiresHolding: false,
     triggerPickupWhenEmptyHanded: true
@@ -11360,7 +11361,8 @@ const DefaultGamepadControlBlocks = [
     pickup: { code: "GamepadX", requireCleanPress: true },
     drop: { code: "GamepadY", requireCleanPress: true },
     swap: { code: "GamepadB", requireCleanPress: true },
-    consume: { code: "GamepadRB", requireCleanPress: false },
+    consume: { code: "GamepadRB", requireCleanPress: false, mode: "toggle" },
+    consumeMode: "toggle",
     fireWeapon: { code: "GamepadRT", requireCleanPress: false },
     swapRequiresHolding: false,
     triggerPickupWhenEmptyHanded: true
@@ -12042,7 +12044,8 @@ const SpeedBallControlBlocks = [
     pickup: { code: "MouseLeft", requireCleanPress: true },
     drop: { code: "KeyQ", requireCleanPress: true },
     swap: { code: "KeyF", requireCleanPress: true },
-    consume: { code: "KeyE", requireCleanPress: false },
+    consume: { code: "KeyE", requireCleanPress: false, mode: "toggle" },
+    consumeMode: "toggle",
     fireWeapon: { code: "MouseRight", requireCleanPress: false },
     swapRequiresHolding: false,
     triggerPickupWhenEmptyHanded: true
@@ -12107,7 +12110,8 @@ const SpeedBallGamepadControlBlocks = [
     pickup: { code: "GamepadX", requireCleanPress: true },
     drop: { code: "GamepadY", requireCleanPress: true },
     swap: { code: "GamepadB", requireCleanPress: true },
-    consume: { code: "GamepadRB", requireCleanPress: false },
+    consume: { code: "GamepadRB", requireCleanPress: false, mode: "toggle" },
+    consumeMode: "toggle",
     fireWeapon: { code: "GamepadRT", requireCleanPress: false },
     swapRequiresHolding: false,
     triggerPickupWhenEmptyHanded: true
@@ -17948,7 +17952,7 @@ const _ControlsInspector = class _ControlsInspector {
     `;
   }
   static renderBlockBodyHtml(block) {
-    var _a, _b;
+    var _a, _b, _c;
     switch (block.type) {
       case "walkSprint":
       case "locomotion": {
@@ -18445,6 +18449,7 @@ const _ControlsInspector = class _ControlsInspector {
         b.drop = b.drop || { code: "KeyQ" };
         b.swap = b.swap || { code: "KeyF" };
         b.consume = b.consume || { code: "KeyE" };
+        b.consumeMode = b.consumeMode || ((_c = b.consume) == null ? void 0 : _c.mode) || "toggle";
         b.swapRequiresHolding = Boolean(b.swapRequiresHolding);
         b.triggerPickupWhenEmptyHanded = b.triggerPickupWhenEmptyHanded ?? true;
         return `
@@ -18461,6 +18466,13 @@ const _ControlsInspector = class _ControlsInspector {
               </div>
               <div>
                 ${this.renderInputSlot(b.id, "consume", b.consume, "Consume / Bite Item")}
+                <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 0.62rem; color: #94a3b8;">Mode:</span>
+                  <select class="block-consume-mode dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                    <option value="toggle" ${b.consumeMode !== "hold" ? "selected" : ""}>Toggle (Press once)</option>
+                    <option value="hold" ${b.consumeMode === "hold" ? "selected" : ""}>Hold to Eat</option>
+                  </select>
+                </div>
               </div>
               <div>
                 ${this.renderInputSlot(b.id, "fireWeapon", b.fireWeapon, "Fire Weapon / Shoot Gun")}
@@ -18469,6 +18481,10 @@ const _ControlsInspector = class _ControlsInspector {
             
             <!-- Prebuilt Options -->
             <div style="display: flex; flex-wrap: wrap; gap: 16px; padding-top: 8px; border-top: 1px dashed rgba(148,163,184,0.2); font-size: 0.68rem; color: #94a3b8;">
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" class="block-item-consume-toggle" data-block-id="${b.id}" ${b.consumeMode !== "hold" ? "checked" : ""} />
+                <span>Toggle Eat / Primary Ability (press once to start eating until done or dropped)</span>
+              </label>
               <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
                 <input type="checkbox" class="block-item-swap-requires-holding" data-block-id="${b.id}" ${b.swapRequiresHolding ? "checked" : ""} />
                 <span>Swap requires already holding an item (strict swap)</span>
@@ -19253,7 +19269,8 @@ const _ControlsInspector = class _ControlsInspector {
               pickup: { code: "GamepadX", requireCleanPress: true },
               drop: { code: "GamepadY", requireCleanPress: true },
               swap: { code: "GamepadB", requireCleanPress: true },
-              consume: { code: "GamepadLB", requireCleanPress: false },
+              consume: { code: "GamepadLB", requireCleanPress: false, mode: "toggle" },
+              consumeMode: "toggle",
               fireWeapon: { code: "GamepadRT", requireCleanPress: false },
               swapRequiresHolding: false,
               triggerPickupWhenEmptyHanded: true
@@ -19265,7 +19282,8 @@ const _ControlsInspector = class _ControlsInspector {
               pickup: { code: "MouseLeft" },
               drop: { code: "KeyQ" },
               swap: { code: "KeyF" },
-              consume: { code: "KeyE" },
+              consume: { code: "KeyE", mode: "toggle" },
+              consumeMode: "toggle",
               fireWeapon: { code: "MouseRight", requireCleanPress: false },
               swapRequiresHolding: false,
               triggerPickupWhenEmptyHanded: true
@@ -19665,6 +19683,34 @@ const _ControlsInspector = class _ControlsInspector {
               block.cursorMaxDistance = val;
               _ControlsInspector.syncLiveWorkingSchema();
             }
+          }
+        });
+      });
+      root.querySelectorAll(".block-consume-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.consumeMode = e.target.value;
+            if (block.consume) {
+              block.consume.mode = block.consumeMode;
+            }
+            const chk = root.querySelector(`.block-item-consume-toggle[data-block-id="${bId}"]`);
+            if (chk) chk.checked = block.consumeMode !== "hold";
+          }
+        });
+      });
+      root.querySelectorAll(".block-item-consume-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = chk.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.consumeMode = e.target.checked ? "toggle" : "hold";
+            if (block.consume) {
+              block.consume.mode = block.consumeMode;
+            }
+            const sel = root.querySelector(`.block-consume-mode[data-block-id="${bId}"]`);
+            if (sel) sel.value = block.consumeMode;
           }
         });
       });

@@ -1413,6 +1413,8 @@ export class PlayerManager {
               gState.useItemSuppressed = true;
             }
             char.isUsingItem = false;
+            (char as any)._isConsumeToggledOn = false;
+            (char as any)._toggledConsumeItemId = null;
             char.eatRateWatts = 0;
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
@@ -1491,6 +1493,8 @@ export class PlayerManager {
             grabState.rtGrabSuppressed = true;
             grabState.bGrabSuppressed = true;
             char.isUsingItem = false;
+            (char as any)._isConsumeToggledOn = false;
+            (char as any)._toggledConsumeItemId = null;
             char.eatRateWatts = 0;
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
@@ -1642,6 +1646,8 @@ export class PlayerManager {
             }
             this.lastHeldObjectIds.set(char.id, held.id);
             char.isUsingItem = false;
+            (char as any)._isConsumeToggledOn = false;
+            (char as any)._toggledConsumeItemId = null;
             char.eatRateWatts = 0;
             char.isChargingThrow = false;
             char.isAimingWallClear = false;

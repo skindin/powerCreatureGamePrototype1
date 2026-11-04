@@ -429,7 +429,10 @@ export interface ItemInteractionControlBlock {
   pickup?: BlockInputSlot;
   drop?: BlockInputSlot;
   swap?: BlockInputSlot;
-  consume?: BlockInputSlot;
+  consume?: BlockInputSlot & {
+    mode?: "hold" | "toggle";
+  };
+  consumeMode?: "hold" | "toggle";           // "toggle" by default: press once to eat until done or toggled off; "hold" requires holding button
   fireWeapon?: BlockInputSlot;               // Button/Trigger to fire held weapon / gun
   swapRequiresHolding?: boolean;             // Default false
   triggerPickupWhenEmptyHanded?: boolean;    // Default false: if swap or secondary is pressed when empty-handed, triggers pickup
