@@ -1,6 +1,6 @@
 {
-  "version": 309,
-  "lastSaved": "2026-11-04T02:41:31.640Z",
+  "version": 310,
+  "lastSaved": "2026-11-04T04:17:55.188Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -9992,7 +9992,7 @@
                   "requireCleanPress": false
                 },
                 "brake": {
-                  "code": "Space",
+                  "code": "AltLeft",
                   "mode": "hold",
                   "requireCleanPress": false
                 }
@@ -10061,7 +10061,8 @@
                   "sensitivity": 0.005
                 },
                 "enableProximityCancel": true,
-                "cancelRadius": 1.5
+                "cancelRadius": 1.5,
+                "triggerMargin": 0.15
               },
               {
                 "type": "melee",
@@ -10108,7 +10109,8 @@
                 "action": {
                   "moduleId": "locomotion",
                   "intent": "brake"
-                }
+                },
+                "tagId": "tag-kbm-5976g0"
               },
               {
                 "id": "speed-ball-sprint",
@@ -10126,7 +10128,8 @@
                 "action": {
                   "moduleId": "locomotion",
                   "intent": "holdSprint"
-                }
+                },
+                "tagId": "tag-kbm-fol2au"
               },
               {
                 "id": "speed-ball-throw-aim",
@@ -10144,7 +10147,8 @@
                 "action": {
                   "moduleId": "throw",
                   "intent": "aimThrow"
-                }
+                },
+                "tagId": "tag-kbm-action"
               },
               {
                 "id": "speed-ball-throw-fire",
@@ -10162,7 +10166,8 @@
                 "action": {
                   "moduleId": "throw",
                   "intent": "releaseThrow"
-                }
+                },
+                "tagId": "tag-kbm-qbstrv"
               },
               {
                 "id": "speed-ball-melee",
@@ -10180,7 +10185,8 @@
                 "action": {
                   "moduleId": "melee",
                   "intent": "punch"
-                }
+                },
+                "tagId": "tag-kbm-77ptfy"
               },
               {
                 "id": "speed-ball-pickup-click",
@@ -10198,6 +10204,391 @@
                 "action": {
                   "moduleId": "pickup",
                   "intent": "pickupReach"
+                },
+                "tagId": "tag-kbm-qbstrv"
+              }
+            ],
+            "pipeline": [
+              {
+                "id": "pipe-facing",
+                "name": "Aim / Facing Heading",
+                "enabled": true,
+                "source": {
+                  "type": "2d_vector",
+                  "source": "mouseWorldPos"
+                },
+                "processor": {
+                  "type": "facing",
+                  "mode": "fromMousePos"
+                },
+                "target": "character.facing"
+              },
+              {
+                "id": "pipe-loco-move",
+                "name": "WASD Movement Vector",
+                "enabled": true,
+                "source": {
+                  "type": "composite_4key",
+                  "upKey": "KeyW",
+                  "downKey": "KeyS",
+                  "leftKey": "KeyA",
+                  "rightKey": "KeyD"
+                },
+                "processor": {
+                  "type": "2d_vector",
+                  "mode": "direct"
+                },
+                "target": "locomotion.moveVector"
+              },
+              {
+                "id": "pipe-loco-sprint",
+                "name": "Sprint",
+                "enabled": true,
+                "source": {
+                  "type": "button",
+                  "device": "keyboard",
+                  "code": "ShiftLeft"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold"
+                },
+                "target": "locomotion.sprint"
+              },
+              {
+                "id": "pipe-loco-jump",
+                "name": "Jump / Hop",
+                "enabled": true,
+                "source": {
+                  "type": "button",
+                  "device": "keyboard",
+                  "code": "Space"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold",
+                  "requireCleanPress": false,
+                  "claimOnFire": false
+                },
+                "target": "locomotion.jump"
+              },
+              {
+                "id": "pipe-throw-aim",
+                "name": "Throw Aim Arc",
+                "enabled": true,
+                "condition": "holdingItem",
+                "source": {
+                  "type": "button",
+                  "device": "mouse",
+                  "code": "MouseRight"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold"
+                },
+                "target": "throw.aim"
+              },
+              {
+                "id": "pipe-throw-arc",
+                "name": "Throw Arc Height Modulation",
+                "enabled": true,
+                "condition": "holdingItem",
+                "source": {
+                  "type": "1d_scalar",
+                  "source": "mouseDeltaY"
+                },
+                "processor": {
+                  "type": "1d_scalar",
+                  "mode": "accumulator",
+                  "sensitivity": 0.005,
+                  "clampMin": 0,
+                  "clampMax": 1,
+                  "initialValue": 0.5,
+                  "gateButton": {
+                    "device": "mouse",
+                    "code": "MouseLeft",
+                    "mode": "hold"
+                  },
+                  "autoCursorLock": true
+                },
+                "target": "throw.arcHeight"
+              },
+              {
+                "id": "pipe-throw-fire",
+                "name": "Throw Fire Release",
+                "enabled": true,
+                "condition": "holdingItem",
+                "source": {
+                  "type": "button",
+                  "device": "mouse",
+                  "code": "MouseLeft"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "up",
+                  "requireCleanPress": false,
+                  "claimOnFire": true
+                },
+                "target": "throw.fire"
+              },
+              {
+                "id": "pipe-pickup-grab",
+                "name": "Grab Ground Item",
+                "enabled": true,
+                "condition": "emptyHanded",
+                "source": {
+                  "type": "button",
+                  "device": "mouse",
+                  "code": "MouseLeft"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "down",
+                  "requireCleanPress": true,
+                  "claimOnFire": true
+                },
+                "target": "pickup.grab"
+              },
+              {
+                "id": "pipe-pickup-drop",
+                "name": "Drop Held Item",
+                "enabled": true,
+                "condition": "holdingItem",
+                "source": {
+                  "type": "button",
+                  "device": "keyboard",
+                  "code": "KeyQ"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "down",
+                  "requireCleanPress": true,
+                  "claimOnFire": true
+                },
+                "target": "pickup.drop"
+              },
+              {
+                "id": "pipe-consume-bite",
+                "name": "Bite / Eat Held Item",
+                "enabled": true,
+                "condition": "holdingConsumable",
+                "source": {
+                  "type": "button",
+                  "device": "keyboard",
+                  "code": "KeyE"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold",
+                  "requireCleanPress": true,
+                  "claimOnFire": true
+                },
+                "target": "consume.bite"
+              },
+              {
+                "id": "pipe-melee-punch",
+                "name": "Melee Punch",
+                "enabled": true,
+                "source": {
+                  "type": "button",
+                  "device": "keyboard",
+                  "code": "KeyF"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "down",
+                  "requireCleanPress": true,
+                  "claimOnFire": true
+                },
+                "target": "melee.punch"
+              },
+              {
+                "id": "pipe-laser-aim",
+                "name": "Laser Aim Chord",
+                "enabled": true,
+                "source": {
+                  "type": "button",
+                  "device": "mouse",
+                  "code": "MouseRight",
+                  "additionalCodes": [
+                    "AltLeft"
+                  ]
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold"
+                },
+                "target": "laser.aim"
+              },
+              {
+                "id": "pipe-laser-fire",
+                "name": "Laser Fire",
+                "enabled": true,
+                "source": {
+                  "type": "button",
+                  "device": "mouse",
+                  "code": "MouseLeft"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold"
+                },
+                "target": "laser.fire"
+              },
+              {
+                "id": "pipe-laser-power",
+                "name": "Laser Power Modulation",
+                "enabled": true,
+                "source": {
+                  "type": "1d_scalar",
+                  "source": "mouseWheel"
+                },
+                "processor": {
+                  "type": "1d_scalar",
+                  "mode": "accumulator",
+                  "sensitivity": 0.05,
+                  "clampMin": 0,
+                  "clampMax": 1,
+                  "initialValue": 0.5,
+                  "autoCursorLock": false
+                },
+                "target": "laser.power"
+              }
+            ],
+            "channels": {
+              "locomotion": {
+                "mode": "directVector",
+                "upKeys": [
+                  "KeyW",
+                  "ArrowUp"
+                ],
+                "downKeys": [
+                  "KeyS",
+                  "ArrowDown"
+                ],
+                "leftKeys": [
+                  "KeyA",
+                  "ArrowLeft"
+                ],
+                "rightKeys": [
+                  "KeyD",
+                  "ArrowRight"
+                ],
+                "sprintKey": "ShiftLeft",
+                "sprintMode": "hold",
+                "jumpKey": "Space"
+              },
+              "aiming": {
+                "mode": "faceMouseCursor",
+                "rawMouseDragEnabled": true
+              },
+              "interaction": {
+                "enabled": true,
+                "trigger": {
+                  "device": "mouse",
+                  "code": "MouseLeft",
+                  "mode": "press"
+                },
+                "claimPolicy": "requireCleanPress",
+                "allowSwapWhenHolding": true
+              },
+              "throw": {
+                "enabled": true,
+                "aimTrigger": {
+                  "device": "mouse",
+                  "code": "MouseRight",
+                  "mode": "hold"
+                },
+                "fireTrigger": {
+                  "device": "mouse",
+                  "code": "MouseLeft",
+                  "mode": "press"
+                },
+                "fireOnReleaseAim": false,
+                "arcModulationSource": "mouseDragY",
+                "arcDragHoldThresholdMs": 200,
+                "claimPolicy": "requireCleanPress"
+              },
+              "consume": {
+                "enabled": true,
+                "trigger": {
+                  "device": "keyboard",
+                  "code": "KeyE",
+                  "mode": "hold"
+                },
+                "claimPolicy": "requireCleanPress"
+              },
+              "melee": {
+                "enabled": true,
+                "trigger": {
+                  "device": "keyboard",
+                  "code": "KeyF",
+                  "mode": "press"
+                },
+                "claimPolicy": "requireCleanPress"
+              },
+              "laser": {
+                "enabled": true,
+                "aimTrigger": {
+                  "device": "mouse",
+                  "code": "MouseRight",
+                  "chordModifiers": [
+                    "AltLeft"
+                  ],
+                  "mode": "hold"
+                },
+                "fireTrigger": {
+                  "device": "mouse",
+                  "code": "MouseLeft",
+                  "mode": "hold"
+                },
+                "powerModulationSource": "mouseWheel"
+              }
+            },
+            "tags": [
+              {
+                "id": "tag-kbm-action",
+                "name": "Action",
+                "trigger": {
+                  "device": "mouse",
+                  "code": "MouseRight",
+                  "mode": "hold"
+                }
+              },
+              {
+                "id": "tag-kbm-5976g0",
+                "name": "Active Brake",
+                "trigger": {
+                  "device": "keyboard",
+                  "code": "Space",
+                  "mode": "hold"
+                }
+              },
+              {
+                "id": "tag-kbm-fol2au",
+                "name": "Sprint / Boost",
+                "trigger": {
+                  "device": "keyboard",
+                  "code": "ShiftLeft",
+                  "mode": "hold"
+                }
+              },
+              {
+                "id": "tag-kbm-qbstrv",
+                "name": "Throw Held Item",
+                "trigger": {
+                  "device": "mouse",
+                  "code": "MouseLeft",
+                  "mode": "release"
+                }
+              },
+              {
+                "id": "tag-kbm-77ptfy",
+                "name": "Melee Punch",
+                "trigger": {
+                  "device": "keyboard",
+                  "code": "KeyF",
+                  "mode": "press"
                 }
               }
             ]
@@ -10346,7 +10737,8 @@
                 "action": {
                   "moduleId": "locomotion",
                   "intent": "brake"
-                }
+                },
+                "tagId": "tag-pad-7yz8ed"
               },
               {
                 "id": "speed-ball-pad-sprint",
@@ -10364,6 +10756,36 @@
                 "action": {
                   "moduleId": "locomotion",
                   "intent": "holdSprint"
+                },
+                "tagId": "tag-pad-c66qyk"
+              }
+            ],
+            "tags": [
+              {
+                "id": "tag-pad-action",
+                "name": "Action",
+                "trigger": {
+                  "device": "gamepad",
+                  "code": "GamepadRT",
+                  "mode": "hold"
+                }
+              },
+              {
+                "id": "tag-pad-7yz8ed",
+                "name": "Active Brake",
+                "trigger": {
+                  "device": "gamepad",
+                  "code": "GamepadLT",
+                  "mode": "hold"
+                }
+              },
+              {
+                "id": "tag-pad-c66qyk",
+                "name": "Sprint",
+                "trigger": {
+                  "device": "gamepad",
+                  "code": "GamepadLS",
+                  "mode": "hold"
                 }
               }
             ]
@@ -10478,8 +10900,256 @@
                 "mode": "mouseWorldPos"
               }
             ],
-            "rules": []
-          }
+            "rules": [],
+            "tags": []
+          },
+          "pipeline": [
+            {
+              "id": "pipe-facing",
+              "name": "Aim / Facing Heading",
+              "enabled": true,
+              "source": {
+                "type": "2d_vector",
+                "source": "mouseWorldPos"
+              },
+              "processor": {
+                "type": "facing",
+                "mode": "fromMousePos"
+              },
+              "target": "character.facing"
+            },
+            {
+              "id": "pipe-loco-move",
+              "name": "WASD Movement Vector",
+              "enabled": true,
+              "source": {
+                "type": "composite_4key",
+                "upKey": "KeyW",
+                "downKey": "KeyS",
+                "leftKey": "KeyA",
+                "rightKey": "KeyD"
+              },
+              "processor": {
+                "type": "2d_vector",
+                "mode": "direct"
+              },
+              "target": "locomotion.moveVector"
+            },
+            {
+              "id": "pipe-loco-sprint",
+              "name": "Sprint",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "ShiftLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "locomotion.sprint"
+            },
+            {
+              "id": "pipe-loco-jump",
+              "name": "Jump / Hop",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "Space"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold",
+                "requireCleanPress": false,
+                "claimOnFire": false
+              },
+              "target": "locomotion.jump"
+            },
+            {
+              "id": "pipe-throw-aim",
+              "name": "Throw Aim Arc",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseRight"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "throw.aim"
+            },
+            {
+              "id": "pipe-throw-arc",
+              "name": "Throw Arc Height Modulation",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "1d_scalar",
+                "source": "mouseDeltaY"
+              },
+              "processor": {
+                "type": "1d_scalar",
+                "mode": "accumulator",
+                "sensitivity": 0.005,
+                "clampMin": 0,
+                "clampMax": 1,
+                "initialValue": 0.5,
+                "gateButton": {
+                  "device": "mouse",
+                  "code": "MouseLeft",
+                  "mode": "hold"
+                },
+                "autoCursorLock": true
+              },
+              "target": "throw.arcHeight"
+            },
+            {
+              "id": "pipe-throw-fire",
+              "name": "Throw Fire Release",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "up",
+                "requireCleanPress": false,
+                "claimOnFire": true
+              },
+              "target": "throw.fire"
+            },
+            {
+              "id": "pipe-pickup-grab",
+              "name": "Grab Ground Item",
+              "enabled": true,
+              "condition": "emptyHanded",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "pickup.grab"
+            },
+            {
+              "id": "pipe-pickup-drop",
+              "name": "Drop Held Item",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyQ"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "pickup.drop"
+            },
+            {
+              "id": "pipe-consume-bite",
+              "name": "Bite / Eat Held Item",
+              "enabled": true,
+              "condition": "holdingConsumable",
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyE"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "consume.bite"
+            },
+            {
+              "id": "pipe-melee-punch",
+              "name": "Melee Punch",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyF"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "melee.punch"
+            },
+            {
+              "id": "pipe-laser-aim",
+              "name": "Laser Aim Chord",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseRight",
+                "additionalCodes": [
+                  "AltLeft"
+                ]
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "laser.aim"
+            },
+            {
+              "id": "pipe-laser-fire",
+              "name": "Laser Fire",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "laser.fire"
+            },
+            {
+              "id": "pipe-laser-power",
+              "name": "Laser Power Modulation",
+              "enabled": true,
+              "source": {
+                "type": "1d_scalar",
+                "source": "mouseWheel"
+              },
+              "processor": {
+                "type": "1d_scalar",
+                "mode": "accumulator",
+                "sensitivity": 0.05,
+                "clampMin": 0,
+                "clampMax": 1,
+                "initialValue": 0.5,
+                "autoCursorLock": false
+              },
+              "target": "laser.power"
+            }
+          ]
         },
         "strength": 1,
         "hasWalking": false,
@@ -10545,6 +11215,7 @@
           "minShockThreshold": 0,
           "selfImpactWeight": 0
         },
+        "hasBounce": true,
         "bounceMod": 0.85,
         "verticalBounce": true,
         "hasRollModule": true,
@@ -10552,7 +11223,8 @@
           "enabled": true,
           "rollResistance": 0.08,
           "bumpyRollEnabled": false,
-          "bumpiness": 0
+          "bumpiness": 0,
+          "seed": 91781
         },
         "hasRollMovement": true,
         "rollMovementModule": {
@@ -10570,7 +11242,9 @@
           "sprintConsumesEnergy": true,
           "sprintAllowPartialPower": true,
           "brakeConsumesEnergy": true,
-          "brakeAllowPartialPower": true
+          "brakeAllowPartialPower": true,
+          "enforceMaxRollSpeed": false,
+          "enforceMaxSprintSpeed": false
         }
       },
       "controlSchema": {
@@ -10614,7 +11288,7 @@
                 "requireCleanPress": false
               },
               "brake": {
-                "code": "Space",
+                "code": "AltLeft",
                 "mode": "hold",
                 "requireCleanPress": false
               }
@@ -10683,7 +11357,8 @@
                 "sensitivity": 0.005
               },
               "enableProximityCancel": true,
-              "cancelRadius": 1.5
+              "cancelRadius": 1.5,
+              "triggerMargin": 0.15
             },
             {
               "type": "melee",
@@ -10730,7 +11405,8 @@
               "action": {
                 "moduleId": "locomotion",
                 "intent": "brake"
-              }
+              },
+              "tagId": "tag-kbm-5976g0"
             },
             {
               "id": "speed-ball-sprint",
@@ -10748,7 +11424,8 @@
               "action": {
                 "moduleId": "locomotion",
                 "intent": "holdSprint"
-              }
+              },
+              "tagId": "tag-kbm-fol2au"
             },
             {
               "id": "speed-ball-throw-aim",
@@ -10766,7 +11443,8 @@
               "action": {
                 "moduleId": "throw",
                 "intent": "aimThrow"
-              }
+              },
+              "tagId": "tag-kbm-action"
             },
             {
               "id": "speed-ball-throw-fire",
@@ -10784,7 +11462,8 @@
               "action": {
                 "moduleId": "throw",
                 "intent": "releaseThrow"
-              }
+              },
+              "tagId": "tag-kbm-qbstrv"
             },
             {
               "id": "speed-ball-melee",
@@ -10802,7 +11481,8 @@
               "action": {
                 "moduleId": "melee",
                 "intent": "punch"
-              }
+              },
+              "tagId": "tag-kbm-77ptfy"
             },
             {
               "id": "speed-ball-pickup-click",
@@ -10820,6 +11500,391 @@
               "action": {
                 "moduleId": "pickup",
                 "intent": "pickupReach"
+              },
+              "tagId": "tag-kbm-qbstrv"
+            }
+          ],
+          "pipeline": [
+            {
+              "id": "pipe-facing",
+              "name": "Aim / Facing Heading",
+              "enabled": true,
+              "source": {
+                "type": "2d_vector",
+                "source": "mouseWorldPos"
+              },
+              "processor": {
+                "type": "facing",
+                "mode": "fromMousePos"
+              },
+              "target": "character.facing"
+            },
+            {
+              "id": "pipe-loco-move",
+              "name": "WASD Movement Vector",
+              "enabled": true,
+              "source": {
+                "type": "composite_4key",
+                "upKey": "KeyW",
+                "downKey": "KeyS",
+                "leftKey": "KeyA",
+                "rightKey": "KeyD"
+              },
+              "processor": {
+                "type": "2d_vector",
+                "mode": "direct"
+              },
+              "target": "locomotion.moveVector"
+            },
+            {
+              "id": "pipe-loco-sprint",
+              "name": "Sprint",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "ShiftLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "locomotion.sprint"
+            },
+            {
+              "id": "pipe-loco-jump",
+              "name": "Jump / Hop",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "Space"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold",
+                "requireCleanPress": false,
+                "claimOnFire": false
+              },
+              "target": "locomotion.jump"
+            },
+            {
+              "id": "pipe-throw-aim",
+              "name": "Throw Aim Arc",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseRight"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "throw.aim"
+            },
+            {
+              "id": "pipe-throw-arc",
+              "name": "Throw Arc Height Modulation",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "1d_scalar",
+                "source": "mouseDeltaY"
+              },
+              "processor": {
+                "type": "1d_scalar",
+                "mode": "accumulator",
+                "sensitivity": 0.005,
+                "clampMin": 0,
+                "clampMax": 1,
+                "initialValue": 0.5,
+                "gateButton": {
+                  "device": "mouse",
+                  "code": "MouseLeft",
+                  "mode": "hold"
+                },
+                "autoCursorLock": true
+              },
+              "target": "throw.arcHeight"
+            },
+            {
+              "id": "pipe-throw-fire",
+              "name": "Throw Fire Release",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "up",
+                "requireCleanPress": false,
+                "claimOnFire": true
+              },
+              "target": "throw.fire"
+            },
+            {
+              "id": "pipe-pickup-grab",
+              "name": "Grab Ground Item",
+              "enabled": true,
+              "condition": "emptyHanded",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "pickup.grab"
+            },
+            {
+              "id": "pipe-pickup-drop",
+              "name": "Drop Held Item",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyQ"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "pickup.drop"
+            },
+            {
+              "id": "pipe-consume-bite",
+              "name": "Bite / Eat Held Item",
+              "enabled": true,
+              "condition": "holdingConsumable",
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyE"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "consume.bite"
+            },
+            {
+              "id": "pipe-melee-punch",
+              "name": "Melee Punch",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyF"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "melee.punch"
+            },
+            {
+              "id": "pipe-laser-aim",
+              "name": "Laser Aim Chord",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseRight",
+                "additionalCodes": [
+                  "AltLeft"
+                ]
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "laser.aim"
+            },
+            {
+              "id": "pipe-laser-fire",
+              "name": "Laser Fire",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "laser.fire"
+            },
+            {
+              "id": "pipe-laser-power",
+              "name": "Laser Power Modulation",
+              "enabled": true,
+              "source": {
+                "type": "1d_scalar",
+                "source": "mouseWheel"
+              },
+              "processor": {
+                "type": "1d_scalar",
+                "mode": "accumulator",
+                "sensitivity": 0.05,
+                "clampMin": 0,
+                "clampMax": 1,
+                "initialValue": 0.5,
+                "autoCursorLock": false
+              },
+              "target": "laser.power"
+            }
+          ],
+          "channels": {
+            "locomotion": {
+              "mode": "directVector",
+              "upKeys": [
+                "KeyW",
+                "ArrowUp"
+              ],
+              "downKeys": [
+                "KeyS",
+                "ArrowDown"
+              ],
+              "leftKeys": [
+                "KeyA",
+                "ArrowLeft"
+              ],
+              "rightKeys": [
+                "KeyD",
+                "ArrowRight"
+              ],
+              "sprintKey": "ShiftLeft",
+              "sprintMode": "hold",
+              "jumpKey": "Space"
+            },
+            "aiming": {
+              "mode": "faceMouseCursor",
+              "rawMouseDragEnabled": true
+            },
+            "interaction": {
+              "enabled": true,
+              "trigger": {
+                "device": "mouse",
+                "code": "MouseLeft",
+                "mode": "press"
+              },
+              "claimPolicy": "requireCleanPress",
+              "allowSwapWhenHolding": true
+            },
+            "throw": {
+              "enabled": true,
+              "aimTrigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "hold"
+              },
+              "fireTrigger": {
+                "device": "mouse",
+                "code": "MouseLeft",
+                "mode": "press"
+              },
+              "fireOnReleaseAim": false,
+              "arcModulationSource": "mouseDragY",
+              "arcDragHoldThresholdMs": 200,
+              "claimPolicy": "requireCleanPress"
+            },
+            "consume": {
+              "enabled": true,
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyE",
+                "mode": "hold"
+              },
+              "claimPolicy": "requireCleanPress"
+            },
+            "melee": {
+              "enabled": true,
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyF",
+                "mode": "press"
+              },
+              "claimPolicy": "requireCleanPress"
+            },
+            "laser": {
+              "enabled": true,
+              "aimTrigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "chordModifiers": [
+                  "AltLeft"
+                ],
+                "mode": "hold"
+              },
+              "fireTrigger": {
+                "device": "mouse",
+                "code": "MouseLeft",
+                "mode": "hold"
+              },
+              "powerModulationSource": "mouseWheel"
+            }
+          },
+          "tags": [
+            {
+              "id": "tag-kbm-action",
+              "name": "Action",
+              "trigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "hold"
+              }
+            },
+            {
+              "id": "tag-kbm-5976g0",
+              "name": "Active Brake",
+              "trigger": {
+                "device": "keyboard",
+                "code": "Space",
+                "mode": "hold"
+              }
+            },
+            {
+              "id": "tag-kbm-fol2au",
+              "name": "Sprint / Boost",
+              "trigger": {
+                "device": "keyboard",
+                "code": "ShiftLeft",
+                "mode": "hold"
+              }
+            },
+            {
+              "id": "tag-kbm-qbstrv",
+              "name": "Throw Held Item",
+              "trigger": {
+                "device": "mouse",
+                "code": "MouseLeft",
+                "mode": "release"
+              }
+            },
+            {
+              "id": "tag-kbm-77ptfy",
+              "name": "Melee Punch",
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyF",
+                "mode": "press"
               }
             }
           ]
@@ -10968,7 +12033,8 @@
               "action": {
                 "moduleId": "locomotion",
                 "intent": "brake"
-              }
+              },
+              "tagId": "tag-pad-7yz8ed"
             },
             {
               "id": "speed-ball-pad-sprint",
@@ -10986,6 +12052,36 @@
               "action": {
                 "moduleId": "locomotion",
                 "intent": "holdSprint"
+              },
+              "tagId": "tag-pad-c66qyk"
+            }
+          ],
+          "tags": [
+            {
+              "id": "tag-pad-action",
+              "name": "Action",
+              "trigger": {
+                "device": "gamepad",
+                "code": "GamepadRT",
+                "mode": "hold"
+              }
+            },
+            {
+              "id": "tag-pad-7yz8ed",
+              "name": "Active Brake",
+              "trigger": {
+                "device": "gamepad",
+                "code": "GamepadLT",
+                "mode": "hold"
+              }
+            },
+            {
+              "id": "tag-pad-c66qyk",
+              "name": "Sprint",
+              "trigger": {
+                "device": "gamepad",
+                "code": "GamepadLS",
+                "mode": "hold"
               }
             }
           ]
@@ -11100,8 +12196,256 @@
               "mode": "mouseWorldPos"
             }
           ],
-          "rules": []
-        }
+          "rules": [],
+          "tags": []
+        },
+        "pipeline": [
+          {
+            "id": "pipe-facing",
+            "name": "Aim / Facing Heading",
+            "enabled": true,
+            "source": {
+              "type": "2d_vector",
+              "source": "mouseWorldPos"
+            },
+            "processor": {
+              "type": "facing",
+              "mode": "fromMousePos"
+            },
+            "target": "character.facing"
+          },
+          {
+            "id": "pipe-loco-move",
+            "name": "WASD Movement Vector",
+            "enabled": true,
+            "source": {
+              "type": "composite_4key",
+              "upKey": "KeyW",
+              "downKey": "KeyS",
+              "leftKey": "KeyA",
+              "rightKey": "KeyD"
+            },
+            "processor": {
+              "type": "2d_vector",
+              "mode": "direct"
+            },
+            "target": "locomotion.moveVector"
+          },
+          {
+            "id": "pipe-loco-sprint",
+            "name": "Sprint",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "ShiftLeft"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold"
+            },
+            "target": "locomotion.sprint"
+          },
+          {
+            "id": "pipe-loco-jump",
+            "name": "Jump / Hop",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "Space"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold",
+              "requireCleanPress": false,
+              "claimOnFire": false
+            },
+            "target": "locomotion.jump"
+          },
+          {
+            "id": "pipe-throw-aim",
+            "name": "Throw Aim Arc",
+            "enabled": true,
+            "condition": "holdingItem",
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseRight"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold"
+            },
+            "target": "throw.aim"
+          },
+          {
+            "id": "pipe-throw-arc",
+            "name": "Throw Arc Height Modulation",
+            "enabled": true,
+            "condition": "holdingItem",
+            "source": {
+              "type": "1d_scalar",
+              "source": "mouseDeltaY"
+            },
+            "processor": {
+              "type": "1d_scalar",
+              "mode": "accumulator",
+              "sensitivity": 0.005,
+              "clampMin": 0,
+              "clampMax": 1,
+              "initialValue": 0.5,
+              "gateButton": {
+                "device": "mouse",
+                "code": "MouseLeft",
+                "mode": "hold"
+              },
+              "autoCursorLock": true
+            },
+            "target": "throw.arcHeight"
+          },
+          {
+            "id": "pipe-throw-fire",
+            "name": "Throw Fire Release",
+            "enabled": true,
+            "condition": "holdingItem",
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseLeft"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "up",
+              "requireCleanPress": false,
+              "claimOnFire": true
+            },
+            "target": "throw.fire"
+          },
+          {
+            "id": "pipe-pickup-grab",
+            "name": "Grab Ground Item",
+            "enabled": true,
+            "condition": "emptyHanded",
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseLeft"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "down",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "pickup.grab"
+          },
+          {
+            "id": "pipe-pickup-drop",
+            "name": "Drop Held Item",
+            "enabled": true,
+            "condition": "holdingItem",
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "KeyQ"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "down",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "pickup.drop"
+          },
+          {
+            "id": "pipe-consume-bite",
+            "name": "Bite / Eat Held Item",
+            "enabled": true,
+            "condition": "holdingConsumable",
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "KeyE"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "consume.bite"
+          },
+          {
+            "id": "pipe-melee-punch",
+            "name": "Melee Punch",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "KeyF"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "down",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "melee.punch"
+          },
+          {
+            "id": "pipe-laser-aim",
+            "name": "Laser Aim Chord",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseRight",
+              "additionalCodes": [
+                "AltLeft"
+              ]
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold"
+            },
+            "target": "laser.aim"
+          },
+          {
+            "id": "pipe-laser-fire",
+            "name": "Laser Fire",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseLeft"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold"
+            },
+            "target": "laser.fire"
+          },
+          {
+            "id": "pipe-laser-power",
+            "name": "Laser Power Modulation",
+            "enabled": true,
+            "source": {
+              "type": "1d_scalar",
+              "source": "mouseWheel"
+            },
+            "processor": {
+              "type": "1d_scalar",
+              "mode": "accumulator",
+              "sensitivity": 0.05,
+              "clampMin": 0,
+              "clampMax": 1,
+              "initialValue": 0.5,
+              "autoCursorLock": false
+            },
+            "target": "laser.power"
+          }
+        ]
       }
     }
   ],

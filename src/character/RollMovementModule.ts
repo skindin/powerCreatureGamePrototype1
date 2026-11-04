@@ -6,6 +6,8 @@ export interface RollMovementModuleOptions {
   sprintAcceleration?: number;
   maxRollSpeed?: number;
   maxSprintSpeed?: number;
+  enforceMaxRollSpeed?: boolean;
+  enforceMaxSprintSpeed?: boolean;
   brakeDeceleration?: number;
   maxRollPower?: number;
   maxSprintPower?: number;
@@ -36,6 +38,10 @@ export class RollMovementModule {
   public maxRollSpeedProp: DynamicProperty;
   public maxSprintSpeedProp: DynamicProperty;
 
+  // Enforce speed caps (off by default: ball accelerates endlessly with input when off)
+  public enforceMaxRollSpeed: boolean = false;
+  public enforceMaxSprintSpeed: boolean = false;
+
   // Active braking deceleration rate (u/s²) opposing current velocity
   public brakeDecelerationProp: DynamicProperty;
 
@@ -65,6 +71,9 @@ export class RollMovementModule {
 
     this.maxRollSpeedProp = new DynamicProperty(options?.maxRollSpeed ?? 18.0);
     this.maxSprintSpeedProp = new DynamicProperty(options?.maxSprintSpeed ?? 32.0);
+
+    this.enforceMaxRollSpeed = options?.enforceMaxRollSpeed ?? false;
+    this.enforceMaxSprintSpeed = options?.enforceMaxSprintSpeed ?? false;
 
     this.brakeDecelerationProp = new DynamicProperty(options?.brakeDeceleration ?? 55.0);
 

@@ -306,6 +306,8 @@ export interface SerializedCharacterConfig {
     sprintAllowPartialPower?: boolean;
     brakeConsumesEnergy?: boolean;
     brakeAllowPartialPower?: boolean;
+    enforceMaxRollSpeed?: boolean;
+    enforceMaxSprintSpeed?: boolean;
   };
   controlSchema?: ControlSchema;
 }
@@ -581,6 +583,8 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
       sprintAllowPartialPower: char.rollMovementModule.sprintAllowPartialPower,
       brakeConsumesEnergy: char.rollMovementModule.brakeConsumesEnergy,
       brakeAllowPartialPower: char.rollMovementModule.brakeAllowPartialPower,
+      enforceMaxRollSpeed: char.rollMovementModule.enforceMaxRollSpeed,
+      enforceMaxSprintSpeed: char.rollMovementModule.enforceMaxSprintSpeed,
     };
   } else {
     result.hasRollMovement = false;
@@ -923,6 +927,8 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
         sprintAllowPartialPower: config.rollMovementModule.sprintAllowPartialPower ?? true,
         brakeConsumesEnergy: config.rollMovementModule.brakeConsumesEnergy ?? false,
         brakeAllowPartialPower: config.rollMovementModule.brakeAllowPartialPower ?? true,
+        enforceMaxRollSpeed: config.rollMovementModule.enforceMaxRollSpeed ?? false,
+        enforceMaxSprintSpeed: config.rollMovementModule.enforceMaxSprintSpeed ?? false,
       });
       char.rollMovementModule.registerProperties(char.properties);
     } else {
@@ -968,6 +974,12 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
       }
       if (config.rollMovementModule.brakeAllowPartialPower !== undefined) {
         char.rollMovementModule.brakeAllowPartialPower = config.rollMovementModule.brakeAllowPartialPower;
+      }
+      if (config.rollMovementModule.enforceMaxRollSpeed !== undefined) {
+        char.rollMovementModule.enforceMaxRollSpeed = config.rollMovementModule.enforceMaxRollSpeed;
+      }
+      if (config.rollMovementModule.enforceMaxSprintSpeed !== undefined) {
+        char.rollMovementModule.enforceMaxSprintSpeed = config.rollMovementModule.enforceMaxSprintSpeed;
       }
     }
   }

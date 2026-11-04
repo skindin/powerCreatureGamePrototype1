@@ -389,7 +389,9 @@ export class EntityModuleCardsHtml {
             <div id="prop-socket-roll-base-accel"></div>
             <div id="prop-socket-roll-sprint-accel"></div>
             <div id="prop-socket-roll-max-speed"></div>
+            ${renderToggleRow("check-roll-enforce-max-speed", "Enforce Max Roll Speed", Boolean(char.rollMovementModule.enforceMaxRollSpeed), "Save Enforce Max Roll Speed to project")}
             <div id="prop-socket-roll-sprint-speed"></div>
+            ${renderToggleRow("check-roll-enforce-max-sprint-speed", "Enforce Max Sprint Speed", Boolean(char.rollMovementModule.enforceMaxSprintSpeed), "Save Enforce Max Sprint Speed to project")}
             <div id="prop-socket-roll-brake-decel"></div>
             <div id="prop-socket-roll-power-cap"></div>
             <div id="prop-socket-roll-sprint-power-cap"></div>

@@ -66,10 +66,15 @@ export class RollMovementCapability {
       const accel = sprintingNow
         ? mod.sprintAccelerationProp.get(char.properties)
         : mod.baseAccelerationProp.get(char.properties);
+      const enforceMax = sprintingNow
+        ? mod.enforceMaxSprintSpeed
+        : mod.enforceMaxRollSpeed;
 
       const totalMass = Math.max(0.2, char.mass);
       const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
-      const effSpeed = Math.max(2.0, Math.min(targetSpeed, curSpeed + 2.0));
+      const effSpeed = enforceMax
+        ? Math.max(2.0, Math.min(targetSpeed, curSpeed + 2.0))
+        : Math.max(2.0, curSpeed + 2.0);
 
       // Mechanical driving power: P = (m * a * v) / efficiency (0.25)
       const rawWatts = (totalMass * accel * effSpeed) / 0.25;
@@ -186,6 +191,9 @@ export class RollMovementCapability {
       const maxSpeed = sprintingNow
         ? mod.maxSprintSpeedProp.get(char.properties)
         : mod.maxRollSpeedProp.get(char.properties);
+      const enforceMax = sprintingNow
+        ? mod.enforceMaxSprintSpeed
+        : mod.enforceMaxRollSpeed;
 
       const consumesEnergy = sprintingNow ? mod.sprintConsumesEnergy : mod.rollConsumesEnergy;
       let powerScale = 1.0;
@@ -193,7 +201,9 @@ export class RollMovementCapability {
       if (consumesEnergy && char.energyPool) {
         const totalMass = Math.max(0.2, char.mass);
         const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
-        const effSpeed = Math.max(2.0, Math.min(maxSpeed, curSpeed + 2.0));
+        const effSpeed = enforceMax
+          ? Math.max(2.0, Math.min(maxSpeed, curSpeed + 2.0))
+          : Math.max(2.0, curSpeed + 2.0);
         const rawWatts = (totalMass * accel * effSpeed) / 0.25;
         const cap = sprintingNow
           ? mod.maxSprintPowerProp.get(char.properties)
@@ -218,14 +228,25 @@ export class RollMovementCapability {
       }
 
       if (powerScale > 0.001) {
-        // Check current velocity projected along input direction
-        const currentSpeedInDir = char.velocity.x * dirX + char.velocity.y * dirY;
-        const effectiveMaxSpeed = maxSpeed * (mod.rollAllowPartialPower ? Math.max(0.2, powerScale) : 1.0);
-        if (currentSpeedInDir < effectiveMaxSpeed) {
-          const effectiveAccel = accel * powerScale;
-          const addedSpeed = Math.min(effectiveAccel * dt, effectiveMaxSpeed - currentSpeedInDir);
-          char.velocity.x += dirX * addedSpeed;
-          char.velocity.y += dirY * addedSpeed;
+        const effectiveAccel = accel * powerScale;
+        if (enforceMax) {
+          // Max speed is enforced: check current velocity projected along input direction
+          const currentSpeedInDir = char.velocity.x * dirX + char.velocity.y * dirY;
+          const effectiveMaxSpeed = maxSpeed * (mod.rollAllowPartialPower ? Math.max(0.2, powerScale) : 1.0);
+          if (currentSpeedInDir < effectiveMaxSpeed) {
+            const addedSpeed = Math.min(effectiveAccel * dt, effectiveMaxSpeed - currentSpeedInDir);
+            char.velocity.x += dirX * addedSpeed;
+            char.velocity.y += dirY * addedSpeed;
+          }
+          const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
+          if (curSpeed > effectiveMaxSpeed) {
+            char.velocity.x = (char.velocity.x / curSpeed) * effectiveMaxSpeed;
+            char.velocity.y = (char.velocity.y / curSpeed) * effectiveMaxSpeed;
+          }
+        } else {
+          // Max speed is NOT enforced (off by default): accelerate freely without speed cap!
+          char.velocity.x += dirX * effectiveAccel * dt;
+          char.velocity.y += dirY * effectiveAccel * dt;
         }
       }
 

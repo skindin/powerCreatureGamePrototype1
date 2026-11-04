@@ -96,6 +96,13 @@ export class LocomotionModulesInspector {
         brakePowerEl.appendChild(c.element);
       }
 
+      bindToggleSave("check-roll-enforce-max-speed", char, "rollMovementModule.enforceMaxRollSpeed", "Enforce Max Roll Speed", (v) => {
+        if (char.rollMovementModule) char.rollMovementModule.enforceMaxRollSpeed = v;
+      });
+      bindToggleSave("check-roll-enforce-max-sprint-speed", char, "rollMovementModule.enforceMaxSprintSpeed", "Enforce Max Sprint Speed", (v) => {
+        if (char.rollMovementModule) char.rollMovementModule.enforceMaxSprintSpeed = v;
+      });
+
       const checkRollEnergy = container.querySelector("#check-roll-energy") as HTMLInputElement | null;
       const fieldRollPartial = container.querySelector("#field-roll-partial-power") as HTMLElement | null;
       checkRollEnergy?.addEventListener("change", () => {
