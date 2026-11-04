@@ -168,16 +168,24 @@ export class ConsumableModule {
     consumer: Character,
     consumableObj: GameObject,
     objects?: GameObject[],
-    arena?: Arena
+    arena?: Arena,
+    speedMultiplier?: number
   ): { watts: number; joules: number; isDepleted: boolean } {
     if (!this.enabled || dt <= 0 || this.isConsumed) {
       return { watts: 0, joules: 0, isDepleted: this.isConsumed };
     }
 
+    const mult = Math.max(
+      0.01,
+      speedMultiplier !== undefined
+        ? speedMultiplier
+        : (consumer.consumeModule ? consumer.consumeModule.getConsumptionSpeedMultiplier(consumer.properties) : 1.0)
+    );
     const registry = consumableObj.properties;
 
     if (this.unlimited) {
-      const rateWatts = this.getConsumeRate(registry);
+      const baseRateWatts = this.getConsumeRate(registry);
+      const rateWatts = baseRateWatts * mult;
       const demandJoules = rateWatts * dt;
 
       // 1. Add directly to consumer's EnergyPool
@@ -189,7 +197,8 @@ export class ConsumableModule {
       }
 
       // 2. Optional bonus health healing while consuming
-      const healHpPerSec = this.getHealRate(registry);
+      const baseHealRate = this.getHealRate(registry);
+      const healHpPerSec = baseHealRate * mult;
       if (healHpPerSec > 0 && consumer.healthModule && consumer.healthModule.enabled) {
         const healAmt = healHpPerSec * dt;
         consumer.healthModule.heal(healAmt, consumer.properties, {
@@ -215,7 +224,8 @@ export class ConsumableModule {
       return { watts: 0, joules: 0, isDepleted: true };
     }
 
-    const rateWatts = this.getConsumeRate(registry);
+    const baseRateWatts = this.getConsumeRate(registry);
+    const rateWatts = baseRateWatts * mult;
     const demandJoules = rateWatts * dt;
     const transferJoules = Math.min(remaining, demandJoules);
 
@@ -232,7 +242,8 @@ export class ConsumableModule {
     }
 
     // 3. Optional bonus health healing while consuming
-    const healHpPerSec = this.getHealRate(registry);
+    const baseHealRate = this.getHealRate(registry);
+    const healHpPerSec = baseHealRate * mult;
     if (healHpPerSec > 0 && consumer.healthModule && consumer.healthModule.enabled) {
       const healAmt = healHpPerSec * dt;
       consumer.healthModule.heal(healAmt, consumer.properties, {
@@ -275,9 +286,10 @@ export class ConsumableModule {
     consumer: Character,
     consumableObj: GameObject,
     arena?: Arena,
-    objects?: GameObject[]
+    objects?: GameObject[],
+    speedMultiplier?: number
   ): { watts: number; joules: number; isDepleted: boolean } {
-    return this.consume(dt, consumer, consumableObj, objects, arena);
+    return this.consume(dt, consumer, consumableObj, objects, arena, speedMultiplier);
   }
 
   /**

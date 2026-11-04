@@ -638,6 +638,7 @@ export class EntityModuleCardsHtml {
             Governs this character's ability to consume physical items. The character will only consume held items whose tags match their accepted list.
           </div>
 
+          <div id="prop-socket-consume-speed-multiplier"></div>
           <div id="prop-socket-consume-tags" style="margin-top: 6px;"></div>
           </div>
         </div>

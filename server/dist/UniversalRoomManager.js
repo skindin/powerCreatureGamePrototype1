@@ -4784,11 +4784,26 @@ class ConsumeModule {
     __publicField(this, "acceptedTags", ["food"]);
     /** Whether using this ability involves aiming in a direction (false for eating/drinking/consuming) */
     __publicField(this, "involvesDirection", false);
+    /** Consumption speed multiplier: scales the eating speed / consume rate (Watts) */
+    __publicField(this, "consumptionSpeedMultiplierProp");
+    this.consumptionSpeedMultiplierProp = new DynamicProperty((options == null ? void 0 : options.consumptionSpeedMultiplier) ?? 1);
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
     if ((options == null ? void 0 : options.involvesDirection) !== void 0) this.involvesDirection = options.involvesDirection;
     if ((options == null ? void 0 : options.acceptedTags) !== void 0) {
       this.acceptedTags = options.acceptedTags.map((t) => t.trim().toLowerCase()).filter(Boolean);
     }
+  }
+  get consumptionSpeedMultiplier() {
+    return this.consumptionSpeedMultiplierProp.literalValue;
+  }
+  set consumptionSpeedMultiplier(val) {
+    this.consumptionSpeedMultiplierProp.set(Math.max(0.01, val));
+  }
+  getConsumptionSpeedMultiplier(registry) {
+    return Math.max(0.01, this.consumptionSpeedMultiplierProp.get(registry));
+  }
+  registerProperties(registry) {
+    registry.add("consumptionSpeedMultiplier", this.consumptionSpeedMultiplier);
   }
   /**
    * Checks whether the given held object is valid for consumption by this character.
@@ -4810,7 +4825,8 @@ class ConsumeModule {
       console.warn(`🍎 [ConsumeModule] Cannot consume object ${heldObj == null ? void 0 : heldObj.id}: canConsume=${this.canConsume(heldObj)}`);
       return { watts: 0, joules: 0, isDepleted: false };
     }
-    const res = heldObj.consumableModule.consume(dt, consumer, heldObj, objects2, arena2);
+    const speedMultiplier = this.getConsumptionSpeedMultiplier(consumer.properties);
+    const res = heldObj.consumableModule.consume(dt, consumer, heldObj, objects2, arena2, speedMultiplier);
     if (res.isDepleted) {
       console.log(`🍎 [ConsumeModule] Object ${heldObj.id} depleted! isDepleted=true`);
     }
@@ -6518,6 +6534,9 @@ class Character extends GameObject {
     this.properties.add("joulesPerHp", this.healthModule.joulesPerHp);
     this.properties.add("hpPerJoule", this.healthModule.joulesPerHp);
     this.properties.add("muscleEfficiency", this.energyPool.muscleEfficiency);
+    if (this.consumeModule) {
+      this.properties.add("consumptionSpeedMultiplier", this.consumeModule.consumptionSpeedMultiplier);
+    }
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
     }
@@ -6745,6 +6764,14 @@ class Character extends GameObject {
   }
   getJumpPowerCapacity(registry) {
     return this.jumpMaxPowerProp.get(registry);
+  }
+  get consumptionSpeedMultiplier() {
+    return this.consumeModule ? this.consumeModule.consumptionSpeedMultiplier : 1;
+  }
+  set consumptionSpeedMultiplier(val) {
+    if (this.consumeModule) {
+      this.consumeModule.consumptionSpeedMultiplier = val;
+    }
   }
   /**
    * Attempts to jump using JumpCapability.
@@ -8196,13 +8223,18 @@ class ConsumableModule {
    * Transfers energy into the consumer's EnergyPool, optionally restores HP,
    * updates physical size, and disposes of the object when 100% depleted.
    */
-  consume(dt, consumer, consumableObj, objects2, arena2) {
+  consume(dt, consumer, consumableObj, objects2, arena2, speedMultiplier) {
     if (!this.enabled || dt <= 0 || this.isConsumed) {
       return { watts: 0, joules: 0, isDepleted: this.isConsumed };
     }
+    const mult = Math.max(
+      0.01,
+      speedMultiplier !== void 0 ? speedMultiplier : consumer.consumeModule ? consumer.consumeModule.getConsumptionSpeedMultiplier(consumer.properties) : 1
+    );
     const registry = consumableObj.properties;
     if (this.unlimited) {
-      const rateWatts2 = this.getConsumeRate(registry);
+      const baseRateWatts2 = this.getConsumeRate(registry);
+      const rateWatts2 = baseRateWatts2 * mult;
       const demandJoules2 = rateWatts2 * dt;
       if (consumer.energyPool && consumer.energyPool.enabled) {
         const curEnergy = consumer.energyPool.getCurrentEnergy(consumer.properties);
@@ -8210,7 +8242,8 @@ class ConsumableModule {
         const updatedEnergy = Math.min(maxEnergy, curEnergy + demandJoules2);
         consumer.energyPool.currentEnergyProp.set(updatedEnergy, consumer.properties);
       }
-      const healHpPerSec2 = this.getHealRate(registry);
+      const baseHealRate2 = this.getHealRate(registry);
+      const healHpPerSec2 = baseHealRate2 * mult;
       if (healHpPerSec2 > 0 && consumer.healthModule && consumer.healthModule.enabled) {
         const healAmt = healHpPerSec2 * dt;
         consumer.healthModule.heal(healAmt, consumer.properties, {
@@ -8233,7 +8266,8 @@ class ConsumableModule {
       this.finishConsumption(consumer, consumableObj, objects2, arena2);
       return { watts: 0, joules: 0, isDepleted: true };
     }
-    const rateWatts = this.getConsumeRate(registry);
+    const baseRateWatts = this.getConsumeRate(registry);
+    const rateWatts = baseRateWatts * mult;
     const demandJoules = rateWatts * dt;
     const transferJoules = Math.min(remaining, demandJoules);
     const newRemaining = Math.max(0, remaining - transferJoules);
@@ -8244,7 +8278,8 @@ class ConsumableModule {
       const updatedEnergy = Math.min(maxEnergy, curEnergy + transferJoules);
       consumer.energyPool.currentEnergyProp.set(updatedEnergy, consumer.properties);
     }
-    const healHpPerSec = this.getHealRate(registry);
+    const baseHealRate = this.getHealRate(registry);
+    const healHpPerSec = baseHealRate * mult;
     if (healHpPerSec > 0 && consumer.healthModule && consumer.healthModule.enabled) {
       const healAmt = healHpPerSec * dt;
       consumer.healthModule.heal(healAmt, consumer.properties, {
@@ -8276,8 +8311,8 @@ class ConsumableModule {
     };
   }
   // Legacy eat alias
-  eat(dt, consumer, consumableObj, arena2, objects2) {
-    return this.consume(dt, consumer, consumableObj, objects2, arena2);
+  eat(dt, consumer, consumableObj, arena2, objects2, speedMultiplier) {
+    return this.consume(dt, consumer, consumableObj, objects2, arena2, speedMultiplier);
   }
   /**
    * Finalizes the consumption of food when all Joules are drained.
@@ -9686,6 +9721,16 @@ function serializeCharacter(char) {
   } else {
     result.hasHealth = false;
   }
+  if (char.consumeModule) {
+    result.hasConsume = char.consumeModule.enabled;
+    result.consumeModule = {
+      enabled: char.consumeModule.enabled,
+      consumptionSpeedMultiplier: char.consumeModule.consumptionSpeedMultiplierProp ? char.consumeModule.consumptionSpeedMultiplierProp.get(char.properties) : 1,
+      acceptedTags: [...char.consumeModule.acceptedTags]
+    };
+  } else {
+    result.hasConsume = false;
+  }
   if (char.laserModule) {
     result.hasLaser = char.laserModule.enabled;
     result.laserModule = {
@@ -9788,7 +9833,7 @@ function serializeCharacter(char) {
   return result;
 }
 function applyCharacterConfig(char, config) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q;
   if (config.controlSchema) {
     char.controlSchema = JSON.parse(JSON.stringify(config.controlSchema));
   }
@@ -10038,6 +10083,19 @@ function applyCharacterConfig(char, config) {
       if (config.wallEdgeAssistModule.preventWalkOff !== void 0) wea.preventWalkOff = config.wallEdgeAssistModule.preventWalkOff;
     }
   }
+  if (config.hasConsume === false) {
+    char.consumeModule = null;
+  } else if (config.consumeModule) {
+    if (!char.consumeModule) char.consumeModule = new ConsumeModule();
+    char.consumeModule.enabled = config.consumeModule.enabled ?? true;
+    if (config.consumeModule.consumptionSpeedMultiplier !== void 0 && char.consumeModule.consumptionSpeedMultiplierProp) {
+      char.consumeModule.consumptionSpeedMultiplierProp.set(config.consumeModule.consumptionSpeedMultiplier, char.properties);
+      (_I = char.properties) == null ? void 0 : _I.set("consumptionSpeedMultiplier", config.consumeModule.consumptionSpeedMultiplier);
+    }
+    if (config.consumeModule.acceptedTags) {
+      char.consumeModule.acceptedTags = [...config.consumeModule.acceptedTags];
+    }
+  }
   if (config.hasLaser === false) {
     char.laserModule = null;
   } else if (config.laserModule) {
@@ -10045,16 +10103,16 @@ function applyCharacterConfig(char, config) {
     char.laserModule.enabled = true;
     if (config.laserModule.damageRate !== void 0 && char.laserModule.damageRateProp) {
       char.laserModule.damageRateProp.set(config.laserModule.damageRate, char.properties);
-      (_I = char.properties) == null ? void 0 : _I.set("laserDamageRate", config.laserModule.damageRate);
+      (_J = char.properties) == null ? void 0 : _J.set("laserDamageRate", config.laserModule.damageRate);
     }
     if (config.laserModule.thickness !== void 0 && char.laserModule.thicknessProp) {
       char.laserModule.thicknessProp.set(config.laserModule.thickness, char.properties);
-      (_J = char.properties) == null ? void 0 : _J.set("laserThickness", config.laserModule.thickness);
+      (_K = char.properties) == null ? void 0 : _K.set("laserThickness", config.laserModule.thickness);
     }
     const laserPower = config.laserModule.maxPower ?? config.laserModule.powerRating;
     if (laserPower !== void 0 && char.laserModule.maxPowerProp) {
       char.laserModule.maxPowerProp.set(laserPower, char.properties);
-      (_K = char.properties) == null ? void 0 : _K.set("laserMaxPower", laserPower);
+      (_L = char.properties) == null ? void 0 : _L.set("laserMaxPower", laserPower);
     }
     if (config.laserModule.allowPartialPower !== void 0) char.laserModule.allowPartialPower = config.laserModule.allowPartialPower;
   }
@@ -10065,23 +10123,23 @@ function applyCharacterConfig(char, config) {
     char.meleeModule.enabled = true;
     if (config.meleeModule.impactForce !== void 0 && char.meleeModule.maxForceProp) {
       char.meleeModule.maxForceProp.set(config.meleeModule.impactForce, char.properties);
-      (_L = char.properties) == null ? void 0 : _L.set("meleeMaxForce", config.meleeModule.impactForce);
+      (_M = char.properties) == null ? void 0 : _M.set("meleeMaxForce", config.meleeModule.impactForce);
     }
     if (config.meleeModule.maxPower !== void 0 && char.meleeModule.maxPowerProp) {
       char.meleeModule.maxPowerProp.set(config.meleeModule.maxPower, char.properties);
-      (_M = char.properties) == null ? void 0 : _M.set("meleeMaxPower", config.meleeModule.maxPower);
+      (_N = char.properties) == null ? void 0 : _N.set("meleeMaxPower", config.meleeModule.maxPower);
     }
     if (config.meleeModule.punchFrequency !== void 0 && char.meleeModule.punchFrequencyProp) {
       char.meleeModule.punchFrequencyProp.set(config.meleeModule.punchFrequency, char.properties);
-      (_N = char.properties) == null ? void 0 : _N.set("meleeFrequency", config.meleeModule.punchFrequency);
+      (_O = char.properties) == null ? void 0 : _O.set("meleeFrequency", config.meleeModule.punchFrequency);
     }
     if (config.meleeModule.reach !== void 0 && char.meleeModule.reachProp) {
       char.meleeModule.reachProp.set(config.meleeModule.reach, char.properties);
-      (_O = char.properties) == null ? void 0 : _O.set("meleeReach", config.meleeModule.reach);
+      (_P = char.properties) == null ? void 0 : _P.set("meleeReach", config.meleeModule.reach);
     }
     if (config.meleeModule.width !== void 0 && char.meleeModule.widthProp) {
       char.meleeModule.widthProp.set(config.meleeModule.width, char.properties);
-      (_P = char.properties) == null ? void 0 : _P.set("meleeWidth", config.meleeModule.width);
+      (_Q = char.properties) == null ? void 0 : _Q.set("meleeWidth", config.meleeModule.width);
     }
     if (config.meleeModule.allowPartialPower !== void 0) char.meleeModule.allowPartialPower = config.meleeModule.allowPartialPower;
   }
@@ -10738,6 +10796,9 @@ class PlayerDeltaBuilder {
       if (prop === owner.consumableModule.consumeRateWattsProp) return "consumableModule.consumeRateWatts";
       if (prop === owner.consumableModule.healRateProp) return "consumableModule.healRate";
     }
+    if (owner.consumeModule) {
+      if (prop === owner.consumeModule.consumptionSpeedMultiplierProp) return "consumeModule.consumptionSpeedMultiplier";
+    }
     if (owner.gunModule) {
       if (prop === owner.gunModule.fireRateProp) return "gunModule.fireRate";
       if (prop === owner.gunModule.damagePerBulletProp) return "gunModule.damagePerBullet";
@@ -10906,6 +10967,9 @@ class PlayerDeltaBuilder {
       meleePunchFrequency: "meleeModule.punchFrequency",
       meleeReach: "meleeModule.reach",
       meleeWidth: "meleeModule.width",
+      consumptionSpeedMultiplier: "consumeModule.consumptionSpeedMultiplier",
+      "Consumption Speed Multiplier (x)": "consumeModule.consumptionSpeedMultiplier",
+      "Consumption Speed Multiplier": "consumeModule.consumptionSpeedMultiplier",
       meleeAllowPartialPower: "meleeModule.allowPartialPower",
       currentHp: "healthModule.currentHp",
       "Current Health (HP)": "healthModule.currentHp",

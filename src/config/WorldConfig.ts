@@ -8,6 +8,7 @@ import { GravityModule } from "../engine/GravityModule.js";
 import { RollModule } from "../engine/RollModule.js";
 import { RollMovementModule } from "../character/RollMovementModule.js";
 import { ConsumableModule } from "../engine/ConsumableModule.js";
+import { ConsumeModule } from "../character/ConsumeModule.js";
 import { GunModule } from "../engine/GunModule.js";
 import { HealthModule } from "../character/HealthModule.js";
 import { LaserModule } from "../character/LaserModule.js";
@@ -231,6 +232,13 @@ export interface SerializedCharacterConfig {
     maxPower?: number;
     consumesEnergy?: boolean;
     allowPartialPower?: boolean;
+  };
+
+  hasConsume?: boolean;
+  consumeModule?: {
+    enabled?: boolean;
+    consumptionSpeedMultiplier?: number;
+    acceptedTags?: string[];
   };
 
   hasLaser?: boolean;
@@ -489,6 +497,17 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
     };
   } else {
     result.hasHealth = false;
+  }
+
+  if (char.consumeModule) {
+    result.hasConsume = char.consumeModule.enabled;
+    result.consumeModule = {
+      enabled: char.consumeModule.enabled,
+      consumptionSpeedMultiplier: char.consumeModule.consumptionSpeedMultiplierProp ? char.consumeModule.consumptionSpeedMultiplierProp.get(char.properties) : 1.0,
+      acceptedTags: [...char.consumeModule.acceptedTags],
+    };
+  } else {
+    result.hasConsume = false;
   }
 
   if (char.laserModule) {
@@ -861,6 +880,20 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
         char.properties?.set("assistRadius", hang);
       }
       if (config.wallEdgeAssistModule.preventWalkOff !== undefined) wea.preventWalkOff = config.wallEdgeAssistModule.preventWalkOff;
+    }
+  }
+
+  if (config.hasConsume === false) {
+    char.consumeModule = null;
+  } else if (config.consumeModule) {
+    if (!char.consumeModule) char.consumeModule = new ConsumeModule();
+    char.consumeModule.enabled = config.consumeModule.enabled ?? true;
+    if (config.consumeModule.consumptionSpeedMultiplier !== undefined && char.consumeModule.consumptionSpeedMultiplierProp) {
+      char.consumeModule.consumptionSpeedMultiplierProp.set(config.consumeModule.consumptionSpeedMultiplier, char.properties);
+      char.properties?.set("consumptionSpeedMultiplier", config.consumeModule.consumptionSpeedMultiplier);
+    }
+    if (config.consumeModule.acceptedTags) {
+      char.consumeModule.acceptedTags = [...config.consumeModule.acceptedTags];
     }
   }
 

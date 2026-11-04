@@ -454,6 +454,9 @@ export class Character extends GameObject {
     this.properties.add("joulesPerHp", this.healthModule.joulesPerHp);
     this.properties.add("hpPerJoule", this.healthModule.joulesPerHp);
     this.properties.add("muscleEfficiency", this.energyPool.muscleEfficiency);
+    if (this.consumeModule) {
+      this.properties.add("consumptionSpeedMultiplier", this.consumeModule.consumptionSpeedMultiplier);
+    }
     if (!this.damageSolverModule) {
       this.damageSolverModule = new DamageSolverModule();
     }
@@ -499,6 +502,15 @@ export class Character extends GameObject {
   }
   public getJumpPowerCapacity(registry?: ObjectPropertiesRegistry): number {
     return this.jumpMaxPowerProp.get(registry);
+  }
+
+  public get consumptionSpeedMultiplier(): number {
+    return this.consumeModule ? this.consumeModule.consumptionSpeedMultiplier : 1.0;
+  }
+  public set consumptionSpeedMultiplier(val: number) {
+    if (this.consumeModule) {
+      this.consumeModule.consumptionSpeedMultiplier = val;
+    }
   }
 
   /**

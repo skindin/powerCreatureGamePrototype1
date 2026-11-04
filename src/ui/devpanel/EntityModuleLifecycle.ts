@@ -731,6 +731,11 @@ export class EntityModuleLifecycle {
           if (srcChar?.consumeModule) {
             if (!destChar.consumeModule) destChar.consumeModule = new ConsumeModule();
             destChar.consumeModule.enabled = srcChar.consumeModule.enabled;
+            destChar.consumeModule.consumptionSpeedMultiplierProp.set(
+              srcChar.consumeModule.consumptionSpeedMultiplierProp.get(srcChar.properties),
+              destChar.properties
+            );
+            destChar.consumeModule.acceptedTags = [...srcChar.consumeModule.acceptedTags];
           } else {
             destChar.consumeModule = null;
           }

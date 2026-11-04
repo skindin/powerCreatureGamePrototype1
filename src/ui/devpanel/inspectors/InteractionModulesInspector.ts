@@ -103,6 +103,17 @@ export class InteractionModulesInspector {
 
       // Consume Module controls
       if (char.consumeModule) {
+        const speedMultSocketEl = container.querySelector("#prop-socket-consume-speed-multiplier");
+        if (speedMultSocketEl) {
+          const smCtrl = new PropertyControl({
+            property: char.consumeModule.consumptionSpeedMultiplierProp,
+            owner: char,
+            label: "Consumption Speed Multiplier (x)",
+            step: 0.1,
+          });
+          speedMultSocketEl.appendChild(smCtrl.element);
+        }
+
         const consumeSocketEl = container.querySelector("#prop-socket-consume-tags");
         if (consumeSocketEl) {
           const tagCtrl = new TagSelectorControl({

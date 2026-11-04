@@ -116,6 +116,9 @@ export class PlayerDeltaBuilder {
       if (prop === owner.consumableModule.consumeRateWattsProp) return "consumableModule.consumeRateWatts";
       if (prop === owner.consumableModule.healRateProp) return "consumableModule.healRate";
     }
+    if ((owner as any).consumeModule) {
+      if (prop === (owner as any).consumeModule.consumptionSpeedMultiplierProp) return "consumeModule.consumptionSpeedMultiplier";
+    }
     if (owner.gunModule) {
       if (prop === owner.gunModule.fireRateProp) return "gunModule.fireRate";
       if (prop === owner.gunModule.damagePerBulletProp) return "gunModule.damagePerBullet";
@@ -288,6 +291,9 @@ export class PlayerDeltaBuilder {
       meleePunchFrequency: "meleeModule.punchFrequency",
       meleeReach: "meleeModule.reach",
       meleeWidth: "meleeModule.width",
+      consumptionSpeedMultiplier: "consumeModule.consumptionSpeedMultiplier",
+      "Consumption Speed Multiplier (x)": "consumeModule.consumptionSpeedMultiplier",
+      "Consumption Speed Multiplier": "consumeModule.consumptionSpeedMultiplier",
       meleeAllowPartialPower: "meleeModule.allowPartialPower",
       currentHp: "healthModule.currentHp",
       "Current Health (HP)": "healthModule.currentHp",

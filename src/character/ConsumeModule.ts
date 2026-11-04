@@ -1,11 +1,14 @@
 import type { GameObject } from "../engine/GameObject.js";
 import type { Character } from "./Character.js";
 import type { Arena } from "../engine/Arena.js";
+import { DynamicProperty } from "../engine/properties/DynamicProperty.js";
+import type { ObjectPropertiesRegistry } from "../engine/properties/DynamicProperty.js";
 
 export interface ConsumeModuleOptions {
   enabled?: boolean;
   acceptedTags?: string[];
   involvesDirection?: boolean;
+  consumptionSpeedMultiplier?: number;
 }
 
 /**
@@ -27,12 +30,32 @@ export class ConsumeModule {
   /** Whether using this ability involves aiming in a direction (false for eating/drinking/consuming) */
   public involvesDirection: boolean = false;
 
+  /** Consumption speed multiplier: scales the eating speed / consume rate (Watts) */
+  public consumptionSpeedMultiplierProp: DynamicProperty;
+
   constructor(options?: ConsumeModuleOptions) {
+    this.consumptionSpeedMultiplierProp = new DynamicProperty(options?.consumptionSpeedMultiplier ?? 1.0);
     if (options?.enabled !== undefined) this.enabled = options.enabled;
     if (options?.involvesDirection !== undefined) this.involvesDirection = options.involvesDirection;
     if (options?.acceptedTags !== undefined) {
       this.acceptedTags = options.acceptedTags.map((t) => t.trim().toLowerCase()).filter(Boolean);
     }
+  }
+
+  public get consumptionSpeedMultiplier(): number {
+    return this.consumptionSpeedMultiplierProp.literalValue;
+  }
+
+  public set consumptionSpeedMultiplier(val: number) {
+    this.consumptionSpeedMultiplierProp.set(Math.max(0.01, val));
+  }
+
+  public getConsumptionSpeedMultiplier(registry?: ObjectPropertiesRegistry): number {
+    return Math.max(0.01, this.consumptionSpeedMultiplierProp.get(registry));
+  }
+
+  public registerProperties(registry: ObjectPropertiesRegistry): void {
+    registry.add("consumptionSpeedMultiplier", this.consumptionSpeedMultiplier);
   }
 
   /**
@@ -64,7 +87,8 @@ export class ConsumeModule {
       console.warn(`🍎 [ConsumeModule] Cannot consume object ${heldObj?.id}: canConsume=${this.canConsume(heldObj)}`);
       return { watts: 0, joules: 0, isDepleted: false };
     }
-    const res = heldObj.consumableModule.consume(dt, consumer, heldObj, objects, arena);
+    const speedMultiplier = this.getConsumptionSpeedMultiplier(consumer.properties);
+    const res = heldObj.consumableModule.consume(dt, consumer, heldObj, objects, arena, speedMultiplier);
     if (res.isDepleted) {
       console.log(`🍎 [ConsumeModule] Object ${heldObj.id} depleted! isDepleted=true`);
     }
