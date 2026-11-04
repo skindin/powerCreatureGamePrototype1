@@ -75,6 +75,7 @@ export class DevConfigPersistence {
       if (owner.prefabId) {
         const prefab = prefabManager.get(owner.prefabId);
         if (prefab) {
+          owner.overriddenProperties.delete(canonicalPath);
           prefab.setProperty(canonicalPath, value, objects);
           prefabsUpsert = [serializePrefab(prefab)];
           sections.push("prefabs");

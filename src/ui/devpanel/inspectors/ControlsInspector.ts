@@ -248,8 +248,8 @@ export class ControlsInspector {
     const prefab = prefabManager.get(prefabId);
     if (prefab?.controlSchema) {
       char.controlSchema = prefab.controlSchema;
-      this.ensureSchemaTags(char.controlSchema);
-      return char.controlSchema;
+      this.ensureSchemaTags(prefab.controlSchema);
+      return prefab.controlSchema;
     }
     if (char.controlSchema) {
       this.ensureSchemaTags(char.controlSchema);

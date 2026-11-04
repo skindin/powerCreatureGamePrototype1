@@ -1,6 +1,6 @@
 {
-  "version": 279,
-  "lastSaved": "2026-11-04T00:27:06.563Z",
+  "version": 291,
+  "lastSaved": "2026-11-04T00:50:35.707Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -4290,8 +4290,8 @@
       "name": "Tactical Pistol",
       "prefabId": "prefab_pistol",
       "position": {
-        "x": 6.78,
-        "y": 15.58,
+        "x": 17.61,
+        "y": 22.2,
         "z": 0
       },
       "color": "#475569",
@@ -4362,11 +4362,11 @@
       "position": {
         "x": 19.01,
         "y": 15.74,
-        "z": 0.45
+        "z": 0
       },
       "color": "#0284c7",
       "visualShape": "box",
-      "isSleeping": false,
+      "isSleeping": true,
       "hasRigidbody": true,
       "hasCollider": true,
       "hasFriction": true,
@@ -4407,7 +4407,7 @@
       },
       "verticalPositionModule": {
         "enabled": true,
-        "z": 0.45
+        "z": 0
       },
       "gravityModule": {
         "enabled": true
@@ -4423,6 +4423,216 @@
         "gunLength": 0.6,
         "gunWidth": 0.24,
         "bulletColor": "#38bdf8"
+      }
+    },
+    {
+      "id": "obj-bbm4etd",
+      "name": "Tactical Pistol",
+      "prefabId": "prefab_pistol",
+      "position": {
+        "x": 13.34,
+        "y": 20.56,
+        "z": 0
+      },
+      "color": "#475569",
+      "visualShape": "box",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": false,
+      "hasGunModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.65,
+      "colliderRadius": 0.22,
+      "bounceMod": 0.15,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.65,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.22
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "gunModule": {
+        "enabled": true,
+        "fireRate": 4,
+        "damagePerBullet": 13,
+        "bulletSpeed": 32,
+        "firingSeconds": 2,
+        "cooldownTime": 1.2,
+        "bulletMass": 0.08,
+        "gunLength": 0.55,
+        "gunWidth": 0.22,
+        "bulletColor": "#f59e0b"
+      }
+    },
+    {
+      "id": "obj-wpzi705",
+      "name": "Tactical Pistol",
+      "prefabId": "prefab_pistol",
+      "position": {
+        "x": 15,
+        "y": 16.5,
+        "z": 0
+      },
+      "color": "#475569",
+      "visualShape": "box",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": false,
+      "hasGunModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.65,
+      "colliderRadius": 0.22,
+      "bounceMod": 0.15,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.65,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.22
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "gunModule": {
+        "enabled": true,
+        "fireRate": 4,
+        "damagePerBullet": 13,
+        "bulletSpeed": 32,
+        "firingSeconds": 2,
+        "cooldownTime": 1.2,
+        "bulletMass": 0.08,
+        "gunLength": 0.55,
+        "gunWidth": 0.22,
+        "bulletColor": "#f59e0b"
+      }
+    },
+    {
+      "id": "obj-ionklvu",
+      "name": "Tactical Pistol",
+      "prefabId": "prefab_pistol",
+      "position": {
+        "x": 15,
+        "y": 16.5,
+        "z": 0
+      },
+      "color": "#475569",
+      "visualShape": "box",
+      "isSleeping": true,
+      "hasRigidbody": true,
+      "hasCollider": true,
+      "hasFriction": true,
+      "hasBounce": true,
+      "hasVerticalPosition": true,
+      "hasGravity": true,
+      "hasRollModule": false,
+      "hasConsumableModule": false,
+      "hasGunModule": true,
+      "hasHealthModule": false,
+      "hasDamageAuraModule": false,
+      "hasDamageSolverModule": false,
+      "mass": 0.65,
+      "colliderRadius": 0.22,
+      "bounceMod": 0.15,
+      "verticalBounce": true,
+      "staticGroundFrictionMod": 1,
+      "dynamicGroundFrictionMod": 1,
+      "rigidbodyModule": {
+        "enabled": true,
+        "mass": 0.65,
+        "collisionMode": "dynamic",
+        "hasVerticalVelocity": true
+      },
+      "colliderModule": {
+        "enabled": true,
+        "radius": 0.22
+      },
+      "frictionModule": {
+        "enabled": true,
+        "staticFrictionMod": 1,
+        "dynamicFrictionMod": 1
+      },
+      "bounceModule": {
+        "enabled": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true
+      },
+      "verticalPositionModule": {
+        "enabled": true,
+        "z": 0
+      },
+      "gravityModule": {
+        "enabled": true
+      },
+      "gunModule": {
+        "enabled": true,
+        "fireRate": 4,
+        "damagePerBullet": 13,
+        "bulletSpeed": 32,
+        "firingSeconds": 2,
+        "cooldownTime": 1.2,
+        "bulletMass": 0.08,
+        "gunLength": 0.55,
+        "gunWidth": 0.22,
+        "bulletColor": "#f59e0b"
       }
     }
   ],

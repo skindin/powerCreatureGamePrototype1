@@ -6,7 +6,7 @@ import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
 import { LaserModule } from "../../character/LaserModule.js";
 import { MeleeModule } from "../../character/MeleeModule.js";
-import type { ControlSchema } from "../../input/schema/ControlSchemaTypes.js";
+import { ControlSchema } from "../../input/schema/ControlSchemaTypes.js";
 
 export interface PrefabOptions {
   id: string;
@@ -48,12 +48,13 @@ export class Prefab {
     let cloneConsumable: ConsumableModule | null = null;
     if (this.archetype.consumableModule) {
       const src = this.archetype.consumableModule;
+      const totalJoules = src.totalEnergyJoulesProp.get(this.archetype.properties);
       cloneConsumable = new ConsumableModule({
         tag: src.tag,
-        totalEnergyJoules: src.totalEnergyJoulesProp.literalValue,
-        remainingEnergyJoules: src.totalEnergyJoulesProp.literalValue,
-        consumeRateWatts: src.consumeRateWattsProp.literalValue,
-        healRate: src.healRateProp.literalValue,
+        totalEnergyJoules: totalJoules,
+        remainingEnergyJoules: totalJoules,
+        consumeRateWatts: src.consumeRateWattsProp.get(this.archetype.properties),
+        healRate: src.healRateProp.get(this.archetype.properties),
         minScaleFloor: src.minScaleFloor,
         minRadiusFloor: src.minRadiusFloor,
         unlimited: src.unlimited,
@@ -66,9 +67,9 @@ export class Prefab {
       const src = this.archetype.rollModule;
       cloneRoll = new RollModule({
         enabled: src.enabled,
-        rollResistance: src.rollResistance,
+        rollResistance: src.rollResistanceProp.get(this.archetype.properties),
         bumpyRollEnabled: src.bumpyRollEnabled,
-        bumpiness: src.bumpiness,
+        bumpiness: src.bumpinessProp.get(this.archetype.properties),
         seed: src.seed,
       });
     }
@@ -78,12 +79,12 @@ export class Prefab {
       const src = this.archetype.gunModule;
       cloneGun = new GunModule({
         enabled: src.enabled,
-        fireRate: src.fireRateProp.literalValue,
-        damagePerBullet: src.damagePerBulletProp.literalValue,
-        bulletSpeed: src.bulletSpeedProp.literalValue,
-        firingSeconds: src.firingSecondsProp.literalValue,
-        cooldownTime: src.cooldownTimeProp.literalValue,
-        bulletMass: src.bulletMassProp.literalValue,
+        fireRate: src.fireRateProp.get(this.archetype.properties),
+        damagePerBullet: src.damagePerBulletProp.get(this.archetype.properties),
+        bulletSpeed: src.bulletSpeedProp.get(this.archetype.properties),
+        firingSeconds: src.firingSecondsProp.get(this.archetype.properties),
+        cooldownTime: src.cooldownTimeProp.get(this.archetype.properties),
+        bulletMass: src.bulletMassProp.get(this.archetype.properties),
         gunLength: src.gunLength,
         gunWidth: src.gunWidth,
         bulletColor: src.bulletColor,
@@ -186,59 +187,150 @@ export class Prefab {
         break;
       case "mass":
         ent.mass = Number(value);
-        if (ent.rigidbodyModule) ent.rigidbodyModule.massProp.literalValue = Number(value);
+        if (ent.rigidbodyModule) {
+          ent.rigidbodyModule.massProp.literalValue = Number(value);
+          ent.rigidbodyModule.massProp.set(Number(value), ent.properties);
+        }
         break;
       case "colliderRadius":
         ent.colliderRadius = Number(value);
-        if (ent.colliderModule) ent.colliderModule.radius = Number(value);
+        if (ent.colliderModule) {
+          ent.colliderModule.radius = Number(value);
+          if (ent.colliderModule.radiusProp) {
+            ent.colliderModule.radiusProp.literalValue = Number(value);
+            ent.colliderModule.radiusProp.set(Number(value), ent.properties);
+          }
+        }
         if (ent.consumableModule) ent.consumableModule.initialColliderRadius = Number(value);
         break;
+      case "friction":
+        if (ent.frictionModule) {
+          ent.frictionModule.staticFrictionProp.literalValue = Number(value);
+          ent.frictionModule.staticFrictionProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "dynamicFriction":
+        if (ent.frictionModule) {
+          ent.frictionModule.dynamicFrictionProp.literalValue = Number(value);
+          ent.frictionModule.dynamicFrictionProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "restitution":
+      case "bounceMod":
+        ent.bounceMod = Number(value);
+        if (ent.bounceModule) {
+          ent.bounceModule.bounceModProp.literalValue = Number(value);
+          ent.bounceModule.bounceModProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "rollResistance":
+        if (ent.rollModule) {
+          ent.rollModule.rollResistanceProp.literalValue = Number(value);
+          ent.rollModule.rollResistanceProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "bumpiness":
+        if (ent.rollModule) {
+          ent.rollModule.bumpinessProp.literalValue = Number(value);
+          ent.rollModule.bumpinessProp.set(Number(value), ent.properties);
+        }
+        break;
       case "consumable_totalEnergy":
+      case "consumableModule.totalEnergyJoules":
         if (ent.consumableModule) {
           ent.consumableModule.totalEnergyJoulesProp.literalValue = Number(value);
+          ent.consumableModule.totalEnergyJoulesProp.set(Number(value), ent.properties);
           // If not partially eaten, keep remaining full
           if (ent.consumableModule.remainingEnergyJoulesProp.literalValue > Number(value)) {
             ent.consumableModule.remainingEnergyJoulesProp.literalValue = Number(value);
+            ent.consumableModule.remainingEnergyJoulesProp.set(Number(value), ent.properties);
           }
         }
         break;
       case "consumable_consumeRate":
+      case "consumableModule.consumeRateWatts":
         if (ent.consumableModule) {
           ent.consumableModule.consumeRateWattsProp.literalValue = Number(value);
+          ent.consumableModule.consumeRateWattsProp.set(Number(value), ent.properties);
         }
         break;
       case "consumable_healRate":
+      case "consumableModule.healRate":
         if (ent.consumableModule) {
           ent.consumableModule.healRateProp.literalValue = Number(value);
+          ent.consumableModule.healRateProp.set(Number(value), ent.properties);
         }
         break;
       case "consumable_tag":
+      case "consumableModule.tag":
         if (ent.consumableModule) {
           ent.consumableModule.tag = String(value);
         }
         break;
       case "consumable_unlimited":
+      case "consumableModule.unlimited":
         if (ent.consumableModule) {
           ent.consumableModule.unlimited = Boolean(value);
         }
         break;
       case "gun_fireRate":
-        if (ent.gunModule) ent.gunModule.fireRateProp.literalValue = Number(value);
+      case "gunModule.fireRate":
+        if (ent.gunModule) {
+          ent.gunModule.fireRateProp.literalValue = Number(value);
+          ent.gunModule.fireRateProp.set(Number(value), ent.properties);
+        }
         break;
       case "gun_damagePerBullet":
-        if (ent.gunModule) ent.gunModule.damagePerBulletProp.literalValue = Number(value);
+      case "gunModule.damagePerBullet":
+        if (ent.gunModule) {
+          ent.gunModule.damagePerBulletProp.literalValue = Number(value);
+          ent.gunModule.damagePerBulletProp.set(Number(value), ent.properties);
+        }
         break;
       case "gun_bulletSpeed":
-        if (ent.gunModule) ent.gunModule.bulletSpeedProp.literalValue = Number(value);
+      case "gunModule.bulletSpeed":
+        if (ent.gunModule) {
+          ent.gunModule.bulletSpeedProp.literalValue = Number(value);
+          ent.gunModule.bulletSpeedProp.set(Number(value), ent.properties);
+        }
         break;
       case "gun_firingSeconds":
-        if (ent.gunModule) ent.gunModule.firingSecondsProp.literalValue = Number(value);
+      case "gunModule.firingSeconds":
+        if (ent.gunModule) {
+          ent.gunModule.firingSecondsProp.literalValue = Number(value);
+          ent.gunModule.firingSecondsProp.set(Number(value), ent.properties);
+        }
         break;
       case "gun_cooldownTime":
-        if (ent.gunModule) ent.gunModule.cooldownTimeProp.literalValue = Number(value);
+      case "gunModule.cooldownTime":
+        if (ent.gunModule) {
+          ent.gunModule.cooldownTimeProp.literalValue = Number(value);
+          ent.gunModule.cooldownTimeProp.set(Number(value), ent.properties);
+        }
         break;
       case "gun_bulletMass":
-        if (ent.gunModule) ent.gunModule.bulletMassProp.literalValue = Number(value);
+      case "gunModule.bulletMass":
+        if (ent.gunModule) {
+          ent.gunModule.bulletMassProp.literalValue = Number(value);
+          ent.gunModule.bulletMassProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "gun_gunLength":
+      case "gunModule.gunLength":
+        if (ent.gunModule) ent.gunModule.gunLength = Number(value);
+        break;
+      case "gun_gunWidth":
+      case "gunModule.gunWidth":
+        if (ent.gunModule) ent.gunModule.gunWidth = Number(value);
+        break;
+      case "gun_bulletColor":
+      case "gunModule.bulletColor":
+        if (ent.gunModule) ent.gunModule.bulletColor = String(value);
+        break;
+      default:
+        if (ent.properties && ent.properties.has(propKey)) {
+          ent.properties.set(propKey, Number(value));
+        }
         break;
     }
   }
