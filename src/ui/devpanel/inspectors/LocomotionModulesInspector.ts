@@ -65,18 +65,71 @@ export class LocomotionModulesInspector {
         });
         brakeDecelEl.appendChild(c.element);
       }
+      const rollPowerEl = container.querySelector("#prop-socket-roll-power-cap");
+      if (rollPowerEl) {
+        const c = new PropertyControl({
+          property: char.rollMovementModule.maxRollPowerProp,
+          owner: char,
+          label: "Max Roll Power (W)",
+          step: 10,
+        });
+        rollPowerEl.appendChild(c.element);
+      }
+      const sprintPowerEl = container.querySelector("#prop-socket-roll-sprint-power-cap");
+      if (sprintPowerEl) {
+        const c = new PropertyControl({
+          property: char.rollMovementModule.maxSprintPowerProp,
+          owner: char,
+          label: "Max Sprint Power (W)",
+          step: 50,
+        });
+        sprintPowerEl.appendChild(c.element);
+      }
+      const brakePowerEl = container.querySelector("#prop-socket-roll-brake-power-cap");
+      if (brakePowerEl) {
+        const c = new PropertyControl({
+          property: char.rollMovementModule.maxBrakePowerProp,
+          owner: char,
+          label: "Max Brake Power (W)",
+          step: 25,
+        });
+        brakePowerEl.appendChild(c.element);
+      }
 
+      const checkRollEnergy = container.querySelector("#check-roll-energy") as HTMLInputElement | null;
+      const fieldRollPartial = container.querySelector("#field-roll-partial-power") as HTMLElement | null;
+      checkRollEnergy?.addEventListener("change", () => {
+        if (fieldRollPartial) fieldRollPartial.style.display = checkRollEnergy.checked ? "block" : "none";
+      });
       bindToggleSave("check-roll-energy", char, "rollMovementModule.rollConsumesEnergy", "Roll Consumes Energy", (v) => {
         if (char.rollMovementModule) char.rollMovementModule.rollConsumesEnergy = v;
       });
       bindToggleSave("check-roll-partial-power", char, "rollMovementModule.rollAllowPartialPower", "Allow Partial Power", (v) => {
         if (char.rollMovementModule) char.rollMovementModule.rollAllowPartialPower = v;
       });
+
+      const checkSprintEnergy = container.querySelector("#check-roll-sprint-energy") as HTMLInputElement | null;
+      const fieldSprintPartial = container.querySelector("#field-roll-sprint-partial-power") as HTMLElement | null;
+      checkSprintEnergy?.addEventListener("change", () => {
+        if (fieldSprintPartial) fieldSprintPartial.style.display = checkSprintEnergy.checked ? "block" : "none";
+      });
       bindToggleSave("check-roll-sprint-energy", char, "rollMovementModule.sprintConsumesEnergy", "Sprint Consumes Energy", (v) => {
         if (char.rollMovementModule) char.rollMovementModule.sprintConsumesEnergy = v;
       });
       bindToggleSave("check-roll-sprint-partial-power", char, "rollMovementModule.sprintAllowPartialPower", "Allow Partial Power (Sprint)", (v) => {
         if (char.rollMovementModule) char.rollMovementModule.sprintAllowPartialPower = v;
+      });
+
+      const checkBrakeEnergy = container.querySelector("#check-roll-brake-energy") as HTMLInputElement | null;
+      const fieldBrakePartial = container.querySelector("#field-roll-brake-partial-power") as HTMLElement | null;
+      checkBrakeEnergy?.addEventListener("change", () => {
+        if (fieldBrakePartial) fieldBrakePartial.style.display = checkBrakeEnergy.checked ? "block" : "none";
+      });
+      bindToggleSave("check-roll-brake-energy", char, "rollMovementModule.brakeConsumesEnergy", "Brake Consumes Energy", (v) => {
+        if (char.rollMovementModule) char.rollMovementModule.brakeConsumesEnergy = v;
+      });
+      bindToggleSave("check-roll-brake-partial-power", char, "rollMovementModule.brakeAllowPartialPower", "Allow Partial Power (Brake)", (v) => {
+        if (char.rollMovementModule) char.rollMovementModule.brakeAllowPartialPower = v;
       });
     }
 

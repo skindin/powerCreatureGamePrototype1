@@ -302,6 +302,10 @@ export interface SerializedCharacterConfig {
     brakePowerCapacity?: number;
     consumesEnergy?: boolean;
     allowPartialPower?: boolean;
+    sprintConsumesEnergy?: boolean;
+    sprintAllowPartialPower?: boolean;
+    brakeConsumesEnergy?: boolean;
+    brakeAllowPartialPower?: boolean;
   };
   controlSchema?: ControlSchema;
 }
@@ -573,6 +577,10 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
       brakePowerCapacity: char.rollMovementModule.maxBrakePowerProp.get(char.properties),
       consumesEnergy: char.rollMovementModule.rollConsumesEnergy,
       allowPartialPower: char.rollMovementModule.rollAllowPartialPower,
+      sprintConsumesEnergy: char.rollMovementModule.sprintConsumesEnergy,
+      sprintAllowPartialPower: char.rollMovementModule.sprintAllowPartialPower,
+      brakeConsumesEnergy: char.rollMovementModule.brakeConsumesEnergy,
+      brakeAllowPartialPower: char.rollMovementModule.brakeAllowPartialPower,
     };
   } else {
     result.hasRollMovement = false;
@@ -911,6 +919,10 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
         maxBrakePower: config.rollMovementModule.brakePowerCapacity ?? 400.0,
         rollConsumesEnergy: config.rollMovementModule.consumesEnergy ?? true,
         rollAllowPartialPower: config.rollMovementModule.allowPartialPower ?? true,
+        sprintConsumesEnergy: config.rollMovementModule.sprintConsumesEnergy ?? true,
+        sprintAllowPartialPower: config.rollMovementModule.sprintAllowPartialPower ?? true,
+        brakeConsumesEnergy: config.rollMovementModule.brakeConsumesEnergy ?? false,
+        brakeAllowPartialPower: config.rollMovementModule.brakeAllowPartialPower ?? true,
       });
       char.rollMovementModule.registerProperties(char.properties);
     } else {
@@ -929,6 +941,33 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
       }
       if (config.rollMovementModule.brakeDeceleration !== undefined) {
         char.rollMovementModule.brakeDecelerationProp.set(config.rollMovementModule.brakeDeceleration, char.properties);
+      }
+      if (config.rollMovementModule.rollPowerCapacity !== undefined) {
+        char.rollMovementModule.maxRollPowerProp.set(config.rollMovementModule.rollPowerCapacity, char.properties);
+      }
+      if (config.rollMovementModule.sprintPowerCapacity !== undefined) {
+        char.rollMovementModule.maxSprintPowerProp.set(config.rollMovementModule.sprintPowerCapacity, char.properties);
+      }
+      if (config.rollMovementModule.brakePowerCapacity !== undefined) {
+        char.rollMovementModule.maxBrakePowerProp.set(config.rollMovementModule.brakePowerCapacity, char.properties);
+      }
+      if (config.rollMovementModule.consumesEnergy !== undefined) {
+        char.rollMovementModule.rollConsumesEnergy = config.rollMovementModule.consumesEnergy;
+      }
+      if (config.rollMovementModule.allowPartialPower !== undefined) {
+        char.rollMovementModule.rollAllowPartialPower = config.rollMovementModule.allowPartialPower;
+      }
+      if (config.rollMovementModule.sprintConsumesEnergy !== undefined) {
+        char.rollMovementModule.sprintConsumesEnergy = config.rollMovementModule.sprintConsumesEnergy;
+      }
+      if (config.rollMovementModule.sprintAllowPartialPower !== undefined) {
+        char.rollMovementModule.sprintAllowPartialPower = config.rollMovementModule.sprintAllowPartialPower;
+      }
+      if (config.rollMovementModule.brakeConsumesEnergy !== undefined) {
+        char.rollMovementModule.brakeConsumesEnergy = config.rollMovementModule.brakeConsumesEnergy;
+      }
+      if (config.rollMovementModule.brakeAllowPartialPower !== undefined) {
+        char.rollMovementModule.brakeAllowPartialPower = config.rollMovementModule.brakeAllowPartialPower;
       }
     }
   }

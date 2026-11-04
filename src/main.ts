@@ -444,7 +444,7 @@ async function bootstrap(): Promise<void> {
   joinBanner.id = "arena-join-banner";
   joinBanner.style.cssText = `
     position: absolute;
-    bottom: 24px;
+    bottom: 84px;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(15, 23, 42, 0.85);

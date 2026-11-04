@@ -858,15 +858,27 @@ export class EnergyHud {
 
   /**
    * Returns the primary character to inspect in single-player mode.
+   * Strictly binds to active player characters (never the arena dummy).
    */
   public getTargetCharacter(): Character | null {
-    if (this.devPanel?.selectedEntity instanceof Object && (this.devPanel.selectedEntity as any).isCharacter) {
-      return this.devPanel.selectedEntity as Character;
+    const pm = this.gameLoop?.playerManager;
+    if (!pm || pm.players.size === 0) {
+      return null;
     }
+
+    if (this.devPanel?.selectedEntity instanceof Object && (this.devPanel.selectedEntity as any).isCharacter) {
+      const selected = this.devPanel.selectedEntity as Character;
+      for (const p of pm.players.values()) {
+        if (p.character === selected) {
+          return selected;
+        }
+      }
+    }
+
     return (
-      this.gameLoop?.playerManager?.primaryCharacter ||
-      this.gameLoop?.playerManager?.baseCharacter ||
-      this.gameLoop?.allCharacters?.[0] ||
+      pm.primaryCharacter ||
+      pm.baseCharacter ||
+      pm.players.values().next().value?.character ||
       null
     );
   }
@@ -920,7 +932,10 @@ export class EnergyHud {
       // =======================================================================
       const char = this.getTargetCharacter();
       if (!char) {
-        for (const slot of this.slots) slot.slotEl.style.display = "none";
+        for (const slot of this.slots) {
+          slot.slotEl.style.display = "none";
+          slot.hud.reset();
+        }
         return;
       }
 

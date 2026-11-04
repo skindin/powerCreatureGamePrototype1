@@ -84,6 +84,16 @@ export class PlayerDeltaBuilder {
       if (char.wallEdgeAssistModule) {
         if (prop === char.wallEdgeAssistModule.hangDistanceProp) return "wallEdgeAssistModule.hangDistance";
       }
+      if (char.rollMovementModule) {
+        if (prop === char.rollMovementModule.baseAccelerationProp) return "rollMovementModule.baseAcceleration";
+        if (prop === char.rollMovementModule.sprintAccelerationProp) return "rollMovementModule.sprintAcceleration";
+        if (prop === char.rollMovementModule.maxRollSpeedProp) return "rollMovementModule.maxRollSpeed";
+        if (prop === char.rollMovementModule.maxSprintSpeedProp) return "rollMovementModule.maxSprintSpeed";
+        if (prop === char.rollMovementModule.brakeDecelerationProp) return "rollMovementModule.brakeDeceleration";
+        if (prop === char.rollMovementModule.maxRollPowerProp) return "rollMovementModule.rollPowerCapacity";
+        if (prop === char.rollMovementModule.maxSprintPowerProp) return "rollMovementModule.sprintPowerCapacity";
+        if (prop === char.rollMovementModule.maxBrakePowerProp) return "rollMovementModule.brakePowerCapacity";
+      }
       if (char.strengthProp && prop === char.strengthProp) return "strength";
       if (char.colliderModule && prop === char.colliderModule.radiusProp) return "colliderRadius";
       if (char.rigidbodyModule && prop === char.rigidbodyModule.massProp) return "mass";

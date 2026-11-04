@@ -10566,7 +10566,11 @@
           "sprintPowerCapacity": 1800,
           "brakePowerCapacity": 400,
           "consumesEnergy": true,
-          "allowPartialPower": true
+          "allowPartialPower": true,
+          "sprintConsumesEnergy": true,
+          "sprintAllowPartialPower": true,
+          "brakeConsumesEnergy": true,
+          "brakeAllowPartialPower": true
         }
       },
       "controlSchema": {

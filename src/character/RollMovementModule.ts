@@ -15,6 +15,7 @@ export interface RollMovementModuleOptions {
   sprintConsumesEnergy?: boolean;
   sprintAllowPartialPower?: boolean;
   brakeConsumesEnergy?: boolean;
+  brakeAllowPartialPower?: boolean;
   enabled?: boolean;
 }
 
@@ -49,6 +50,7 @@ export class RollMovementModule {
   public sprintConsumesEnergy: boolean = true;
   public sprintAllowPartialPower: boolean = true;
   public brakeConsumesEnergy: boolean = false;
+  public brakeAllowPartialPower: boolean = true;
 
   // Live state flags
   public isRolling: boolean = false;
@@ -75,6 +77,7 @@ export class RollMovementModule {
     this.sprintConsumesEnergy = options?.sprintConsumesEnergy ?? true;
     this.sprintAllowPartialPower = options?.sprintAllowPartialPower ?? true;
     this.brakeConsumesEnergy = options?.brakeConsumesEnergy ?? false;
+    this.brakeAllowPartialPower = options?.brakeAllowPartialPower ?? true;
   }
 
   public registerProperties(registry: ObjectPropertiesRegistry): void {
@@ -85,6 +88,7 @@ export class RollMovementModule {
     registry.add("rollBrakeDeceleration", this.brakeDecelerationProp.literalValue);
     registry.add("maxRollPower", this.maxRollPowerProp.literalValue);
     registry.add("maxSprintRollPower", this.maxSprintPowerProp.literalValue);
+    registry.add("maxBrakePower", this.maxBrakePowerProp.literalValue);
   }
 
   // Getters and Setters
@@ -122,5 +126,25 @@ export class RollMovementModule {
   public set brakeDeceleration(val: number) {
     this.brakeDecelerationProp.literalValue = val;
   }
-}
 
+  public get maxRollPower(): number {
+    return this.maxRollPowerProp.literalValue;
+  }
+  public set maxRollPower(val: number) {
+    this.maxRollPowerProp.literalValue = val;
+  }
+
+  public get maxSprintPower(): number {
+    return this.maxSprintPowerProp.literalValue;
+  }
+  public set maxSprintPower(val: number) {
+    this.maxSprintPowerProp.literalValue = val;
+  }
+
+  public get maxBrakePower(): number {
+    return this.maxBrakePowerProp.literalValue;
+  }
+  public set maxBrakePower(val: number) {
+    this.maxBrakePowerProp.literalValue = val;
+  }
+}

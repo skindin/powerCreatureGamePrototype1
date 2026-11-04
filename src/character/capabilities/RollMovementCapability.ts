@@ -5,7 +5,7 @@ import type { Arena } from "../../engine/Arena.js";
 /**
  * RollMovementCapability: Isolated 1-to-1 capability slice for rolling creatures.
  * Exerts directional torque to accelerate, sustains roll momentum when input ceases,
- * registers metabolic energy demand, and handles active braking.
+ * registers metabolic energy demand, and handles active physical counter-torque braking.
  */
 export class RollMovementCapability {
   public static canRoll(char: Character): boolean {
@@ -38,9 +38,23 @@ export class RollMovementCapability {
     }
 
     if (isBraking && mod.brakeConsumesEnergy && char.energyPool) {
-      const brakeWatts = mod.maxBrakePowerProp.get(char.properties);
-      char.energyPool.registerDemand("brake", brakeWatts, true);
-      char.energyPool.activeLocomotionId = "brake";
+      const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
+      if (curSpeed > 0.05) {
+        const brakeDecel = mod.brakeDecelerationProp.get(char.properties);
+        const totalMass = Math.max(0.2, char.mass);
+        // Rate of mechanical negative work: P = (m * a_brake * v) / 0.25 Watts
+        const rawBrakeWatts = (totalMass * brakeDecel * Math.max(0.5, curSpeed)) / 0.25;
+        const cap = mod.maxBrakePowerProp.get(char.properties);
+        const allowPartial = mod.brakeAllowPartialPower;
+        let brakeWatts = rawBrakeWatts;
+        if (brakeWatts > cap) {
+          brakeWatts = allowPartial ? cap : 0;
+        }
+        char.energyPool.registerDemand("brake", brakeWatts, allowPartial);
+        char.energyPool.activeLocomotionId = "brake";
+      } else {
+        char.energyPool.registerDemand("brake", 0, mod.brakeAllowPartialPower);
+      }
       return true;
     }
 
@@ -95,12 +109,46 @@ export class RollMovementCapability {
       mod.isBraking = true;
       mod.isRolling = false;
 
-      // Active braking deceleration opposing current velocity
-      const brakeDecel = mod.brakeDecelerationProp.get(char.properties);
       const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
+      if (curSpeed <= 0.01) {
+        char.velocity.x = 0;
+        char.velocity.y = 0;
+        roll.angularVelocity.x = 0;
+        roll.angularVelocity.y = 0;
+        roll.updateOrientation(dt);
+        return;
+      }
 
-      if (curSpeed > 0) {
-        const newSpeed = Math.max(0, curSpeed - brakeDecel * dt);
+      const brakeDecel = mod.brakeDecelerationProp.get(char.properties);
+      let powerScale = 1.0;
+
+      if (mod.brakeConsumesEnergy && char.energyPool) {
+        const totalMass = Math.max(0.2, char.mass);
+        const rawBrakeWatts = (totalMass * brakeDecel * Math.max(0.5, curSpeed)) / 0.25;
+        const cap = mod.maxBrakePowerProp.get(char.properties);
+        const allowPartial = mod.brakeAllowPartialPower;
+        let requestedWatts = rawBrakeWatts;
+        if (requestedWatts > cap) {
+          requestedWatts = allowPartial ? cap : 0;
+        }
+
+        const grantedWatts = char.energyPool.requestPower(
+          requestedWatts,
+          dt,
+          char.properties,
+          false,
+          "brake",
+          allowPartial
+        );
+        powerScale = requestedWatts > 0 ? Math.min(1.0, grantedWatts / requestedWatts) : 0;
+      }
+
+      // Smooth physical counter-torque braking:
+      // Reduces linear velocity by effectiveBrakeDecel * dt, coupling angular roll velocity to match
+      if (powerScale > 0.001) {
+        const effectiveBrakeDecel = brakeDecel * powerScale;
+        const speedReduction = Math.min(curSpeed, effectiveBrakeDecel * dt);
+        const newSpeed = curSpeed - speedReduction;
         if (newSpeed < 0.02) {
           char.velocity.x = 0;
           char.velocity.y = 0;
@@ -110,16 +158,15 @@ export class RollMovementCapability {
           const ratio = newSpeed / curSpeed;
           char.velocity.x *= ratio;
           char.velocity.y *= ratio;
-          roll.angularVelocity.x *= ratio;
-          roll.angularVelocity.y *= ratio;
+          roll.angularVelocity.y = char.velocity.x / R;
+          roll.angularVelocity.x = -char.velocity.y / R;
         }
+      } else {
+        // Starved of power or 0 braking force: creature continues rolling freely!
+        roll.angularVelocity.y = char.velocity.x / R;
+        roll.angularVelocity.x = -char.velocity.y / R;
       }
 
-      // Strong angular damping on brake
-      const damp = Math.max(0, 1.0 - 15.0 * dt);
-      roll.angularVelocity.x *= damp;
-      roll.angularVelocity.y *= damp;
-      roll.angularVelocity.z *= damp;
       roll.updateOrientation(dt);
       return;
     }
@@ -140,12 +187,46 @@ export class RollMovementCapability {
         ? mod.maxSprintSpeedProp.get(char.properties)
         : mod.maxRollSpeedProp.get(char.properties);
 
-      // Check current velocity projected along input direction
-      const currentSpeedInDir = char.velocity.x * dirX + char.velocity.y * dirY;
-      if (currentSpeedInDir < maxSpeed) {
-        const addedSpeed = Math.min(accel * dt, maxSpeed - currentSpeedInDir);
-        char.velocity.x += dirX * addedSpeed;
-        char.velocity.y += dirY * addedSpeed;
+      const consumesEnergy = sprintingNow ? mod.sprintConsumesEnergy : mod.rollConsumesEnergy;
+      let powerScale = 1.0;
+
+      if (consumesEnergy && char.energyPool) {
+        const totalMass = Math.max(0.2, char.mass);
+        const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
+        const effSpeed = Math.max(2.0, Math.min(maxSpeed, curSpeed + 2.0));
+        const rawWatts = (totalMass * accel * effSpeed) / 0.25;
+        const cap = sprintingNow
+          ? mod.maxSprintPowerProp.get(char.properties)
+          : mod.maxRollPowerProp.get(char.properties);
+        const allowPartial = sprintingNow ? mod.sprintAllowPartialPower : mod.rollAllowPartialPower;
+
+        let requestedWatts = rawWatts;
+        if (requestedWatts > cap) {
+          requestedWatts = allowPartial ? cap : 0;
+        }
+
+        const abilityId = sprintingNow ? "sprint" : "roll";
+        const grantedWatts = char.energyPool.requestPower(
+          requestedWatts,
+          dt,
+          char.properties,
+          false,
+          abilityId,
+          allowPartial
+        );
+        powerScale = requestedWatts > 0 ? Math.min(1.0, grantedWatts / requestedWatts) : 0;
+      }
+
+      if (powerScale > 0.001) {
+        // Check current velocity projected along input direction
+        const currentSpeedInDir = char.velocity.x * dirX + char.velocity.y * dirY;
+        const effectiveMaxSpeed = maxSpeed * (mod.rollAllowPartialPower ? Math.max(0.2, powerScale) : 1.0);
+        if (currentSpeedInDir < effectiveMaxSpeed) {
+          const effectiveAccel = accel * powerScale;
+          const addedSpeed = Math.min(effectiveAccel * dt, effectiveMaxSpeed - currentSpeedInDir);
+          char.velocity.x += dirX * addedSpeed;
+          char.velocity.y += dirY * addedSpeed;
+        }
       }
 
       // Couple linear velocity to roll angular velocity
@@ -168,4 +249,3 @@ export class RollMovementCapability {
     roll.updateOrientation(dt);
   }
 }
-

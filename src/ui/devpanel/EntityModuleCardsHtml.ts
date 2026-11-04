@@ -391,6 +391,9 @@ export class EntityModuleCardsHtml {
             <div id="prop-socket-roll-max-speed"></div>
             <div id="prop-socket-roll-sprint-speed"></div>
             <div id="prop-socket-roll-brake-decel"></div>
+            <div id="prop-socket-roll-power-cap"></div>
+            <div id="prop-socket-roll-sprint-power-cap"></div>
+            <div id="prop-socket-roll-brake-power-cap"></div>
             ${renderToggleRow("check-roll-energy", "Roll Consumes Energy", Boolean(char.rollMovementModule.rollConsumesEnergy), "Save Roll Consumes Energy to project")}
             <div id="field-roll-partial-power" style="display: ${char.rollMovementModule.rollConsumesEnergy ? "block" : "none"}; padding-left: 8px;">
               ${renderToggleRow("check-roll-partial-power", "Allow Partial Power", Boolean(char.rollMovementModule.rollAllowPartialPower), "Save Roll Partial Power to project")}
@@ -398,6 +401,10 @@ export class EntityModuleCardsHtml {
             ${renderToggleRow("check-roll-sprint-energy", "Sprint Consumes Energy", Boolean(char.rollMovementModule.sprintConsumesEnergy), "Save Sprint Consumes Energy to project")}
             <div id="field-roll-sprint-partial-power" style="display: ${char.rollMovementModule.sprintConsumesEnergy ? "block" : "none"}; padding-left: 8px;">
               ${renderToggleRow("check-roll-sprint-partial-power", "Allow Partial Power (Sprint)", Boolean(char.rollMovementModule.sprintAllowPartialPower), "Save Sprint Partial Power to project")}
+            </div>
+            ${renderToggleRow("check-roll-brake-energy", "Brake Consumes Energy", Boolean(char.rollMovementModule.brakeConsumesEnergy), "Save Brake Consumes Energy to project")}
+            <div id="field-roll-brake-partial-power" style="display: ${char.rollMovementModule.brakeConsumesEnergy ? "block" : "none"}; padding-left: 8px;">
+              ${renderToggleRow("check-roll-brake-partial-power", "Allow Partial Power (Brake)", Boolean(char.rollMovementModule.brakeAllowPartialPower), "Save Brake Partial Power to project")}
             </div>
             </div>
           </div>
