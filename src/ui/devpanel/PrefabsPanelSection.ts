@@ -131,14 +131,17 @@ export class PrefabsPanelSection {
 
       html += `
         <div class="behavior-card" data-prefab-card-id="${prefab.id}" style="border: 1px solid rgba(168, 85, 247, 0.35); background: rgba(30, 27, 75, 0.25); margin-bottom: 10px; border-radius: 6px; padding: 10px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 4px; flex: 1;">
-              <span style="font-size: 1.0rem;">${prefab.icon}</span>
-              <input class="dev-input input-prefab-name" data-prefab-id="${prefab.id}" value="${prefab.name}" style="flex: 1; padding: 3px 6px; font-weight: 600; font-size: 0.8rem; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 4px; color: #f1f5f9;" />
-              <button class="prop-save-btn btn-save-prefab-name" data-prefab-id="${prefab.id}" title="Save Prefab Name directly to project" style="padding: 2px 6px;">💾</button>
-            </div>
-            <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;">
-              <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 0.70rem;">${liveCount} live</span>
+          <!-- Row 1: Icon and Name (Full Width) -->
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span style="font-size: 1.05rem; flex-shrink: 0;">${prefab.icon}</span>
+            <input class="dev-input input-prefab-name" data-prefab-id="${prefab.id}" value="${prefab.name}" style="flex: 1; min-width: 0; padding: 4px 8px; font-weight: 600; font-size: 0.82rem; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 4px; color: #f1f5f9;" />
+            <button class="prop-save-btn btn-save-prefab-name" data-prefab-id="${prefab.id}" title="Save Prefab Name directly to project" style="padding: 3px 8px; flex-shrink: 0;">💾</button>
+          </div>
+
+          <!-- Row 2: Live Count & Action Controls -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 4px;">
+            <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 0.70rem; padding: 2px 6px;">${liveCount} live</span>
+            <div style="display: flex; align-items: center; gap: 4px;">
               <button class="btn-secondary-action btn-save-whole-prefab" data-prefab-id="${prefab.id}" style="padding: 3px 8px; font-size: 0.72rem; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" title="Save entire prefab archetype and live instances to project">💾 Save All</button>
               <button class="btn-secondary-action btn-spawn-prefab" data-prefab-id="${prefab.id}" style="padding: 3px 8px; font-size: 0.72rem; color: #c084fc; border-color: rgba(168, 85, 247, 0.4);" title="Spawn one instance on the arena floor">➕ Spawn</button>
               <button class="btn-icon-subtle btn-delete-prefab" data-prefab-id="${prefab.id}" style="color: #f87171; padding: 3px 6px; font-size: 0.8rem;" title="Delete Prefab (unlinks live instances)">🗑️</button>
