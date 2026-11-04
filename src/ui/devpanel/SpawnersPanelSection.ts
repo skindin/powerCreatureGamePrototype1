@@ -86,20 +86,14 @@ export class SpawnersPanelSection {
     // Render placeholder cards for deleted spawners awaiting file persistence
     for (const deleted of SpawnersPanelSection.deletedSpawnersPendingSave.values()) {
       html += `
-        <div class="behavior-card deleted-spawner-placeholder" data-deleted-spawner-id="${deleted.id}" style="border: 1px dashed rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.08); margin-bottom: 10px; border-radius: 6px; padding: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-          <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: 600; font-size: 0.82rem; color: #fca5a5; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-              <span>🗑️</span>
-              <span style="text-decoration: line-through; opacity: 0.85;">${deleted.name}</span>
-              <span class="badge" style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; font-size: 0.68rem; padding: 1px 6px;">Deleted from scene</span>
-            </div>
-            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 3px;">
-              Spawner removed from active runtime. Click Save to delete from project config file so it won't reload when refreshed.
-            </div>
+        <div class="behavior-card deleted-spawner-placeholder" data-deleted-spawner-id="${deleted.id}" style="border: 1px dashed rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08); margin-bottom: 6px; border-radius: 4px; padding: 4px 8px; display: flex; justify-content: space-between; align-items: center; gap: 6px; min-height: 28px;">
+          <div style="display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <span style="font-size: 0.85rem; opacity: 0.7;">🗑️</span>
+            <span style="font-weight: 600; font-size: 0.76rem; color: #fca5a5; text-decoration: line-through; opacity: 0.85; overflow: hidden; text-overflow: ellipsis;">${deleted.name}</span>
           </div>
-          <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
-            <button class="btn-secondary-action btn-undo-delete-spawner" data-spawner-id="${deleted.id}" style="padding: 4px 8px; font-size: 0.74rem; color: #cbd5e1; border-color: rgba(148, 163, 184, 0.4);" title="Restore this spawner to scene">↩️ Undo</button>
-            <button class="btn-primary-action btn-save-delete-spawner" data-spawner-id="${deleted.id}" style="padding: 4px 10px; font-size: 0.74rem; background: #dc2626; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;" title="Save deletion to worldConfig.json so it doesn't load when refreshed">💾 Save Deletion to File</button>
+          <div style="display: flex; gap: 4px; align-items: center; flex-shrink: 0;">
+            <button class="btn-secondary-action btn-undo-delete-spawner" data-spawner-id="${deleted.id}" style="padding: 2px 6px; font-size: 0.70rem; color: #cbd5e1; border-color: rgba(148, 163, 184, 0.4);" title="Restore this spawner">↩️ Undo</button>
+            <button class="btn-primary-action btn-save-delete-spawner" data-spawner-id="${deleted.id}" style="padding: 2px 7px; font-size: 0.70rem; background: #dc2626; color: white; border: none; border-radius: 3px; font-weight: 600; cursor: pointer;" title="Delete permanently from worldConfig.json">💾 Delete from File</button>
           </div>
         </div>
       `;
@@ -210,11 +204,20 @@ export class SpawnersPanelSection {
 
     listEl.querySelectorAll(".btn-save-delete-spawner").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        const sid = (btn as HTMLElement).dataset.spawnerId!;
+        const button = btn as HTMLButtonElement;
+        const sid = button.dataset.spawnerId!;
         const item = SpawnersPanelSection.deletedSpawnersPendingSave.get(sid);
         const name = item ? item.name : sid;
-        await panel.saveSpawnerDeletion(sid, name);
-        SpawnersPanelSection.deletedSpawnersPendingSave.delete(sid);
+        button.disabled = true;
+        button.textContent = "⏳ Deleting...";
+        try {
+          await panel.saveSpawnerDeletion(sid, name);
+          SpawnersPanelSection.deletedSpawnersPendingSave.delete(sid);
+        } catch (err: any) {
+          button.disabled = false;
+          button.textContent = "💾 Delete from File";
+          panel.showSaveToast(`❌ Failed to delete spawner: ${err?.message || err}`, true);
+        }
         panel.renderSceneSpawners();
       });
     });

@@ -114,40 +114,6 @@ export class PrefabManager {
 
     this.prefabs.set(stonePrefab.id, stonePrefab);
 
-    // 🔫 "Tactical Pistol" Gun prefab: punchy semi-auto sidearm with high bullet damage & kickback
-    const pistolArchetype = new GameObject({
-      id: "archetype_pistol",
-      name: "Tactical Pistol",
-      position: { x: 0, y: 0, z: 0 },
-      color: "#475569",
-      visualShape: "box",
-      mass: 0.65,
-      colliderRadius: 0.22,
-      bounceMod: 0.15,
-      hasGravity: true,
-      hasVerticalPosition: true,
-      gunModule: new GunModule({
-        fireRate: 4.0,
-        damagePerBullet: 25.0,
-        bulletSpeed: 32.0,
-        firingSeconds: 2.0,
-        cooldownTime: 1.2,
-        cooldownDelay: 0.6,
-        bulletMass: 0.08,
-        gunLength: 0.55,
-        gunWidth: 0.22,
-        bulletColor: "#f59e0b",
-      }),
-    });
-
-    const pistolPrefab = new Prefab({
-      id: "prefab_pistol",
-      name: "Tactical Pistol",
-      icon: "🔫",
-      archetype: pistolArchetype,
-    });
-    this.prefabs.set(pistolPrefab.id, pistolPrefab);
-
     // ⚡ "Rapid Blaster" Gun prefab: high fire rate automatic blaster
     const blasterArchetype = new GameObject({
       id: "archetype_blaster",
@@ -257,25 +223,18 @@ export class PrefabManager {
    */
   public loadFromConfig(configs: SerializedPrefabConfig[]): void {
     if (!configs || !Array.isArray(configs)) return;
+    this.prefabs.clear();
     for (const cfg of configs) {
       if (!cfg || !cfg.id || !cfg.archetype) continue;
       const archetype = deserializeGameObject(cfg.archetype);
-      const existing = this.prefabs.get(cfg.id);
-      if (existing) {
-        existing.name = cfg.name;
-        if (cfg.icon) existing.icon = cfg.icon;
-        existing.archetype = archetype;
-        existing.controlSchema = cfg.controlSchema;
-      } else {
-        const prefab = new Prefab({
-          id: cfg.id,
-          name: cfg.name,
-          icon: cfg.icon,
-          archetype,
-          controlSchema: cfg.controlSchema,
-        });
-        this.prefabs.set(cfg.id, prefab);
-      }
+      const prefab = new Prefab({
+        id: cfg.id,
+        name: cfg.name,
+        icon: cfg.icon,
+        archetype,
+        controlSchema: cfg.controlSchema,
+      });
+      this.prefabs.set(cfg.id, prefab);
     }
     this.notifyChanged();
   }

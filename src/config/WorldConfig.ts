@@ -335,6 +335,7 @@ export interface WorldConfigDelta {
     deletedIds?: string[];
     replaceAll?: SerializedPrefabConfig[];
   };
+  prefabs?: SerializedPrefabConfig[];
   spawners?: SerializedSpawnerConfig[];
 }
 

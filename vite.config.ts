@@ -514,7 +514,7 @@ function autoTunnelPlugin(): Plugin {
               globalPhysics: { ...(currentConfig.globalPhysics || {}), ...(delta.globalPhysics || {}) },
               player: delta.player ? deepMerge(currentConfig.player || {}, delta.player) : currentConfig.player,
               objects: [...(currentConfig.objects || [])],
-              prefabs: currentConfig.prefabs ? [...currentConfig.prefabs] : undefined,
+              prefabs: delta.prefabs ? [...delta.prefabs] : (currentConfig.prefabs ? [...currentConfig.prefabs] : undefined),
               spawners: delta.spawners ? [...delta.spawners] : (currentConfig.spawners ? [...currentConfig.spawners] : undefined),
             };
 

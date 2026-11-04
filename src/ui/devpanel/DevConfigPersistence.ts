@@ -305,12 +305,26 @@ export class DevConfigPersistence {
       return;
     }
 
+    const objects = ((panel as any).objects as GameObject[]) || [];
+    const objectsToRemove = objects.filter((o) => o.prefabId === prefabId || o.id === prefabId);
+    for (const obj of objectsToRemove) {
+      (panel as any).onDestroyObject?.(obj);
+    }
+
+    prefabManager.delete(prefabId, objects);
+    const remainingPrefabs = prefabManager.getAll().map(serializePrefab);
+
     const delta: WorldConfigDelta = {
       clientVersion: (panel as any).currentConfigVersion,
-      sections: ["prefabs"],
+      sections: ["prefabs", "objects"],
       prefabsDelta: {
+        replaceAll: remainingPrefabs,
         deletedIds: [prefabId],
       },
+      objectsDelta: {
+        deletedIds: [prefabId, ...objectsToRemove.map((o) => o.id)],
+      },
+      prefabs: remainingPrefabs as any,
     };
 
     const resp = await fetch("/api/dev/save-config", {
@@ -325,14 +339,16 @@ export class DevConfigPersistence {
     const res = await resp.json();
     (panel as any).currentConfigVersion = res.version ?? ((panel as any).currentConfigVersion + 1);
     panel.updateDirtyBadge();
-    panel.showSaveToast(`🗑️ Saved deletion of ${prefabName} Prefab to Project file`);
+    panel.showSaveToast(`🗑️ Permanently removed ${prefabName} Prefab from project file!`);
   }
 
-  public static async saveSpawnerDeletion(panel: DevPanel, _spawnerId: string, spawnerName: string): Promise<void> {
+  public static async saveSpawnerDeletion(panel: DevPanel, spawnerId: string, spawnerName: string): Promise<void> {
     if ((panel as any).isOnlineLocked) {
       panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
       return;
     }
+
+    sceneSpawnerManager.delete(spawnerId);
 
     const delta: WorldConfigDelta = {
       clientVersion: (panel as any).currentConfigVersion,
@@ -361,7 +377,7 @@ export class DevConfigPersistence {
     (panel as any).currentConfigVersion = res.version ?? ((panel as any).currentConfigVersion + 1);
     (panel as any).dirtyState.spawners = false;
     panel.updateDirtyBadge();
-    panel.showSaveToast(`🗑️ Saved deletion of ${spawnerName} Spawner to Project file`);
+    panel.showSaveToast(`🗑️ Permanently removed ${spawnerName} Spawner from project file!`);
   }
 
     public static async saveControlSchema(
