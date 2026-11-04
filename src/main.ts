@@ -442,30 +442,13 @@ async function bootstrap(): Promise<void> {
   // Keep dev selector synced across dynamic character spawns/removals
   const joinBanner = document.createElement("div");
   joinBanner.id = "arena-join-banner";
-  joinBanner.style.cssText = `
-    position: absolute;
-    bottom: 84px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(15, 23, 42, 0.85);
-    border: 1px solid rgba(168, 85, 247, 0.4);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(8px);
-    border-radius: 9999px;
-    padding: 10px 22px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    color: #f1f5f9;
-    font-size: 0.88rem;
-    font-weight: 600;
-    pointer-events: none;
-    z-index: 50;
-    transition: opacity 0.25s ease, transform 0.25s ease;
-  `;
+
   const canvasWrapper = canvas.parentElement || document.body;
-  canvasWrapper.style.position = "relative";
-  canvasWrapper.appendChild(joinBanner);
+  if (canvasWrapper.parentElement) {
+    canvasWrapper.parentElement.insertBefore(joinBanner, canvasWrapper);
+  } else {
+    canvasWrapper.appendChild(joinBanner);
+  }
 
   const updateJoinBanner = () => {
     if (!gameLoop) return;
@@ -473,14 +456,14 @@ async function bootstrap(): Promise<void> {
     if (count === 0) {
       joinBanner.style.display = "flex";
       joinBanner.innerHTML = `
-        <span style="font-size: 1.15rem;">🎮</span>
-        <span>Press Any Key or Controller Button to Join</span>
+        <span style="font-size: 0.82rem; opacity: 0.85;">🎮</span>
+        <span style="color: #cbd5e1;">Press Any Key or Controller Button to Join</span>
       `;
     } else if (count === 1) {
       joinBanner.style.display = "flex";
       joinBanner.innerHTML = `
-        <span style="font-size: 1.15rem;">🎮</span>
-        <span>Press Any Key or Controller Button to Join Player 2</span>
+        <span style="font-size: 0.82rem; opacity: 0.85;">🎮</span>
+        <span style="color: #cbd5e1;">Press Any Key or Controller Button to Join Player 2</span>
       `;
     } else {
       joinBanner.style.display = "none";

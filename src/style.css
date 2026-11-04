@@ -950,6 +950,37 @@ body {
   box-sizing: border-box;
 }
 
+#arena-join-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 3px 0 1px;
+  color: #94a3b8;
+  font-size: 0.74rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  z-index: 20;
+  flex-shrink: 0;
+  transition: opacity 0.2s ease;
+}
+
+:fullscreen #arena-join-banner,
+:-webkit-full-screen #arena-join-banner,
+html.fullscreen-active #arena-join-banner,
+body.fullscreen-active #arena-join-banner {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+}
+
 .controls-box {
   display: inline-flex;
   align-items: center;
