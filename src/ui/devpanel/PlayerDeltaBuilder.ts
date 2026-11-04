@@ -124,6 +124,8 @@ export class PlayerDeltaBuilder {
       if (prop === owner.gunModule.cooldownTimeProp) return "gunModule.cooldownTime";
       if (prop === owner.gunModule.cooldownDelayProp) return "gunModule.cooldownDelay";
       if (prop === owner.gunModule.bulletMassProp) return "gunModule.bulletMass";
+      if (prop === owner.gunModule.turnSpeedProp) return "gunModule.turnSpeed";
+      if (prop === owner.gunModule.aimToleranceProp) return "gunModule.aimTolerance";
     }
     if (owner.damageAuraModule) {
       if (prop === owner.damageAuraModule.damageRadiusProp) return "damageAuraModule.damageRadius";

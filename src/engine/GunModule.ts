@@ -10,6 +10,8 @@ export interface GunModuleOptions {
   cooldownTime?: number;     // Time to fully cool down from overheat (seconds)
   cooldownDelay?: number;    // Wait time after last shot before cooling begins (seconds)
   bulletMass?: number;       // Mass per bullet (kg) determining recoil & knockback
+  turnSpeed?: number;        // Angular turn speed when aiming/firing (rad/s, default: 22.0)
+  aimTolerance?: number;     // Alignment angle tolerance before firing begins (rad, default: 0.15)
   gunLength?: number;        // Visual barrel length (units)
   gunWidth?: number;         // Visual barrel width (units)
   bulletColor?: string;      // Visual streak color (e.g. #f59e0b)
@@ -49,6 +51,12 @@ export class GunModule {
   /** Mass per bullet in kg (scales shooter kickback and target knockback momentum) */
   public bulletMassProp: DynamicProperty;
 
+  /** Angular turn speed in radians per second when aiming/firing gun */
+  public turnSpeedProp: DynamicProperty;
+
+  /** Alignment tolerance angle in radians before gun starts shooting */
+  public aimToleranceProp: DynamicProperty;
+
   /** Visual dimensions when held */
   public gunLength: number = 0.55;
   public gunWidth: number = 0.22;
@@ -71,6 +79,8 @@ export class GunModule {
     this.cooldownTimeProp = new DynamicProperty(options.cooldownTime ?? 1.5);
     this.cooldownDelayProp = new DynamicProperty(options.cooldownDelay ?? 0.5);
     this.bulletMassProp = new DynamicProperty(options.bulletMass ?? 0.06);
+    this.turnSpeedProp = new DynamicProperty(options.turnSpeed ?? 22.0);
+    this.aimToleranceProp = new DynamicProperty(options.aimTolerance ?? 0.15);
 
     if (options.gunLength !== undefined) this.gunLength = options.gunLength;
     if (options.gunWidth !== undefined) this.gunWidth = options.gunWidth;
@@ -99,6 +109,12 @@ export class GunModule {
   public get bulletMass(): number { return this.bulletMassProp.literalValue; }
   public set bulletMass(val: number) { this.bulletMassProp.literalValue = Math.max(0.001, val); }
 
+  public get turnSpeed(): number { return this.turnSpeedProp.literalValue; }
+  public set turnSpeed(val: number) { this.turnSpeedProp.literalValue = Math.max(0.1, val); }
+
+  public get aimTolerance(): number { return this.aimToleranceProp.literalValue; }
+  public set aimTolerance(val: number) { this.aimToleranceProp.literalValue = Math.max(0.001, val); }
+
   public getFireRate(registry?: ObjectPropertiesRegistry): number { return this.fireRateProp.get(registry); }
   public getDamagePerBullet(registry?: ObjectPropertiesRegistry): number { return this.damagePerBulletProp.get(registry); }
   public getBulletSpeed(registry?: ObjectPropertiesRegistry): number { return this.bulletSpeedProp.get(registry); }
@@ -106,6 +122,8 @@ export class GunModule {
   public getCooldownTime(registry?: ObjectPropertiesRegistry): number { return Math.max(0.1, this.cooldownTimeProp.get(registry)); }
   public getCooldownDelay(registry?: ObjectPropertiesRegistry): number { return Math.max(0.0, this.cooldownDelayProp.get(registry)); }
   public getBulletMass(registry?: ObjectPropertiesRegistry): number { return this.bulletMassProp.get(registry); }
+  public getTurnSpeed(registry?: ObjectPropertiesRegistry): number { return Math.max(0.1, this.turnSpeedProp.get(registry)); }
+  public getAimTolerance(registry?: ObjectPropertiesRegistry): number { return Math.max(0.001, this.aimToleranceProp.get(registry)); }
 
   /** Calculated Damage Per Second (DPS) */
   public get dps(): number {
@@ -175,6 +193,8 @@ export class GunModule {
       cooldownTime: this.cooldownTime,
       cooldownDelay: this.cooldownDelay,
       bulletMass: this.bulletMass,
+      turnSpeed: this.turnSpeed,
+      aimTolerance: this.aimTolerance,
       gunLength: this.gunLength,
       gunWidth: this.gunWidth,
       bulletColor: this.bulletColor,
@@ -190,6 +210,8 @@ export class GunModule {
     if (data.cooldownTime !== undefined) this.cooldownTimeProp.literalValue = data.cooldownTime;
     if (data.cooldownDelay !== undefined) this.cooldownDelayProp.literalValue = data.cooldownDelay;
     if (data.bulletMass !== undefined) this.bulletMassProp.literalValue = data.bulletMass;
+    if (data.turnSpeed !== undefined) this.turnSpeedProp.literalValue = data.turnSpeed;
+    if (data.aimTolerance !== undefined) this.aimToleranceProp.literalValue = data.aimTolerance;
     if (data.gunLength !== undefined) this.gunLength = data.gunLength;
     if (data.gunWidth !== undefined) this.gunWidth = data.gunWidth;
     if (data.bulletColor !== undefined) this.bulletColor = data.bulletColor;

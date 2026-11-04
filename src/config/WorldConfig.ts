@@ -108,6 +108,8 @@ export interface SerializedGameObjectConfig {
     cooldownTime: number;
     cooldownDelay?: number;
     bulletMass: number;
+    turnSpeed?: number;
+    aimTolerance?: number;
     gunLength?: number;
     gunWidth?: number;
     bulletColor?: string;
@@ -1109,6 +1111,8 @@ export function serializeGameObject(obj: GameObject): SerializedGameObjectConfig
       cooldownTime: obj.gunModule.cooldownTimeProp.get(obj.properties),
       cooldownDelay: obj.gunModule.cooldownDelayProp.get(obj.properties),
       bulletMass: obj.gunModule.bulletMassProp.get(obj.properties),
+      turnSpeed: obj.gunModule.turnSpeedProp.get(obj.properties),
+      aimTolerance: obj.gunModule.aimToleranceProp.get(obj.properties),
       gunLength: obj.gunModule.gunLength,
       gunWidth: obj.gunModule.gunWidth,
       bulletColor: obj.gunModule.bulletColor,
@@ -1284,6 +1288,8 @@ export function deserializeGameObject(config: SerializedGameObjectConfig): GameO
       cooldownTime: config.gunModule.cooldownTime,
       cooldownDelay: config.gunModule.cooldownDelay,
       bulletMass: config.gunModule.bulletMass,
+      turnSpeed: config.gunModule.turnSpeed,
+      aimTolerance: config.gunModule.aimTolerance,
       gunLength: config.gunModule.gunLength,
       gunWidth: config.gunModule.gunWidth,
       bulletColor: config.gunModule.bulletColor,

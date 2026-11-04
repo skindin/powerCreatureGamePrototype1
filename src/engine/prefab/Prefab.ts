@@ -315,6 +315,20 @@ export class Prefab {
           ent.gunModule.bulletMassProp.set(Number(value), ent.properties);
         }
         break;
+      case "gun_turnSpeed":
+      case "gunModule.turnSpeed":
+        if (ent.gunModule) {
+          ent.gunModule.turnSpeedProp.literalValue = Number(value);
+          ent.gunModule.turnSpeedProp.set(Number(value), ent.properties);
+        }
+        break;
+      case "gun_aimTolerance":
+      case "gunModule.aimTolerance":
+        if (ent.gunModule) {
+          ent.gunModule.aimToleranceProp.literalValue = Number(value);
+          ent.gunModule.aimToleranceProp.set(Number(value), ent.properties);
+        }
+        break;
       case "gun_gunLength":
       case "gunModule.gunLength":
         if (ent.gunModule) ent.gunModule.gunLength = Number(value);

@@ -787,6 +787,8 @@ export class EntityModuleCardsHtml {
           <div id="prop-socket-gun-cooldown-time"></div>
           <div id="prop-socket-gun-cooldown-delay"></div>
           <div id="prop-socket-gun-bullet-mass"></div>
+          <div id="prop-socket-gun-turn-speed"></div>
+          <div id="prop-socket-gun-aim-tolerance"></div>
           </div>
         </div>
       `;

@@ -233,6 +233,7 @@ export class ModularBlockEvaluator {
     let isLaserFiring = false;
     let isMeleeRequested = false;
     let isAimingTrajectory = false;
+    let isGunAimFiring = false;
     let activeRawDragThisFrame = false;
     let isSteerCursorActive = false;
 
@@ -1194,10 +1195,46 @@ export class ModularBlockEvaluator {
           );
 
           if (isHoldingGunItem && isFireSlotActive && execCtx.arena) {
-            isUsingItem = true;
-            (char as any).isFiringWeapon = true;
+            isGunAimFiring = true;
+            const gun = char.heldObject!.gunModule!;
             const effAim = getEffectiveAimPos();
-            BulletManager.getInstance().fireBullet(char, char.heldObject!.gunModule!, effAim, execCtx.arena);
+            const aimDx = effAim.x - char.position.x;
+            const aimDy = effAim.y - char.position.y;
+            const targetAimAngle = Math.hypot(aimDx, aimDy) > 0.05
+              ? Math.atan2(aimDy, aimDx)
+              : (char.facingAngle ?? 0);
+
+            // Compute signed shortest angular difference to target
+            const currentAngle = char.facingAngle ?? 0;
+            let angleDiff = targetAimAngle - currentAngle;
+            angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+
+            // Rotate character smoothly toward target at gun turn speed
+            const turnSpeed = gun.getTurnSpeed ? gun.getTurnSpeed(char.properties) : gun.turnSpeed;
+            const dt = execCtx.dt || (1 / 60);
+            const maxStep = (turnSpeed > 0 ? turnSpeed : 22.0) * dt;
+
+            if (Math.abs(angleDiff) <= maxStep) {
+              char.facingAngle = targetAimAngle;
+              angleDiff = 0;
+            } else {
+              char.facingAngle = currentAngle + Math.sign(angleDiff) * maxStep;
+              angleDiff = targetAimAngle - char.facingAngle;
+              angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+            }
+
+            // Only fire bullet once character is facing the right way (within alignment tolerance)
+            const tolerance = gun.getAimTolerance ? gun.getAimTolerance(char.properties) : gun.aimTolerance;
+            const isFacingRightWay = Math.abs(angleDiff) <= (tolerance > 0 ? tolerance : 0.15);
+
+            if (isFacingRightWay) {
+              isUsingItem = true;
+              (char as any).isFiringWeapon = true;
+              BulletManager.getInstance().fireBullet(char, gun, effAim, execCtx.arena);
+            } else {
+              isUsingItem = false;
+              (char as any).isFiringWeapon = false;
+            }
             claimSlot(b.fireWeapon, b.id, "gun.fire", false);
           } else {
             (char as any).isFiringWeapon = false;
@@ -1207,6 +1244,10 @@ export class ModularBlockEvaluator {
 
         case "facing": {
           const b = block as FacingControlBlock;
+          // When actively aiming and shooting a gun, preserve the gun aim facing angle
+          if (isGunAimFiring) {
+            break;
+          }
           // Right stick MUST NOT control direction anywhere
           // Left stick should not change character direction when moving cursor
           if (isSteerCursorActive || char.isSteeringCursor) {
@@ -1252,11 +1293,13 @@ export class ModularBlockEvaluator {
     char.isLaserFiring = isLaserFiring;
     char.isMeleeRequested = isMeleeRequested;
 
-    // Face toward aim target if aiming trajectory, laser, or melee:
+    // Face toward aim target if aiming trajectory, laser, melee, or gun:
     // In Cursor Mode (or Mouse/Keyboard): character faces towards cursor.
     // In Raw Direction Mode on Gamepad: character strictly maintains stick-directed facing angle.
-    if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory) {
-      if (isSteerCursorActive || char.isSteeringCursor) {
+    if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory || isGunAimFiring) {
+      if (isGunAimFiring) {
+        // Facing angle was oriented towards shooting target with turn speed in the item block
+      } else if (isSteerCursorActive || char.isSteeringCursor) {
         const aimDx = targetAimPos.x - char.position.x;
         const aimDy = targetAimPos.y - char.position.y;
         if (Math.hypot(aimDx, aimDy) > 0.05) {
@@ -1290,7 +1333,7 @@ export class ModularBlockEvaluator {
       char.isSprinting = false;
     }
 
-    const isAiming = !isEditMode && (isLaserAiming || isAimingTrajectory);
+    const isAiming = !isEditMode && (isLaserAiming || isAimingTrajectory || isGunAimFiring);
     const kLaunchVel = isThrow && char.activeTrajectory?.launchVel ? char.activeTrajectory.launchVel : undefined;
     const kLaunchPos = isThrow && char.activeTrajectory?.launchPos ? char.activeTrajectory.launchPos : undefined;
 

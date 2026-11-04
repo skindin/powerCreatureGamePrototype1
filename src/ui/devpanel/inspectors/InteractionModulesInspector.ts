@@ -338,6 +338,34 @@ export class InteractionModulesInspector {
         });
         massSocketEl.appendChild(ctrl.element);
       }
+
+      const turnSpeedSocketEl = container.querySelector("#prop-socket-gun-turn-speed");
+      if (turnSpeedSocketEl) {
+        const ctrl = new PropertyControl({
+          property: gm.turnSpeedProp,
+          owner: e,
+          label: "Aim Turn Speed (rad/s)",
+          step: 1.0,
+          onUserChange: () => {
+            if (!(e instanceof Character)) panel.markDirty("objects", e);
+          },
+        });
+        turnSpeedSocketEl.appendChild(ctrl.element);
+      }
+
+      const aimToleranceSocketEl = container.querySelector("#prop-socket-gun-aim-tolerance");
+      if (aimToleranceSocketEl) {
+        const ctrl = new PropertyControl({
+          property: gm.aimToleranceProp,
+          owner: e,
+          label: "Aim Tolerance to Fire (rad)",
+          step: 0.01,
+          onUserChange: () => {
+            if (!(e instanceof Character)) panel.markDirty("objects", e);
+          },
+        });
+        aimToleranceSocketEl.appendChild(ctrl.element);
+      }
     }
   }
 }
