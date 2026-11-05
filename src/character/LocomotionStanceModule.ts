@@ -23,6 +23,11 @@ export class LocomotionStanceModule {
    * Off by default: when off, walking cannot engage while the creature is rolling/gliding with momentum.
    */
   public canWalkWhileRolling: boolean = false;
+  /**
+   * Runtime flag: true once the character has stopped rolling and engaged walk mode,
+   * keeping RollModule disabled until switching back out of walk mode.
+   */
+  public isRollDisabledByWalkStance: boolean = false;
 
   constructor(options?: LocomotionStanceModuleOptions) {
     if (options?.enabled !== undefined) this.enabled = options.enabled;
@@ -39,6 +44,9 @@ export class LocomotionStanceModule {
       this.supportedModes.push(mode);
     }
     this.activeMode = mode;
+    if (mode !== "walk") {
+      this.isRollDisabledByWalkStance = false;
+    }
     return true;
   }
 
@@ -50,6 +58,9 @@ export class LocomotionStanceModule {
     const curIdx = this.supportedModes.indexOf(this.activeMode);
     const nextIdx = (curIdx + 1) % this.supportedModes.length;
     this.activeMode = this.supportedModes[nextIdx];
+    if (this.activeMode !== "walk") {
+      this.isRollDisabledByWalkStance = false;
+    }
     return this.activeMode;
   }
 }

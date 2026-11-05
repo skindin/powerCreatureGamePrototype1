@@ -566,7 +566,7 @@ export class EntityModuleLifecycle {
       case "roll":
         if (src.rollModule) {
           if (!dest.rollModule) dest.rollModule = new RollModule();
-          dest.rollModule.enabled = src.rollModule.enabled;
+          dest.rollModule.enabled = src.rollModule.enabled || Boolean(srcChar?.locomotionStanceModule?.isRollDisabledByWalkStance);
           dest.rollModule.rollResistanceProp.set(src.rollModule.rollResistanceProp.get(src.properties), dest.properties);
           dest.rollModule.bumpyRollEnabled = src.rollModule.bumpyRollEnabled;
           dest.rollModule.bumpinessProp.set(src.rollModule.bumpinessProp.get(src.properties), dest.properties);

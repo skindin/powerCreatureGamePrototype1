@@ -677,6 +677,12 @@ export class Character extends GameObject {
     if (mode === "walk") {
       canWalk = LocomotionCapability.registerDemand(this, movementInput);
     } else if (mode === "roll") {
+      if (this.locomotionStanceModule?.isRollDisabledByWalkStance) {
+        this.locomotionStanceModule.isRollDisabledByWalkStance = false;
+        if (this.rollModule) {
+          this.rollModule.enabled = true;
+        }
+      }
       if (this.rollMovementModule) {
         RollMovementCapability.registerDemand(this, movementInput, this.isBraking, this.isSprinting);
       }
@@ -694,6 +700,9 @@ export class Character extends GameObject {
 
     if (mode === "walk") {
       LocomotionCapability.actuate(this, canWalk, movementInput, dt, arena);
+      if (!canWalk && this.locomotionStanceModule && !this.locomotionStanceModule.isRollDisabledByWalkStance && this.rollMovementModule) {
+        RollMovementCapability.actuate(this, { x: 0, y: 0 }, this.isBraking, false, dt, arena);
+      }
     } else if (mode === "roll") {
       if (this.rollMovementModule) {
         RollMovementCapability.actuate(this, movementInput, this.isBraking, this.isSprinting, dt, arena);

@@ -760,7 +760,7 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
   if (char.rollModule) {
     result.hasRollModule = true;
     result.rollModule = {
-      enabled: char.rollModule.enabled,
+      enabled: char.rollModule.enabled || Boolean(char.locomotionStanceModule?.isRollDisabledByWalkStance),
       rollResistance: char.rollModule.rollResistanceProp.get(char.properties),
       bumpyRollEnabled: char.rollModule.bumpyRollEnabled,
       bumpiness: char.rollModule.bumpinessProp.get(char.properties),
