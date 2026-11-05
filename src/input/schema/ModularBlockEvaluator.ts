@@ -1156,16 +1156,19 @@ export class ModularBlockEvaluator {
             (char as any)._throwRequiresFreshPress = true;
             break;
           }
-          if (!execCtx.isHoldingItem) {
+          if (!char.heldObject) {
             if (char.grappledTarget) {
               const shoveTrigger = b.chargeTrigger ?? b.quickTrigger ?? b.aimTrigger ?? b.fireTrigger;
-              if (isSlotActive(shoveTrigger, "down", true, b.id, "throw.shove")) {
+              const pickupCode = (char as any)._pickupPressCode;
+              const isPickupCodeActive = pickupCode && (tokens.isDown(pickupCode) || isButtonCodePhysicallyDown(pickupCode));
+              if (!isPickupCodeActive && shoveTrigger && isSlotActive(shoveTrigger, "down", true, b.id, "throw.shove")) {
                 const aimAngle = (targetAimPos.x !== char.position.x || targetAimPos.y !== char.position.y)
                   ? Math.atan2(targetAimPos.y - char.position.y, targetAimPos.x - char.position.x)
                   : char.facingAngle;
                 GrappleCapability.executeShove(char, aimAngle);
                 claimSlot(shoveTrigger, b.id, "throw.shove", true);
-                isThrow = true;
+                (char as any)._isConsumeToggledOn = false;
+                (char as any)._toggledConsumeItemId = null;
               }
             }
             char.isChargingThrow = false;
@@ -1608,9 +1611,10 @@ export class ModularBlockEvaluator {
           // Consume / Eat / Primary Item Ability (Default: "toggle" mode; can be configured to "hold")
           const isToggleMode = b.consumeMode !== "hold" && (b.consume as any)?.mode !== "hold";
           const canConsumeHeld = Boolean(
-            execCtx.heldItemIsEdible ||
-            execCtx.heldItemHasPrimaryAbility ||
-            (activeConsumableTarget && char.hasPrimaryItemAbility?.())
+            (execCtx.isHoldingItem || Boolean(char.grappledTarget)) &&
+            (execCtx.heldItemIsEdible ||
+              execCtx.heldItemHasPrimaryAbility ||
+              (activeConsumableTarget && char.hasPrimaryItemAbility?.()))
           );
 
           if (isToggleMode) {

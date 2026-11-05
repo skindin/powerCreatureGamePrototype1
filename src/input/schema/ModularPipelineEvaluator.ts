@@ -321,13 +321,13 @@ export class ModularPipelineEvaluator {
               }
               break;
             case "consume.bite":
-              if (execCtx.isHoldingItem && (execCtx.heldItemIsEdible || execCtx.heldItemHasPrimaryAbility)) {
+              if ((execCtx.isHoldingItem || Boolean(execCtx.character.grappledTarget)) && (execCtx.heldItemIsEdible || execCtx.heldItemHasPrimaryAbility)) {
                 isUsingItem = true;
                 claimAll("consume.bite");
               }
               break;
             case "pickup.grab":
-              if (!execCtx.isHoldingItem && execCtx.targetInReach) {
+              if (!execCtx.isHoldingItem && !execCtx.character.grappledTarget && execCtx.targetInReach) {
                 isGrabHeld = true;
                 consumeAll("pickup.grab");
               }

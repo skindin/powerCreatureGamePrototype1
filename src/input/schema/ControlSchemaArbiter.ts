@@ -149,10 +149,10 @@ export class ControlSchemaArbiter {
         break;
       case "holdingItemWithPrimaryAbility":
       case "holdingEdible":
-        result = ctx.isHoldingItem && Boolean(ctx.heldItemHasPrimaryAbility ?? ctx.heldItemIsEdible);
+        result = (ctx.isHoldingItem || Boolean(ctx.character?.grappledTarget)) && Boolean(ctx.heldItemHasPrimaryAbility ?? ctx.heldItemIsEdible);
         break;
       case "emptyHanded":
-        result = !ctx.isHoldingItem;
+        result = !ctx.isHoldingItem && !ctx.character?.grappledTarget;
         break;
       case "targetInReach":
         result = ctx.targetInReach !== null;
@@ -743,7 +743,7 @@ export class ControlSchemaArbiter {
 
     // 5. Item Ability / Consume Channel
     let isUsingItem = false;
-    const canUseItem = execCtx.isHoldingItem && (execCtx.heldItemIsEdible || execCtx.heldItemHasPrimaryAbility);
+    const canUseItem = (execCtx.isHoldingItem || Boolean(execCtx.character.grappledTarget)) && (execCtx.heldItemIsEdible || execCtx.heldItemHasPrimaryAbility);
     if (canUseItem && channels.consume.enabled) {
       const code = channels.consume.trigger.code;
       if (tokens.canExecute(code, channels.consume.claimPolicy, "consume")) {
@@ -810,7 +810,7 @@ export class ControlSchemaArbiter {
     let isSwap = false;
     if (channels.interaction.enabled) {
       const code = channels.interaction.trigger.code;
-      if (!execCtx.isHoldingItem) {
+      if (!execCtx.isHoldingItem && !execCtx.character.grappledTarget) {
         // Empty handed pickup: requires clean press so held buttons don't accidentally grab
         if (tokens.canExecute(code, channels.interaction.claimPolicy, "interact") && execCtx.targetInReach) {
           tokens.claim(code, "interact");

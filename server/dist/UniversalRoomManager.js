@@ -19658,7 +19658,7 @@ const _ControlSchemaArbiter = class _ControlSchemaArbiter {
     return conds.every((cond) => this.evaluateCondition(cond, ctx, rule));
   }
   static evaluateCondition(cond, ctx, _rule) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g;
     let result = false;
     switch (cond.type) {
       case "group": {
@@ -19687,17 +19687,17 @@ const _ControlSchemaArbiter = class _ControlSchemaArbiter {
         break;
       case "holdingItemWithPrimaryAbility":
       case "holdingEdible":
-        result = ctx.isHoldingItem && Boolean(ctx.heldItemHasPrimaryAbility ?? ctx.heldItemIsEdible);
+        result = (ctx.isHoldingItem || Boolean((_a = ctx.character) == null ? void 0 : _a.grappledTarget)) && Boolean(ctx.heldItemHasPrimaryAbility ?? ctx.heldItemIsEdible);
         break;
       case "emptyHanded":
-        result = !ctx.isHoldingItem;
+        result = !ctx.isHoldingItem && !((_b = ctx.character) == null ? void 0 : _b.grappledTarget);
         break;
       case "targetInReach":
         result = ctx.targetInReach !== null;
         break;
       case "stagedActionIs": {
         const group = cond.stageGroup || "default";
-        const current = ((_a = ctx.character) == null ? void 0 : _a.getStage) ? ctx.character.getStage(group) : ((_b = ctx.stagedActions) == null ? void 0 : _b[group]) ?? (group === "default" ? ctx.stagedAction : "none") ?? "none";
+        const current = ((_c = ctx.character) == null ? void 0 : _c.getStage) ? ctx.character.getStage(group) : ((_d = ctx.stagedActions) == null ? void 0 : _d[group]) ?? (group === "default" ? ctx.stagedAction : "none") ?? "none";
         const expected = cond.param || "none";
         result = current === expected;
         break;
@@ -19720,9 +19720,9 @@ const _ControlSchemaArbiter = class _ControlSchemaArbiter {
         if (cond.param && ctx.schema) {
           const mode = cond.type === "tagHeld" ? "hold" : cond.type === "tagPressed" ? "press" : "release";
           const tags = [
-            ...((_c = ctx.schema.keyboardMouse) == null ? void 0 : _c.tags) ?? [],
-            ...((_d = ctx.schema.gamepad) == null ? void 0 : _d.tags) ?? [],
-            ...((_e = ctx.schema.touch) == null ? void 0 : _e.tags) ?? []
+            ...((_e = ctx.schema.keyboardMouse) == null ? void 0 : _e.tags) ?? [],
+            ...((_f = ctx.schema.gamepad) == null ? void 0 : _f.tags) ?? [],
+            ...((_g = ctx.schema.touch) == null ? void 0 : _g.tags) ?? []
           ];
           const tag = tags.find((t) => t.id === cond.param || t.name === cond.param);
           if (tag) {
@@ -20208,7 +20208,7 @@ const _ControlSchemaArbiter = class _ControlSchemaArbiter {
       }
     }
     let isUsingItem = false;
-    const canUseItem = execCtx.isHoldingItem && (execCtx.heldItemIsEdible || execCtx.heldItemHasPrimaryAbility);
+    const canUseItem = (execCtx.isHoldingItem || Boolean(execCtx.character.grappledTarget)) && (execCtx.heldItemIsEdible || execCtx.heldItemHasPrimaryAbility);
     if (canUseItem && channels.consume.enabled) {
       const code = channels.consume.trigger.code;
       if (tokens.canExecute(code, channels.consume.claimPolicy, "consume")) {
@@ -20266,7 +20266,7 @@ const _ControlSchemaArbiter = class _ControlSchemaArbiter {
     let isSwap = false;
     if (channels.interaction.enabled) {
       const code = channels.interaction.trigger.code;
-      if (!execCtx.isHoldingItem) {
+      if (!execCtx.isHoldingItem && !execCtx.character.grappledTarget) {
         if (tokens.canExecute(code, channels.interaction.claimPolicy, "interact") && execCtx.targetInReach) {
           tokens.claim(code, "interact");
           isGrabHeld = true;

@@ -757,7 +757,7 @@ export class PlayerManager {
     if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
       const kSchema = ControlsInspector.getActiveSchema(kChar);
-      const isHolding = kChar.heldObject !== null || kChar.grappledTarget !== null;
+      const isHolding = kChar.heldObject !== null;
       const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject ? kChar.canConsumeHeldObject() : false);
 
       // Target discovery in reach for pickup or swap
@@ -1078,7 +1078,7 @@ export class PlayerManager {
 
       const cChar = entry.character;
       const gpSchema = ControlsInspector.getActiveSchema(cChar);
-      const isCharHolding = cChar.heldObject !== null || cChar.grappledTarget !== null;
+      const isCharHolding = cChar.heldObject !== null;
       const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject ? cChar.canConsumeHeldObject() : false);
 
       let aimX = slot.aimPos.x;
@@ -1411,15 +1411,6 @@ export class PlayerManager {
         }
         if (currentHeldId) {
           if (prevHeldId === null) {
-            // Newly picked up: suppress eating if primary feature button was held during pickup
-            const gState = this.getGrabSuppressionState(char.id);
-            const isButtonHeld = this.inputManager.isMouseDown ||
-              this.inputManager.isRightMouseDown ||
-              this.inputManager.justPickedUp ||
-              (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
-            if (isButtonHeld) {
-              gState.useItemSuppressed = true;
-            }
             char.isUsingItem = false;
             (char as any)._isConsumeToggledOn = false;
             (char as any)._toggledConsumeItemId = null;
@@ -1446,8 +1437,6 @@ export class PlayerManager {
                 spawner.verticalVelocity = 0;
                 char.pickupModule.pickup(char, clone);
                 this.lastHeldObjectIds.set(char.id, clone.id);
-                const gState = this.getGrabSuppressionState(char.id);
-                gState.useItemSuppressed = true;
                 char.isUsingItem = false;
                 char.eatRateWatts = 0;
               }
@@ -1474,7 +1463,7 @@ export class PlayerManager {
 
       // Primary Item Ability: Actuates held or grappled object's primary ability (e.g. consuming for consumables)
       const grabState = this.getGrabSuppressionState(char.id);
-      const isUsingItem = Boolean((pkt as any).isUsingItem) && !grabState.useItemSuppressed;
+      const isUsingItem = Boolean((pkt as any).isUsingItem);
       const activeConsumable = char.heldObject || char.grappledTarget;
       if (isUsingItem && activeConsumable && char.hasPrimaryItemAbility()) {
         char.isUsingItem = true;
@@ -1715,14 +1704,6 @@ export class PlayerManager {
                   const idx = objects.indexOf(itemToHold);
                   if (idx !== -1) objects.splice(idx, 1);
                 } else if (result.success) {
-                  const gState = this.getGrabSuppressionState(char.id);
-                  const isButtonHeld = this.inputManager.isMouseDown ||
-                    this.inputManager.isRightMouseDown ||
-                    this.inputManager.justPickedUp ||
-                    (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
-                  if (isButtonHeld) {
-                    gState.useItemSuppressed = true;
-                  }
                   this.lastHeldObjectIds.set(char.id, itemToHold.id);
                   char.isUsingItem = false;
                   char.eatRateWatts = 0;
@@ -1770,14 +1751,6 @@ export class PlayerManager {
                   const idx = objects.indexOf(clone);
                   if (idx !== -1) objects.splice(idx, 1);
                 } else {
-                  const gState = this.getGrabSuppressionState(char.id);
-                  const isButtonHeld = this.inputManager.isMouseDown ||
-                    this.inputManager.isRightMouseDown ||
-                    this.inputManager.justPickedUp ||
-                    (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
-                  if (isButtonHeld) {
-                    gState.useItemSuppressed = true;
-                  }
                   this.lastHeldObjectIds.set(char.id, clone.id);
                   char.isUsingItem = false;
                   char.eatRateWatts = 0;
@@ -1795,14 +1768,6 @@ export class PlayerManager {
               const pickedUp = char.pickupModule ? char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y) : false;
               const held = char.heldObject as GameObject | null;
               if (pickedUp && held) {
-                const gState = this.getGrabSuppressionState(char.id);
-                const isButtonHeld = this.inputManager.isMouseDown ||
-                  this.inputManager.isRightMouseDown ||
-                  this.inputManager.justPickedUp ||
-                  (entry?.slotIndex !== undefined && (this.inputManager.gamepadSlots.get(entry.slotIndex)?.rtHeld ?? false));
-                if (isButtonHeld) {
-                  gState.useItemSuppressed = true;
-                }
                 this.lastHeldObjectIds.set(char.id, held.id);
                 char.isUsingItem = false;
                 char.eatRateWatts = 0;
