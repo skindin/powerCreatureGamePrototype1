@@ -380,7 +380,10 @@ export interface VomitControlBlock {
   id: string;
   name?: string;
   enabled: boolean;
-  vomit?: BlockInputSlot;
+  stageTrigger?: BlockInputSlot; // Hold button to stage Throw Up attack and display ballistic aim trajectory (e.g. AltLeft)
+  aimTrigger?: BlockInputSlot;   // Alias for stageTrigger
+  fireTrigger?: BlockInputSlot;  // Button pressed while staging to execute Throw Up attack (e.g. MouseLeft)
+  vomit?: BlockInputSlot;        // Alias / fallback trigger for fireTrigger
 }
 
 export interface LaserControlBlock {

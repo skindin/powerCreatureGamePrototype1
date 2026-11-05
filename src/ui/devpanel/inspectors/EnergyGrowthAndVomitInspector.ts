@@ -170,21 +170,29 @@ export class EnergyGrowthAndVomitInspector {
             </button>
           </div>
         </div>
+
+        <button type="button" id="btn-eg-save-prefab" class="btn-secondary-action" style="width: 100%; padding: 5px 8px; font-size: 0.74rem; font-weight: 600; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">
+          💾 Save Scale With Energy Settings to Prefab
+        </button>
       </div>
     `;
 
-    const saveGrowth = () => {
+    const applyLiveGrowth = () => {
       EnergyGrowthCapability.tick(char);
       panel.markDirty("player", char);
-      void panel.saveModuleToPrefab("energyGrowth");
     };
+
+    const btnSavePrefab = root.querySelector("#btn-eg-save-prefab") as HTMLButtonElement | null;
+    btnSavePrefab?.addEventListener("click", () => {
+      void panel.saveModuleToPrefab("energyGrowth");
+    });
 
     const minInput = root.querySelector("#input-eg-min-mult") as HTMLInputElement | null;
     minInput?.addEventListener("change", () => {
       const val = parseFloat(minInput.value);
       if (Number.isFinite(val) && val > 0) {
         eg.minScaleMultiplier = val;
-        saveGrowth();
+        applyLiveGrowth();
       }
     });
 
@@ -193,7 +201,7 @@ export class EnergyGrowthAndVomitInspector {
       const val = parseFloat(startInput.value);
       if (Number.isFinite(val) && val > 0) {
         eg.startingScaleMultiplier = val;
-        saveGrowth();
+        applyLiveGrowth();
         this.renderAndBindEnergyGrowth(panel, root, char);
       }
     });
@@ -203,7 +211,7 @@ export class EnergyGrowthAndVomitInspector {
       const val = parseFloat(maxInput.value);
       if (Number.isFinite(val) && val > 0) {
         eg.maxScaleMultiplier = val;
-        saveGrowth();
+        applyLiveGrowth();
       }
     });
 
@@ -213,7 +221,7 @@ export class EnergyGrowthAndVomitInspector {
         const frac = eg.getStartingEnergyFraction();
         const maxE = char.energyPool.getMaxEnergy(char.properties);
         char.energyPool.setCurrentEnergy(frac * maxE, char.properties);
-        saveGrowth();
+        applyLiveGrowth();
         panel.updateInspector();
       }
     });
@@ -221,25 +229,35 @@ export class EnergyGrowthAndVomitInspector {
     const chkMass = root.querySelector("#chk-eg-scale-mass") as HTMLInputElement | null;
     chkMass?.addEventListener("change", () => {
       eg.scaleMass = chkMass.checked;
-      saveGrowth();
+      if (!eg.scaleMass && eg.baseValues["mass"] !== undefined) {
+        char.mass = eg.baseValues["mass"];
+      }
+      applyLiveGrowth();
     });
 
     const chkCol = root.querySelector("#chk-eg-scale-collider") as HTMLInputElement | null;
     chkCol?.addEventListener("change", () => {
       eg.scaleCollider = chkCol.checked;
-      saveGrowth();
+      if (!eg.scaleCollider && eg.baseValues["colliderRadius"] !== undefined) {
+        char.colliderRadius = eg.baseValues["colliderRadius"];
+        if (char.colliderModule) char.colliderModule.radius = eg.baseValues["colliderRadius"];
+      }
+      applyLiveGrowth();
     });
 
     const chkSprite = root.querySelector("#chk-eg-scale-sprite") as HTMLInputElement | null;
     chkSprite?.addEventListener("change", () => {
       eg.scaleSprite = chkSprite.checked;
-      saveGrowth();
+      applyLiveGrowth();
     });
 
     const chkReach = root.querySelector("#chk-eg-scale-reach") as HTMLInputElement | null;
     chkReach?.addEventListener("change", () => {
       eg.autoScaleReachWithCollider = chkReach.checked;
-      saveGrowth();
+      if (!eg.autoScaleReachWithCollider && eg.baseValues["pickupReach"] !== undefined && char.pickupModule) {
+        char.pickupModule.pickupReachProp.set(eg.baseValues["pickupReach"], char.properties);
+      }
+      applyLiveGrowth();
     });
 
     root.querySelectorAll(".select-eg-curve").forEach((sel) => {
@@ -250,7 +268,7 @@ export class EnergyGrowthAndVomitInspector {
           const val = (sel as HTMLSelectElement).value as GrowthCurveMode;
           rule.curveMode = val;
           rule.curve = val;
-          saveGrowth();
+          applyLiveGrowth();
           this.renderAndBindEnergyGrowth(panel, root, char);
         }
       });
@@ -263,7 +281,7 @@ export class EnergyGrowthAndVomitInspector {
         const val = parseFloat((inp as HTMLInputElement).value);
         if (rule && Number.isFinite(val)) {
           rule.rateMultiplier = val;
-          saveGrowth();
+          applyLiveGrowth();
         }
       });
     });
@@ -275,7 +293,7 @@ export class EnergyGrowthAndVomitInspector {
         const val = parseFloat((inp as HTMLInputElement).value);
         if (rule && Number.isFinite(val)) {
           rule.customExponent = val;
-          saveGrowth();
+          applyLiveGrowth();
         }
       });
     });
@@ -286,9 +304,12 @@ export class EnergyGrowthAndVomitInspector {
         const removed = eg.scaledProperties.splice(idx, 1)[0];
         const rKey = removed?.propertyKey || removed?.key;
         if (rKey && eg.baseValues[rKey] !== undefined) {
-          EnergyGrowthCapability.tick(char);
+          const propDef = availableProps.find((p) => p.key === rKey);
+          if (propDef) {
+            propDef.applyValue(char, eg.baseValues[rKey]);
+          }
         }
-        saveGrowth();
+        applyLiveGrowth();
         this.renderAndBindEnergyGrowth(panel, root, char);
       });
     });
@@ -309,7 +330,7 @@ export class EnergyGrowthAndVomitInspector {
         customExponent: 1.0,
         rateMultiplier: 1.0,
       });
-      saveGrowth();
+      applyLiveGrowth();
       this.renderAndBindEnergyGrowth(panel, root, char);
     });
   }
@@ -364,7 +385,6 @@ export class EnergyGrowthAndVomitInspector {
     colorInput?.addEventListener("change", () => {
       vm.globColor = colorInput.value;
       panel.markDirty("player", char);
-      void panel.saveModuleToPrefab("vomit");
     });
 
     const btnTest = root.querySelector("#btn-test-vomit") as HTMLButtonElement | null;

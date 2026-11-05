@@ -236,6 +236,7 @@ export class ModularBlockEvaluator {
     let isLaserAiming = false;
     let isLaserFiring = false;
     let isMeleeRequested = false;
+    let isVomitAiming = false;
     let isVomitRequested = false;
     let isAimingTrajectory = false;
     let isGunAimFiring = false;
@@ -324,6 +325,41 @@ export class ModularBlockEvaluator {
           isLaserFiring = true;
         } else if (isSlotActive(laserBlock.fireTrigger, "hold", false, laserBlock.id, "laser.fire")) {
           isLaserFiring = true;
+        }
+      }
+    }
+
+    // Pre-evaluate Throw Up (vomit) staging & firing state
+    const hasVomitCapability = Boolean(char.vomitModule && char.vomitModule.enabled);
+    const vomitBlock = hasVomitCapability
+      ? (blocks.find((blk) => blk.enabled && blk.type === "vomit") as VomitControlBlock | undefined)
+      : undefined;
+
+    if (vomitBlock) {
+      const stageSlot = vomitBlock.stageTrigger || vomitBlock.aimTrigger;
+      const fireSlot = vomitBlock.fireTrigger || vomitBlock.vomit;
+      if (stageSlot?.code) {
+        if (isSlotActive(stageSlot, "hold", false, vomitBlock.id, "vomit.stage")) {
+          isVomitAiming = true;
+          claimSlot(stageSlot, vomitBlock.id, "vomit.stage", false);
+          if (!isLaserFiring) {
+            isLaserAiming = false;
+          }
+        }
+        if (isVomitAiming && fireSlot?.code) {
+          const reqClean = fireSlot.requireCleanPress !== false;
+          if (isSlotActive(fireSlot, reqClean ? "down" : "hold", reqClean, vomitBlock.id, "vomit.expel")) {
+            isVomitRequested = true;
+            claimSlot(fireSlot, vomitBlock.id, "vomit.expel", reqClean);
+          } else if (tokens.isDown(fireSlot.code)) {
+            claimSlot(fireSlot, vomitBlock.id, "vomit.stageHold", false);
+          }
+        }
+      } else if (fireSlot?.code) {
+        const reqClean = fireSlot.requireCleanPress === true;
+        if (isSlotActive(fireSlot, reqClean ? "down" : "hold", reqClean, vomitBlock.id, "vomit.expel")) {
+          isVomitRequested = true;
+          claimSlot(fireSlot, vomitBlock.id, "vomit.expel", reqClean);
         }
       }
     }
@@ -730,13 +766,16 @@ export class ModularBlockEvaluator {
 
         case "vomit": {
           const b = block as VomitControlBlock;
-          if (isLaserAiming || isLaserFiring) {
+          if (isLaserAiming || isLaserFiring || !char.vomitModule || !char.vomitModule.enabled) {
             break;
           }
-          const requireClean = b.vomit?.requireCleanPress === true;
-          if (isSlotActive(b.vomit, requireClean ? "down" : "hold", requireClean, b.id, "vomit.expel")) {
-            isVomitRequested = true;
-            claimSlot(b.vomit, b.id, "vomit.expel", requireClean);
+          const stageSlot = b.stageTrigger || b.aimTrigger;
+          const fireSlot = b.fireTrigger || b.vomit;
+          if (isVomitAiming && stageSlot?.code) {
+            claimSlot(stageSlot, b.id, "vomit.stage", false);
+          }
+          if (isVomitRequested && fireSlot?.code) {
+            claimSlot(fireSlot, b.id, "vomit.expel", fireSlot.requireCleanPress !== false);
           }
           break;
         }
@@ -767,12 +806,14 @@ export class ModularBlockEvaluator {
 
         case "throw": {
           const b = block as ThrowControlBlock;
-          if (isLaserAiming || isLaserFiring) {
+          if (isLaserAiming || isLaserFiring || isVomitAiming) {
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
             char.isHoldingThrowRelease = false;
             char.isTriggerPullThrowing = false;
-            char.activeTrajectory = null;
+            if (!isVomitAiming) {
+              char.activeTrajectory = null;
+            }
             (char as any)._throwRequiresFreshPress = true;
             break;
           }
@@ -1442,16 +1483,21 @@ export class ModularBlockEvaluator {
     }
 
     // Sync character intent states
+    const wasVomitAiming = Boolean(char.isVomitAiming);
     char.isAimingTrajectory = isAimingTrajectory;
     char.isLaserAiming = isLaserAiming;
     char.isLaserFiring = isLaserFiring;
     char.isMeleeRequested = isMeleeRequested;
+    char.isVomitAiming = isVomitAiming;
     char.isVomitRequested = isVomitRequested;
+    if (wasVomitAiming && !isVomitAiming && !isAimingTrajectory) {
+      char.activeTrajectory = null;
+    }
 
-    // Face toward aim target if aiming trajectory, laser, melee, or gun:
+    // Face toward aim target if aiming trajectory, laser, vomit, melee, or gun:
     // In Cursor Mode (or Mouse/Keyboard): character faces towards cursor.
     // In Raw Direction Mode on Gamepad: character strictly maintains stick-directed facing angle.
-    if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory || isGunAimFiring) {
+    if (isLaserAiming || isLaserFiring || isVomitAiming || isMeleeRequested || isAimingTrajectory || isGunAimFiring) {
       if (isGunAimFiring) {
         const effAim = getEffectiveAimPos();
         const aimDx = effAim.x - char.position.x;
@@ -1493,7 +1539,7 @@ export class ModularBlockEvaluator {
       char.isSprinting = false;
     }
 
-    const isAiming = !isEditMode && (isLaserAiming || isAimingTrajectory || isGunAimFiring);
+    const isAiming = !isEditMode && (isLaserAiming || isVomitAiming || isAimingTrajectory || isGunAimFiring);
     const kLaunchVel = isThrow && char.activeTrajectory?.launchVel ? char.activeTrajectory.launchVel : undefined;
     const kLaunchPos = isThrow && char.activeTrajectory?.launchPos ? char.activeTrajectory.launchPos : undefined;
 

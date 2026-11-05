@@ -235,6 +235,7 @@ export class Character extends GameObject {
   // Scale With Energy & Projectile Vomit modules
   public energyGrowthModule: EnergyGrowthModule | null = null;
   public vomitModule: VomitModule | null = null;
+  public isVomitAiming: boolean = false;
   public isVomitRequested: boolean = false;
   public visualSpriteRadius?: number = 0.4;
   public onSpawnWorldObject?: (obj: GameObject) => void;
@@ -335,6 +336,9 @@ export class Character extends GameObject {
 
     const laserMod = LaserCapability.getAnticipatedModifier(this);
     if (laserMod) list.push(laserMod);
+
+    const vomitMod = VomitCapability.getAnticipatedModifier(this);
+    if (vomitMod) list.push(vomitMod);
 
     return list;
   }
@@ -764,6 +768,9 @@ export class Character extends GameObject {
     // Combat abilities (Laser, Melee & Vomit)
     LaserCapability.actuate(this, dt, arena);
     MeleeCapability.actuate(this, arena);
+    if (this.isVomitAiming && this.vomitModule && this.vomitModule.enabled) {
+      VomitCapability.updateTrajectoryPreview(this, arena, aimTargetPos);
+    }
     if (this.isVomitRequested && this.vomitModule && this.vomitModule.enabled) {
       this.vomit(entities, arena);
     }
@@ -780,23 +787,29 @@ export class Character extends GameObject {
     const canAimThrow = Boolean(isAimingInput || this.isAimingTrajectory);
     const targetFacePos = (canAimThrow && lockedAimPos) ? lockedAimPos : aimTargetPos;
 
-    this.updateFacingDirection(isAimingInput, targetFacePos, movementInput, hasAuthoredFacingAngle);
+    this.updateFacingDirection(isAimingInput || this.isVomitAiming, targetFacePos, movementInput, hasAuthoredFacingAngle);
     ThrowCapability.syncHeldObjectTransform(this, arena);
 
     // Trajectory preview update
     const isLaserModeActive = LaserCapability.isLaserModeActive(this);
-    ThrowCapability.updateTrajectoryPreview(
-      this,
-      isAimingInput,
-      aimTargetPos,
-      canAimThrow,
-      isLaserModeActive,
-      arena,
-      entities,
-      autoLock,
-      lockedAimPos,
-      aimLockDelta
-    );
+    if (this.isVomitAiming && this.vomitModule && this.vomitModule.enabled) {
+      this.isAiming = true;
+      this.aimTarget = aimTargetPos;
+      VomitCapability.updateTrajectoryPreview(this, arena, aimTargetPos);
+    } else {
+      ThrowCapability.updateTrajectoryPreview(
+        this,
+        isAimingInput,
+        aimTargetPos,
+        canAimThrow,
+        isLaserModeActive,
+        arena,
+        entities,
+        autoLock,
+        lockedAimPos,
+        aimLockDelta
+      );
+    }
   }
 
   /**

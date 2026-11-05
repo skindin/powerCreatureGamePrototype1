@@ -137,7 +137,6 @@ export class EntityModuleLifecycle {
     } else {
       panel.markDirty("player", e);
     }
-    void panel.saveModuleToPrefab(modId);
   }
 
   public static removeModuleFromSelectedEntity(panel: DevPanel, modId: string): void {
@@ -279,7 +278,6 @@ export class EntityModuleLifecycle {
     } else {
       panel.markDirty("player", e);
     }
-    void panel.saveModuleToPrefab(modId);
   }
 
   public static addModuleToSelectedEntity(panel: DevPanel, modId: string): void {
@@ -472,7 +470,6 @@ export class EntityModuleLifecycle {
     } else {
       panel.markDirty("player", e);
     }
-    void panel.saveModuleToPrefab(modId);
   }
 
   public static readonly ALL_MODULE_IDS: readonly string[] = [

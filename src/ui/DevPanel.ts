@@ -1247,14 +1247,14 @@ export class DevPanel {
       return;
     }
 
-    // 1. Sync ALL module existences and properties from selected entity to prefab archetype
-    EntityModuleLifecycle.syncAllModules(e, prefab.archetype);
+    // 1. Sync ONLY the requested module from selected entity to prefab archetype (never overwrite other modules' base values!)
+    EntityModuleLifecycle.syncModule(e, prefab.archetype, moduleType);
 
-    // 2. Cascade module sync to other live instances of this prefab
+    // 2. Cascade module sync for this specific module to other live instances of this prefab
     const allObjects = (this.objects as GameObject[] || []).concat(this.getAllCharacters ? this.getAllCharacters() : []);
     for (const liveObj of allObjects) {
       if (liveObj !== e && liveObj.prefabId === prefab.id) {
-        EntityModuleLifecycle.syncAllModules(e, liveObj);
+        EntityModuleLifecycle.syncModule(e, liveObj, moduleType);
       }
     }
 

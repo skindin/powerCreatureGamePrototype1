@@ -3,6 +3,7 @@ import type { Arena } from "../../engine/Arena.js";
 import type { GameObject, Vector2D } from "../../engine/GameObject.js";
 import type { TrajectoryCalculation } from "../ThrowModule.js";
 import type { ThrowControlBlock } from "../../input/schema/ControlSchemaTypes.js";
+import { BallisticTrajectorySolver } from "../BallisticTrajectorySolver.js";
 
 /**
  * Isolated 1-to-1 capability slice for Object Holding & Ballistic Throwing.
@@ -86,6 +87,10 @@ export class ThrowCapability {
     const preservedFacing = char.facingAngle;
     char.isAiming = isAimingInput;
     char.aimTarget = isAimingInput ? aimTargetPos : null;
+
+    if (char.isVomitAiming) {
+      return;
+    }
 
     const isHoldingGun = Boolean(char.heldObject?.gunModule && char.heldObject.gunModule.enabled);
     const isThrowOverrideActive = isHoldingGun && Boolean(
@@ -438,125 +443,15 @@ export class ThrowCapability {
     lockedAimPos: Vector2D | null = null,
     aimLockDelta = 0
   ): TrajectoryCalculation | null {
-    if (!char.throwModule || !char.throwModule.enabled) {
-      return null;
-    }
-    const preservedFacing = char.facingAngle;
-
-    // Step 1: Calculate baseline optimal (minimum energy) trajectory
-    char.throwModule.hasUserSetArcRatio = false;
-    const baseTraj = char.throwModule.calculateTrajectory(
+    return BallisticTrajectorySolver.findLowestEnergyWallClearForCharacterThrow(
       char,
+      arena,
       aimTargetX,
       aimTargetY,
-      arena,
-      entities ?? arena.entities,
-      arena.visualAltitudeScale,
+      entities,
       autoLock,
       lockedAimPos,
       aimLockDelta
     );
-
-    if (!baseTraj) {
-      char.activeTrajectory = null;
-      if (char.isSteeringCursor) char.facingAngle = preservedFacing;
-      return null;
-    }
-
-    const isBaseClear = !baseTraj.isBlockedByWall && !baseTraj.points.some((p) => p.collidesWall);
-    if (isBaseClear) {
-      const optRatio = char.throwModule.savedArcRatio ?? 0.5;
-      char.throwModule.hasUserSetArcRatio = true;
-      char.throwModule.savedArcRatio = optRatio;
-      char.hasUserSetArcRatio = true;
-      char.savedArcRatio = optRatio;
-      char.activeTrajectory = baseTraj;
-      if (char.isSteeringCursor) char.facingAngle = preservedFacing;
-      return baseTraj;
-    }
-
-    // Step 2: Optimal trajectory hits a wall. Search candidate arc ratios to find a wall-clearing arc with minimum kinetic energy
-    let bestRatio: number | null = null;
-    let bestEnergy = Infinity;
-    let bestTraj: TrajectoryCalculation | null = null;
-
-    // Coarse sampling across [0.0, 1.0] in 25 intervals (step 0.04)
-    const samples = 25;
-    for (let i = 0; i <= samples; i++) {
-      const r = i / samples;
-      char.throwModule.hasUserSetArcRatio = true;
-      char.throwModule.savedArcRatio = r;
-      const candTraj = char.throwModule.calculateTrajectory(
-        char,
-        aimTargetX,
-        aimTargetY,
-        arena,
-        entities ?? arena.entities,
-        arena.visualAltitudeScale,
-        autoLock,
-        lockedAimPos,
-        aimLockDelta
-      );
-
-      if (candTraj && !candTraj.isBlockedByWall && !candTraj.points.some((p) => p.collidesWall)) {
-        const vx = candTraj.launchVel?.vx ?? 0;
-        const vy = candTraj.launchVel?.vy ?? 0;
-        const vz = candTraj.launchVel?.vz ?? 0;
-        const energy = vx * vx + vy * vy + vz * vz;
-        if (energy < bestEnergy) {
-          bestEnergy = energy;
-          bestRatio = r;
-          bestTraj = candTraj;
-        }
-      }
-    }
-
-    // Fine refinement step around best ratio if found
-    if (bestRatio !== null) {
-      const rCenter = bestRatio;
-      for (let offset = -0.03; offset <= 0.03; offset += 0.01) {
-        const r = Math.max(0.0, Math.min(1.0, rCenter + offset));
-        char.throwModule.hasUserSetArcRatio = true;
-        char.throwModule.savedArcRatio = r;
-        const fineTraj = char.throwModule.calculateTrajectory(
-          char,
-          aimTargetX,
-          aimTargetY,
-          arena,
-          entities ?? arena.entities,
-          arena.visualAltitudeScale,
-          autoLock,
-          lockedAimPos,
-          aimLockDelta
-        );
-
-        if (fineTraj && !fineTraj.isBlockedByWall && !fineTraj.points.some((p) => p.collidesWall)) {
-          const vx = fineTraj.launchVel?.vx ?? 0;
-          const vy = fineTraj.launchVel?.vy ?? 0;
-          const vz = fineTraj.launchVel?.vz ?? 0;
-          const energy = vx * vx + vy * vy + vz * vz;
-          if (energy < bestEnergy) {
-            bestEnergy = energy;
-            bestRatio = r;
-            bestTraj = fineTraj;
-          }
-        }
-      }
-
-      char.throwModule.hasUserSetArcRatio = true;
-      char.throwModule.savedArcRatio = bestRatio;
-      char.hasUserSetArcRatio = true;
-      char.savedArcRatio = bestRatio;
-      char.activeTrajectory = bestTraj;
-      if (char.isSteeringCursor) char.facingAngle = preservedFacing;
-      return bestTraj;
-    }
-
-    // Fallback if no wall-clearing arc exists (e.g., target enclosed or wall unreachable)
-    char.throwModule.hasUserSetArcRatio = false;
-    char.hasUserSetArcRatio = false;
-    char.activeTrajectory = baseTraj;
-    if (char.isSteeringCursor) char.facingAngle = preservedFacing;
-    return baseTraj;
   }
 }

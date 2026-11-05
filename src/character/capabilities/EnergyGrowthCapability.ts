@@ -39,28 +39,27 @@ export class EnergyGrowthCapability {
     mod.currentRadiusMultiplier = radiusMult;
     mod.currentCrossSectionMultiplier = crossSectionMult;
 
-    // Helper to resolve and sync 1.0x base value if the user manually edited the live property in DevPanel
-    const syncAndGetBase = (
+    // Helper to resolve 1.0x base value without corrupting unscaled properties when newly connected
+    const resolveBaseValue = (
       key: string,
       currentLiveVal: number,
-      activeMultiplier: number,
       minFallback = 0.05
     ): number => {
-      const safeMult = Math.max(0.01, activeMultiplier);
       if (mod.baseValues[key] === undefined || !Number.isFinite(mod.baseValues[key])) {
-        mod.baseValues[key] = Math.max(minFallback, currentLiveVal / safeMult);
+        // Property was not yet scaled: capture its current unscaled 1.0x value directly
+        mod.baseValues[key] = Math.max(minFallback, currentLiveVal);
       } else if (
         mod.lastAppliedValues[key] !== undefined &&
         Math.abs(currentLiveVal - mod.lastAppliedValues[key]) > 0.01
       ) {
-        // User edited this property directly in the inspector: update its 1.0x base value!
-        mod.baseValues[key] = Math.max(minFallback, currentLiveVal / safeMult);
+        // User edited this property directly in the inspector: treat the user's entered number as the new 1.0x base value
+        mod.baseValues[key] = Math.max(minFallback, currentLiveVal);
       }
       return mod.baseValues[key];
     };
 
     // 2. Apply Mass Scaling (linear with volume multiplier M)
-    const baseMass = syncAndGetBase("mass", char.baseMass, mod.scaleMass ? volumeMult : 1.0, 0.1);
+    const baseMass = resolveBaseValue("mass", char.baseMass, 0.1);
     if (mod.scaleMass) {
       const targetMass = Math.max(0.1, baseMass * volumeMult);
       if (Math.abs(char.baseMass - targetMass) > 0.002) {
@@ -70,12 +69,7 @@ export class EnergyGrowthCapability {
     }
 
     // 3. Apply Collider & Sprite Scaling (cube-root of volume multiplier M)
-    const baseRadius = syncAndGetBase(
-      "colliderRadius",
-      char.colliderRadius,
-      mod.scaleCollider ? radiusMult : 1.0,
-      0.08
-    );
+    const baseRadius = resolveBaseValue("colliderRadius", char.colliderRadius, 0.08);
     const scaledRadius = Math.max(0.08, baseRadius * radiusMult);
     mod.currentComputedSpriteRadius = scaledRadius;
 
@@ -91,18 +85,18 @@ export class EnergyGrowthCapability {
       // Automatic Reach Margin Compensation (unless pickup.pickupReach is manually in scaledProperties)
       if (mod.autoScaleReachWithCollider && char.pickupModule) {
         const hasManualReachRule = mod.scaledProperties.some(
-          (r) => r.enabled && r.propertyKey === "pickup.pickupReach"
+          (r) => r.enabled && (r.propertyKey === "pickup.pickupReach" || r.key === "pickup.pickupReach")
         );
         if (!hasManualReachRule) {
           const curReach = char.pickupModule.pickupReachProp.get(char.properties);
           const radiusDelta = scaledRadius - baseRadius;
           if (mod.baseValues["pickupReach"] === undefined) {
-            mod.baseValues["pickupReach"] = Math.max(0.15, curReach - radiusDelta);
+            mod.baseValues["pickupReach"] = Math.max(0.15, curReach);
           } else if (
             mod.lastAppliedValues["pickupReach"] !== undefined &&
             Math.abs(curReach - mod.lastAppliedValues["pickupReach"]) > 0.01
           ) {
-            mod.baseValues["pickupReach"] = Math.max(0.15, curReach - radiusDelta);
+            mod.baseValues["pickupReach"] = Math.max(0.15, curReach);
           }
           const targetReach = Math.max(0.15, mod.baseValues["pickupReach"] + radiusDelta);
           if (Math.abs(curReach - targetReach) > 0.002) {
@@ -126,23 +120,24 @@ export class EnergyGrowthCapability {
 
       for (const rule of mod.scaledProperties) {
         if (!rule.enabled) continue;
-        const target = map.get(rule.propertyKey);
+        const propKey = rule.propertyKey || rule.key || "";
+        const target = map.get(propKey);
         if (!target) continue;
 
         const propMult = mod.evaluatePropertyMultiplier(
           volumeMult,
-          rule.curveMode,
-          rule.rateMultiplier,
-          rule.customExponent
+          rule.curveMode || rule.curve || "cross_section",
+          rule.rateMultiplier ?? 1.0,
+          rule.customExponent ?? 1.0
         );
         const curLiveVal = target.getCurrentValue(char);
-        const baseVal = syncAndGetBase(rule.propertyKey, curLiveVal, propMult, 0.01);
+        const baseVal = resolveBaseValue(propKey, curLiveVal, 0.01);
         const targetVal = Math.max(0.01, baseVal * propMult);
 
         if (Math.abs(curLiveVal - targetVal) > 0.002) {
           target.applyValue(char, targetVal);
         }
-        mod.lastAppliedValues[rule.propertyKey] = targetVal;
+        mod.lastAppliedValues[propKey] = targetVal;
       }
     }
   }

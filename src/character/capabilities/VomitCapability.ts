@@ -1,13 +1,16 @@
-import { GameObject } from "../../engine/GameObject.js";
+import { GameObject, type Vector2D } from "../../engine/GameObject.js";
 import { ConsumableModule } from "../../engine/ConsumableModule.js";
 import { RollModule } from "../../engine/RollModule.js";
-import type { Character } from "../Character.js";
+import { ThrowModule } from "../ThrowModule.js";
+import { BallisticTrajectorySolver } from "../BallisticTrajectorySolver.js";
+import type { Character, AnticipatedModifier } from "../Character.js";
 import type { Arena } from "../../engine/Arena.js";
 
 /**
- * Isolated capability slice for Projectile Vomit.
- * Deducts stored food energy from the character's EnergyPool, shrinks the character
- * immediately, spawns a physical consumable freebody glob on a ballistic arc,
+ * Isolated capability slice for Projectile Vomit ("Throw Up").
+ * Supports staging & trajectory preview via BallisticTrajectorySolver,
+ * deducts stored food energy from the character's EnergyPool, shrinks the character
+ * immediately, spawns a physical consumable freebody glob on the ballistic arc,
  * and applies conservation-of-momentum recoil.
  */
 export class VomitCapability {
@@ -16,6 +19,144 @@ export class VomitCapability {
   public static canVomit(char: Character): boolean {
     const mod = char.vomitModule;
     return Boolean(mod && mod.enabled && char.energyPool && char.energyPool.enabled && !char.isDying);
+  }
+
+  public static computeProspectiveGlobStats(char: Character): {
+    availableEnergy: number;
+    requestedEnergy: number;
+    expelledEnergy: number;
+    globRadius: number;
+    globMass: number;
+    launchSpeed: number;
+  } | null {
+    const mod = char.vomitModule;
+    const pool = char.energyPool;
+    if (!mod || !mod.enabled || !pool || !pool.enabled) return null;
+
+    const curEnergy = pool.getCurrentEnergy(char.properties);
+    const minFloor = mod.getMinRemainingEnergyFloor(char.properties);
+    const availableEnergy = Math.max(0, curEnergy - minFloor);
+    const requestedEnergy = mod.getEnergyPerGlob(char.properties);
+    const expelledEnergy = Math.max(50, Math.min(requestedEnergy, availableEnergy > 0 ? availableEnergy : requestedEnergy));
+
+    const growthMod = char.energyGrowthModule;
+    let globRadius = 0.22;
+    let globMass = Math.max(0.15, Math.min(2.5, expelledEnergy / 2500));
+
+    if (growthMod && growthMod.enabled) {
+      const maxEnergy = Math.max(100, pool.getMaxEnergy(char.properties));
+      const baseR = growthMod.baseValues["colliderRadius"] ?? 0.40;
+      const baseM = growthMod.baseValues["mass"] ?? char.baseMass;
+      const spanM = Math.max(0.1, growthMod.maxScaleMultiplier - growthMod.minScaleMultiplier);
+      const deltaVolumeMult = (expelledEnergy / maxEnergy) * spanM;
+      if (growthMod.scaleMass) {
+        globMass = Math.max(0.1, baseM * deltaVolumeMult);
+      }
+      const rawR = baseR * Math.cbrt(Math.max(0.02, deltaVolumeMult));
+      globRadius = Math.max(0.14, Math.min(0.45, rawR));
+    } else {
+      globRadius = Math.max(0.14, Math.min(0.42, 0.20 * Math.cbrt(expelledEnergy / 1000)));
+    }
+
+    const launchSpeed = mod.getLaunchSpeed(char.properties);
+    return {
+      availableEnergy,
+      requestedEnergy,
+      expelledEnergy,
+      globRadius,
+      globMass,
+      launchSpeed,
+    };
+  }
+
+  public static getAnticipatedModifier(char: Character): AnticipatedModifier | null {
+    if (!char.isVomitAiming || !this.canVomit(char)) {
+      return null;
+    }
+    const stats = this.computeProspectiveGlobStats(char);
+    if (!stats) return null;
+
+    const isInsufficient = stats.availableEnergy < 50;
+    return {
+      id: "vomit",
+      name: isInsufficient ? "Throw Up (Low Energy)" : "Throw Up",
+      amount: stats.requestedEnergy,
+      isBurst: true,
+      unit: "J",
+      color: isInsufficient ? "#ef4444" : "#84cc16",
+      insufficient: isInsufficient,
+    };
+  }
+
+  public static updateTrajectoryPreview(
+    char: Character,
+    arena: Arena,
+    aimTargetPos: Vector2D | null
+  ): void {
+    if (!char.isVomitAiming || !this.canVomit(char) || !aimTargetPos) {
+      return;
+    }
+
+    const stats = this.computeProspectiveGlobStats(char);
+    if (!stats) {
+      char.activeTrajectory = null;
+      return;
+    }
+
+    const preservedFacing = char.facingAngle;
+    const aimDx = aimTargetPos.x - char.position.x;
+    const aimDy = aimTargetPos.y - char.position.y;
+    const distToAim = Math.hypot(aimDx, aimDy);
+
+    if (distToAim > 0.05) {
+      char.facingAngle = Math.atan2(aimDy, aimDx);
+    }
+
+    const dirX = Math.cos(char.facingAngle);
+    const dirY = Math.sin(char.facingAngle);
+    const spawnDist = char.colliderRadius + stats.globRadius + 0.06;
+    let startX = char.position.x + dirX * spawnDist;
+    let startY = char.position.y + dirY * spawnDist;
+    const startZ = Math.max(0, (char.position.z || 0) + char.colliderRadius * 0.45);
+
+    if (char.position.z < arena.wallHeight) {
+      const clamped = ThrowModule.clampStartOutsideWalls(
+        startX,
+        startY,
+        stats.globRadius,
+        arena,
+        char.position.z,
+        char.position.x,
+        char.position.y
+      );
+      startX = clamped.x;
+      startY = clamped.y;
+    }
+
+    const res = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
+      {
+        startX,
+        startY,
+        startZ,
+        colliderRadius: stats.globRadius,
+        maxSpeed: stats.launchSpeed,
+        hasGravity: true,
+        hasVerticalVelocity: true,
+        visualShape: "circle",
+        hasUserSetArcRatio: char.hasUserSetArcRatio,
+        savedArcRatio: char.savedArcRatio,
+      },
+      aimTargetPos.x,
+      aimTargetPos.y,
+      arena,
+      arena.visualAltitudeScale
+    );
+
+    char.activeTrajectory = res.trajectory;
+
+    if (char.isSteeringCursor) {
+      char.facingAngle = preservedFacing;
+    }
   }
 
   public static executeVomit(
@@ -52,6 +193,7 @@ export class VomitCapability {
       return null;
     }
 
+    const stats = this.computeProspectiveGlobStats(char);
     const expelledEnergy = Math.min(requestedEnergy, availableEnergy);
     mod.lastVomitTimestamp = now;
 
@@ -61,30 +203,13 @@ export class VomitCapability {
 
     // Register visual burst modifier on EnergyPool HUD
     if (typeof (pool as any).recordInstantConsumption === "function") {
-      (pool as any).recordInstantConsumption("vomit", "Vomit", expelledEnergy, "#84cc16");
+      (pool as any).recordInstantConsumption("vomit", "Throw Up", expelledEnergy, "#84cc16");
     }
 
-    // 2. Compute physical glob radius & mass from the character's lost volume/mass (or fallback formula)
-    const growthMod = char.energyGrowthModule;
-    let globRadius = 0.22;
-    let globMass = Math.max(0.15, Math.min(2.5, expelledEnergy / 2500));
+    const globRadius = stats?.globRadius ?? 0.22;
+    const globMass = stats?.globMass ?? Math.max(0.15, Math.min(2.5, expelledEnergy / 2500));
 
-    if (growthMod && growthMod.enabled) {
-      const maxEnergy = Math.max(100, pool.getMaxEnergy(char.properties));
-      const baseR = growthMod.baseValues["colliderRadius"] ?? 0.40;
-      const baseM = growthMod.baseValues["mass"] ?? char.baseMass;
-      const spanM = Math.max(0.1, growthMod.maxScaleMultiplier - growthMod.minScaleMultiplier);
-      const deltaVolumeMult = (expelledEnergy / maxEnergy) * spanM;
-      if (growthMod.scaleMass) {
-        globMass = Math.max(0.1, baseM * deltaVolumeMult);
-      }
-      const rawR = baseR * Math.cbrt(Math.max(0.02, deltaVolumeMult));
-      globRadius = Math.max(0.14, Math.min(0.45, rawR));
-    } else {
-      globRadius = Math.max(0.14, Math.min(0.42, 0.20 * Math.cbrt(expelledEnergy / 1000)));
-    }
-
-    // 4. Determine launch direction
+    // 2. Determine launch direction and ballistic trajectory velocity
     let angle = aimAngleOverride ?? char.facingAngle ?? 0;
     if (aimAngleOverride === undefined && char.aimTarget) {
       const dx = char.aimTarget.x - char.position.x;
@@ -98,24 +223,71 @@ export class VomitCapability {
     const dirX = Math.cos(angle);
     const dirY = Math.sin(angle);
     const spawnDist = char.colliderRadius + globRadius + 0.06;
-    const spawnX = char.position.x + dirX * spawnDist;
-    const spawnY = char.position.y + dirY * spawnDist;
-    const spawnZ = Math.max(0, (char.position.z || 0) + char.colliderRadius * 0.45);
+    let spawnX = char.position.x + dirX * spawnDist;
+    let spawnY = char.position.y + dirY * spawnDist;
+    let spawnZ = Math.max(0, (char.position.z || 0) + char.colliderRadius * 0.45);
 
     const launchSpeed = mod.getLaunchSpeed(char.properties);
-    const launchVz = mod.getLaunchVerticalSpeed(char.properties);
+    const defaultVz = mod.getLaunchVerticalSpeed(char.properties);
 
-    // 5. Create physical freebody glob with ConsumableModule so it can be re-eaten
+    let vx = dirX * launchSpeed + char.velocity.x * 0.35;
+    let vy = dirY * launchSpeed + char.velocity.y * 0.35;
+    let vz = defaultVz;
+
+    // If staged with trajectory preview, use the exact solved ballistic launch velocity and origin!
+    const stagedTraj = char.activeTrajectory;
+    if (stagedTraj && stagedTraj.launchVel && stagedTraj.launchPos) {
+      spawnX = stagedTraj.launchPos.x;
+      spawnY = stagedTraj.launchPos.y;
+      spawnZ = stagedTraj.launchPos.z;
+      vx = stagedTraj.launchVel.vx;
+      vy = stagedTraj.launchVel.vy;
+      vz = stagedTraj.launchVel.vz;
+    } else if (arena && char.aimTarget) {
+      if (char.position.z < arena.wallHeight) {
+        const clamped = ThrowModule.clampStartOutsideWalls(
+          spawnX,
+          spawnY,
+          globRadius,
+          arena,
+          char.position.z,
+          char.position.x,
+          char.position.y
+        );
+        spawnX = clamped.x;
+        spawnY = clamped.y;
+      }
+      const solved = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
+        {
+          startX: spawnX,
+          startY: spawnY,
+          startZ: spawnZ,
+          colliderRadius: globRadius,
+          maxSpeed: launchSpeed,
+          hasGravity: true,
+          hasVerticalVelocity: true,
+          visualShape: "circle",
+        },
+        char.aimTarget.x,
+        char.aimTarget.y,
+        arena,
+        arena.visualAltitudeScale
+      );
+      if (solved.trajectory?.launchVel) {
+        vx = solved.trajectory.launchVel.vx;
+        vy = solved.trajectory.launchVel.vy;
+        vz = solved.trajectory.launchVel.vz;
+      }
+    }
+
+    // 3. Create physical freebody glob with ConsumableModule so it can be re-eaten
     const globId = `vomit_glob_${Date.now()}_${VomitCapability._globCounter++}`;
     const glob = new GameObject({
       id: globId,
       name: `Vomit Glob (${Math.round(expelledEnergy)}J)`,
       position: { x: spawnX, y: spawnY, z: spawnZ },
-      velocity: {
-        x: dirX * launchSpeed + char.velocity.x * 0.35,
-        y: dirY * launchSpeed + char.velocity.y * 0.35,
-      },
-      verticalVelocity: launchVz,
+      velocity: { x: vx, y: vy },
+      verticalVelocity: vz,
       hasVerticalVelocity: true,
       mass: globMass,
       staticGroundFrictionMod: 0.42,
@@ -146,7 +318,7 @@ export class VomitCapability {
     (glob as any).thrownByCharacter = char;
     (glob as any).throwGraceTimer = 0.18;
 
-    // 6. Add glob to scene object arrays
+    // 4. Add glob to scene object arrays
     const targetList =
       objects ??
       ((arena as any)?.entities as GameObject[] | undefined) ??
@@ -157,11 +329,12 @@ export class VomitCapability {
     }
     char.onSpawnWorldObject?.(glob);
 
-    // 7. Apply physical recoil impulse to the character
+    // 5. Apply physical recoil impulse to the character
     const recoilMult = mod.getRecoilMultiplier(char.properties);
     if (recoilMult > 0) {
       const charMass = Math.max(0.25, char.mass);
-      const recoilDeltaV = (globMass * launchSpeed * recoilMult) / charMass;
+      const actualHorizSpeed = Math.hypot(vx, vy);
+      const recoilDeltaV = (globMass * actualHorizSpeed * recoilMult) / charMass;
       char.velocity.x -= dirX * recoilDeltaV;
       char.velocity.y -= dirY * recoilDeltaV;
     }

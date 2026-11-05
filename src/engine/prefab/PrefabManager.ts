@@ -286,7 +286,7 @@ export class PrefabManager {
       colliderRadius: 0.44,
       mass: 1.2,
     });
-    growerArchetype.bounceMod = 0.4;
+    growerArchetype.bounceMod = 0.15;
     growerArchetype.climbingModule = null;
     if (growerArchetype.energyPool) {
       growerArchetype.energyPool.maxEnergyJoules = 20000;
@@ -316,8 +316,11 @@ export class PrefabManager {
         "jump.jumpStrength": 18.5,
         "jump.maxPower": 1200,
         "throw.maxPower": 1200,
+        "throw.maxThrowSpeed": 69,
         "melee.maxForce": 350,
         "melee.maxPower": 500,
+        "melee.reach": 1.2,
+        "melee.width": 0.8,
         "laser.damageRate": 25,
         "laser.maxPower": 2000,
         "health.maxHealth": 100,
@@ -337,21 +340,29 @@ export class PrefabManager {
 
     const growerSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
     if (growerSchema.keyboardMouse?.blocks) {
+      growerSchema.keyboardMouse.blocks = growerSchema.keyboardMouse.blocks.filter(
+        (b: any) => b.type !== "vomit"
+      );
       growerSchema.keyboardMouse.blocks.push({
-        id: "blk_kbm_vomit",
+        id: "block-vomit",
         type: "vomit",
-        name: "Projectile Vomit",
+        name: "Throw Up / Vomit",
         enabled: true,
-        vomit: { code: "KeyV", requireCleanPress: true },
+        stageTrigger: { code: "AltLeft", requireCleanPress: false },
+        fireTrigger: { code: "MouseLeft", requireCleanPress: true },
       });
     }
     if (growerSchema.gamepad?.blocks) {
+      growerSchema.gamepad.blocks = growerSchema.gamepad.blocks.filter(
+        (b: any) => b.type !== "vomit"
+      );
       growerSchema.gamepad.blocks.push({
-        id: "blk_gp_vomit",
+        id: "block-vomit-gp",
         type: "vomit",
-        name: "Projectile Vomit",
+        name: "Throw Up / Vomit",
         enabled: true,
-        vomit: { code: "GamepadLB", requireCleanPress: true },
+        stageTrigger: { code: "GamepadLT", requireCleanPress: false },
+        fireTrigger: { code: "GamepadRT", requireCleanPress: true },
       });
     }
     growerArchetype.controlSchema = growerSchema;

@@ -78,7 +78,9 @@ export class DevConfigPersistence {
       const targetPrefabId = char.prefabId || "prefab_player";
       const playerPrefab = prefabManager.get(targetPrefabId);
       if (playerPrefab) {
-        EntityModuleLifecycle.syncAllModules(char, playerPrefab.archetype);
+        if (!char.energyGrowthModule || !char.energyGrowthModule.enabled) {
+          EntityModuleLifecycle.syncAllModules(char, playerPrefab.archetype);
+        }
         playerPrefab.setProperty(canonicalPath, value, getAllCharacters ? getAllCharacters() : [char]);
       }
 
@@ -189,7 +191,9 @@ export class DevConfigPersistence {
         const targetPrefabId = char.prefabId || "prefab_player";
         const playerPrefab = prefabManager.get(targetPrefabId);
         if (playerPrefab) {
-          EntityModuleLifecycle.syncAllModules(char, playerPrefab.archetype);
+          if (!char.energyGrowthModule || !char.energyGrowthModule.enabled) {
+            EntityModuleLifecycle.syncAllModules(char, playerPrefab.archetype);
+          }
           playerPrefab.setProperty(keyPath, value, getAllCharacters ? getAllCharacters() : [char]);
         }
 
@@ -290,7 +294,11 @@ export class DevConfigPersistence {
     const isChar = prefab.archetype instanceof Character;
 
     const selected = panel.selectedEntity;
-    if (selected && (selected.prefabId === prefab.id || selected === prefab.archetype)) {
+    if (
+      selected &&
+      (selected.prefabId === prefab.id || selected === prefab.archetype) &&
+      (!(selected instanceof Character) || !selected.energyGrowthModule || !selected.energyGrowthModule.enabled)
+    ) {
       EntityModuleLifecycle.syncAllModules(selected, prefab.archetype);
     }
 
@@ -348,7 +356,11 @@ export class DevConfigPersistence {
     const dirtyState = (panel as any).dirtyState;
 
     const selected = panel.selectedEntity;
-    if (selected && (selected.prefabId === prefab.id || selected === prefab.archetype)) {
+    if (
+      selected &&
+      (selected.prefabId === prefab.id || selected === prefab.archetype) &&
+      (!(selected instanceof Character) || !selected.energyGrowthModule || !selected.energyGrowthModule.enabled)
+    ) {
       EntityModuleLifecycle.syncAllModules(selected, prefab.archetype);
     }
 

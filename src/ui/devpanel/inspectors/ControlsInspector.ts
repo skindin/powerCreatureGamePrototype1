@@ -1880,14 +1880,21 @@ export class ControlsInspector {
 
       case "vomit": {
         const b = block as VomitControlBlock;
-        b.vomit = b.vomit || { code: "KeyV" };
+        b.stageTrigger = b.stageTrigger || b.aimTrigger || { code: this.activeTab === "gamepad" ? "GamepadLT" : "AltLeft" };
+        b.fireTrigger = b.fireTrigger || b.vomit || { code: this.activeTab === "gamepad" ? "GamepadRT" : "MouseLeft", requireCleanPress: true };
         return `
-          <div style="display: flex; gap: 16px; align-items: start;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
             <div>
-              ${this.renderInputSlot(b.id, "vomit", b.vomit, "Projectile Vomit Button")}
+              ${this.renderInputSlot(b.id, "stageTrigger", b.stageTrigger, "Stage & Aim Trajectory Button (Hold)")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Hold this button to stage Throw Up attack and display the ballistic aim trajectory preview.
+              </div>
             </div>
-            <div style="font-size: 0.68rem; color: #64748b; padding-top: 14px;">
-              Expels stored energy as a ballistic consumable glob, shrinking the character and applying recoil.
+            <div>
+              ${this.renderInputSlot(b.id, "fireTrigger", b.fireTrigger, "Use Throw Up Attack Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Press this button while holding the Stage button (e.g. Alt + Left Click) to launch the Throw Up glob along the trajectory.
+              </div>
             </div>
           </div>
         `;
@@ -3135,15 +3142,17 @@ export class ControlsInspector {
             blocks.push(isGamepad ? {
               type: "vomit",
               id: newId,
-              name: "Projectile Vomit",
+              name: "Throw Up / Vomit",
               enabled: true,
-              vomit: { code: "GamepadLB", requireCleanPress: true },
+              stageTrigger: { code: "GamepadLT", requireCleanPress: false },
+              fireTrigger: { code: "GamepadRT", requireCleanPress: true },
             } : {
               type: "vomit",
               id: newId,
-              name: "Projectile Vomit",
+              name: "Throw Up / Vomit",
               enabled: true,
-              vomit: { code: "KeyV", requireCleanPress: true },
+              stageTrigger: { code: "AltLeft", requireCleanPress: false },
+              fireTrigger: { code: "MouseLeft", requireCleanPress: true },
             });
           } else if (type === "laser") {
             blocks.push(isGamepad ? {
