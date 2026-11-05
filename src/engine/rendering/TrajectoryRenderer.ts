@@ -350,10 +350,14 @@ export class TrajectoryRenderer {
         }
       } else {
         // Standard arc modulation / charging:
-        // When charging towards flattest arc -> do not show max height arc
-        // When charging towards highest arc -> do not show flattest arc
-        const showFlattest = !isCharging || chargingTowards === "flattest";
-        const showSteepest = !isCharging || chargingTowards === "steepest";
+        // When charging towards flattest arc -> strictly show ONLY flattest arc (never show steepest)
+        // When charging towards highest arc -> strictly show ONLY steepest arc (never show flattest)
+        const showFlattest = isCharging
+          ? chargingTowards === "flattest"
+          : (chargingTowards === "flattest" || !chargingTowards);
+        const showSteepest = isCharging
+          ? chargingTowards === "steepest"
+          : (chargingTowards === "steepest");
 
         if (showFlattest && traj.flattestPoints && traj.flattestPoints.length >= 2) {
           drawDottedArc(traj.flattestPoints, colorGhostOpaque, colorGhostTransparent, true);
@@ -365,8 +369,13 @@ export class TrajectoryRenderer {
 
       // Trajectory Modulation Guide Rail:
       // Dotted vertical rail at the 2D average position with optimal detent notch (green dot) and clamped slider pip (white dot).
-      // Strictly hidden when using analog trigger pull, charging over time, or aiming wall clear
-      const rail = (character && !isWallClearAim && !isTriggerPull && !isCharging)
+      // Strictly hidden when using analog trigger pull, charging over time, aiming wall clear, or projectile vomit
+      const isVomitAim = Boolean(
+        character?.isVomitAiming ||
+        (character as any)?.isChargingVomit ||
+        (character as any)?.isHoldingVomitRelease
+      );
+      const rail = (character && !isWallClearAim && !isTriggerPull && !isCharging && !isVomitAim)
         ? TrajectoryRenderer.calculateMidpointRail(character, arena, traj, ppu, hoverScale)
         : null;
       if (rail) {

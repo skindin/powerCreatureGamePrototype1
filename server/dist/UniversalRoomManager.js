@@ -9081,10 +9081,15 @@ class Character extends GameObject {
         RollMovementCapability.actuate(this, movementInput, this.isBraking, this.isSprinting, dt, arena2);
       }
     }
-    if (this.isVomitAiming && this.vomitModule && this.vomitModule.enabled) {
+    const isVomitPreviewActive = Boolean(
+      this.isVomitAiming && this.vomitModule && this.vomitModule.enabled && (this.isAimingTrajectory || this.isChargingVomit || this.isHoldingVomitRelease || this.isTriggerPullVomiting || this.isAimingVomitWallClear)
+    );
+    if (isVomitPreviewActive) {
       this.isAiming = true;
       this.aimTarget = aimTargetPos;
       VomitCapability.updateTrajectoryPreview(this, arena2, aimTargetPos);
+    } else if (this.isVomitAiming) {
+      this.activeTrajectory = null;
     }
     if (this.isVomitRequested && this.vomitModule && this.vomitModule.enabled) {
       this.vomit(entities, arena2);
@@ -9109,7 +9114,7 @@ class Character extends GameObject {
     this.updateFacingDirection(isAimingInput || this.isVomitAiming, targetFacePos, movementInput, hasAuthoredFacingAngle);
     ThrowCapability.syncHeldObjectTransform(this, arena2);
     const isLaserModeActive = LaserCapability.isLaserModeActive(this);
-    if (this.isVomitAiming && this.vomitModule && this.vomitModule.enabled) {
+    if (isVomitPreviewActive) {
       this.isAiming = true;
       this.aimTarget = aimTargetPos;
       VomitCapability.updateTrajectoryPreview(this, arena2, aimTargetPos);

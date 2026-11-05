@@ -755,10 +755,18 @@ export class Character extends GameObject {
     }
 
     // Staged Throw Up trajectory & execution BEFORE position integration so recoil kickback integrates immediately
-    if (this.isVomitAiming && this.vomitModule && this.vomitModule.enabled) {
+    const isVomitPreviewActive = Boolean(
+      this.isVomitAiming &&
+      this.vomitModule &&
+      this.vomitModule.enabled &&
+      (this.isAimingTrajectory || (this as any).isChargingVomit || (this as any).isHoldingVomitRelease || (this as any).isTriggerPullVomiting || (this as any).isAimingVomitWallClear)
+    );
+    if (isVomitPreviewActive) {
       this.isAiming = true;
       this.aimTarget = aimTargetPos;
       VomitCapability.updateTrajectoryPreview(this, arena, aimTargetPos);
+    } else if (this.isVomitAiming) {
+      this.activeTrajectory = null;
     }
     if (this.isVomitRequested && this.vomitModule && this.vomitModule.enabled) {
       this.vomit(entities, arena);
@@ -800,7 +808,7 @@ export class Character extends GameObject {
 
     // Trajectory preview update
     const isLaserModeActive = LaserCapability.isLaserModeActive(this);
-    if (this.isVomitAiming && this.vomitModule && this.vomitModule.enabled) {
+    if (isVomitPreviewActive) {
       this.isAiming = true;
       this.aimTarget = aimTargetPos;
       VomitCapability.updateTrajectoryPreview(this, arena, aimTargetPos);

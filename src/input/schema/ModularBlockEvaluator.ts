@@ -884,7 +884,6 @@ export class ModularBlockEvaluator {
               const isAimingStaged = hasAimTrigger && isSlotActive(b.aimTrigger, "hold", false, b.id, "vomit.aim");
               if (isAimingStaged) {
                 isVomitAiming = true;
-                isAimingTrajectory = true;
                 claimSlot(b.aimTrigger, b.id, "vomit.aim", false);
               }
 
@@ -937,7 +936,6 @@ export class ModularBlockEvaluator {
               const isAimingStaged = hasAimTrigger && isSlotActive(b.aimTrigger, "hold", false, b.id, "vomit.aim");
               if (isAimingStaged) {
                 isVomitAiming = true;
-                isAimingTrajectory = true;
                 claimSlot(b.aimTrigger, b.id, "vomit.aim", false);
               }
 
