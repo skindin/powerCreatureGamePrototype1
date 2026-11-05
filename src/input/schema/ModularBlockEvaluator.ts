@@ -1318,37 +1318,16 @@ export class ModularBlockEvaluator {
               ? Math.atan2(aimDy, aimDx)
               : (char.facingAngle ?? 0);
 
-            // Compute signed shortest angular difference to target
-            const currentAngle = char.facingAngle ?? 0;
-            let angleDiff = targetAimAngle - currentAngle;
-            angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+            // Immediately snap character facing direction to target and fire
+            char.facingAngle = targetAimAngle;
+            const heldPos = char.calculateHeldObjectPosition(execCtx.arena);
+            char.heldObject!.position.x = heldPos.x;
+            char.heldObject!.position.y = heldPos.y;
+            char.heldObject!.position.z = heldPos.z;
 
-            // Rotate character smoothly toward target at gun turn speed
-            const turnSpeed = gun.getTurnSpeed ? gun.getTurnSpeed(char.properties) : gun.turnSpeed;
-            const dt = execCtx.dt || (1 / 60);
-            const maxStep = (turnSpeed > 0 ? turnSpeed : 22.0) * dt;
-
-            if (Math.abs(angleDiff) <= maxStep) {
-              char.facingAngle = targetAimAngle;
-              angleDiff = 0;
-            } else {
-              char.facingAngle = currentAngle + Math.sign(angleDiff) * maxStep;
-              angleDiff = targetAimAngle - char.facingAngle;
-              angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
-            }
-
-            // Only fire bullet once character is facing the right way (within alignment tolerance)
-            const tolerance = gun.getAimTolerance ? gun.getAimTolerance(char.properties) : gun.aimTolerance;
-            const isFacingRightWay = Math.abs(angleDiff) <= (tolerance > 0 ? tolerance : 0.15);
-
-            if (isFacingRightWay) {
-              isUsingItem = true;
-              (char as any).isFiringWeapon = true;
-              BulletManager.getInstance().fireBullet(char, gun, effAim, execCtx.arena);
-            } else {
-              isUsingItem = false;
-              (char as any).isFiringWeapon = false;
-            }
+            isUsingItem = true;
+            (char as any).isFiringWeapon = true;
+            BulletManager.getInstance().fireBullet(char, gun, effAim, execCtx.arena);
             claimSlot(b.fireWeapon, b.id, "gun.fire", false);
           } else {
             (char as any).isFiringWeapon = false;
@@ -1474,7 +1453,12 @@ export class ModularBlockEvaluator {
     // In Raw Direction Mode on Gamepad: character strictly maintains stick-directed facing angle.
     if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory || isGunAimFiring) {
       if (isGunAimFiring) {
-        // Facing angle was oriented towards shooting target with turn speed in the item block
+        const effAim = getEffectiveAimPos();
+        const aimDx = effAim.x - char.position.x;
+        const aimDy = effAim.y - char.position.y;
+        if (Math.hypot(aimDx, aimDy) > 0.05) {
+          char.facingAngle = Math.atan2(aimDy, aimDx);
+        }
       } else if (isSteerCursorActive || char.isSteeringCursor) {
         const aimDx = targetAimPos.x - char.position.x;
         const aimDy = targetAimPos.y - char.position.y;
