@@ -1,6 +1,6 @@
 {
-  "version": 388,
-  "lastSaved": "2026-11-05T19:19:59.056Z",
+  "version": 389,
+  "lastSaved": "2026-11-05T19:36:36.088Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -18944,7 +18944,7 @@
         "energyGrowthModule": {
           "enabled": true,
           "minScaleMultiplier": 0.2,
-          "maxScaleMultiplier": 5,
+          "maxScaleMultiplier": 10,
           "startingScaleMultiplier": 1,
           "scaleMass": true,
           "scaleCollider": true,

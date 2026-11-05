@@ -562,6 +562,9 @@ export class GameObject {
   /** The specific wall the entity is currently standing on (if supported on layer 2) */
   public standingWall: Wall | null = null;
 
+  /** The wall the entity recently stood on or dismounted from (exempt from edge-snapping while falling) */
+  public lastDismountedWall: Wall | null = null;
+
   /** True while entity is falling off an elevated wall until it reaches ground or another surface */
   public isDismountFreefall = false;
 
@@ -670,6 +673,17 @@ export class GameObject {
     // 0. Supporting surface evaluation (delegated to SurfaceSupportModule)
     const { surfaceHeight, standingWall } = SurfaceSupportModule.evaluateSupportingSurface(this, arena);
     let effectiveSurfaceHeight = surfaceHeight;
+    if (standingWall) {
+      this.lastDismountedWall = standingWall;
+    } else if (this.position.z <= 0.01 && !this.isDismountFreefall && this.lastDismountedWall) {
+      const w = this.lastDismountedWall;
+      const cx = Math.max(w.x, Math.min(this.position.x, w.x + w.width));
+      const cy = Math.max(w.y, Math.min(this.position.y, w.y + w.height));
+      const dist = Math.hypot(this.position.x - cx, this.position.y - cy);
+      if (dist >= this.colliderRadius) {
+        this.lastDismountedWall = null;
+      }
+    }
     this.standingWall = standingWall;
 
     if (this.isClimbing) {
@@ -905,6 +919,7 @@ export class GameObject {
             if (nextSupport) {
               currentWall = nextSupport;
               this.standingWall = nextSupport;
+              this.lastDismountedWall = nextSupport;
             } else if (canDismount) {
               // Collider does not touch current wall or any contiguous wall: dismount into gap!
               hasDismountedIntoGap = true;
@@ -927,12 +942,16 @@ export class GameObject {
 
           // If dismounted into a gap, airborne, or in dismount falling:
           // Immediately resolve collision with any wall ahead so collider cannot enter another wall across the gap!
+          // Note: Exclude the wall just dismounted from so the entity falls naturally without snapping!
           const isFallingInGap = !this.isClimbing && (hasDismountedIntoGap ||
             (!this.standingWall && Boolean(this.isDismountFreefall || char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress)));
 
           if (isFallingInGap && this.hasCollider) {
             for (const wall of arena.walls) {
               if (this.position.z <= wall.wallHeight) {
+                if (this.lastDismountedWall && (this.lastDismountedWall.id === wall.id || arena.areWallsContiguous(this.lastDismountedWall, wall))) {
+                  continue;
+                }
                 this.resolveWallCollision(wall);
               }
             }
@@ -999,6 +1018,24 @@ export class GameObject {
             // If standing on a wall, that wall and its contiguous walls don't collide
             if (this.standingWall && (this.standingWall.id === wall.id || arena.areWallsContiguous(this.standingWall, wall))) {
               continue;
+            }
+            if (this.lastDismountedWall && (this.lastDismountedWall.id === wall.id || arena.areWallsContiguous(this.lastDismountedWall, wall))) {
+              const cx = Math.max(wall.x, Math.min(this.position.x, wall.x + wall.width));
+              const cy = Math.max(wall.y, Math.min(this.position.y, wall.y + wall.height));
+              const dx = this.position.x - cx;
+              const dy = this.position.y - cy;
+              const dist = Math.hypot(dx, dy);
+              if (dist > 0.0001) {
+                const nx = dx / dist;
+                const ny = dy / dist;
+                const outwardVel = this.velocity.x * nx + this.velocity.y * ny;
+                // While falling or moving away from the wall just dismounted, do NOT snap pushout!
+                if (outwardVel >= -0.01 || this.position.z > 0.05 || this.isDismountFreefall) {
+                  continue;
+                }
+              } else if (this.position.z > 0.05 || this.isDismountFreefall) {
+                continue;
+              }
             }
             this.resolveWallCollision(wall);
           }
