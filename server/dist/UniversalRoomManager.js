@@ -18711,6 +18711,17 @@ class ServerGameSimulation {
 }
 class GrabIntentArbiter {
   /**
+   * Calculates whether a carrier is strong and heavy enough to lift target overhead.
+   * Target must be <= 50% of (carrierMass * carrierStrength) to be lifted.
+   */
+  static canLift(carrier, target) {
+    const carrierMass = Math.max(0.1, carrier.hasMass ? carrier.mass : 1.2);
+    const targetMass = Math.max(0.1, target.hasMass ? target.mass : 1);
+    const carrierStrength = carrier.hasStrength ? carrier.strength : 1;
+    const liftRatio = 2;
+    return carrierMass * carrierStrength >= targetMass * liftRatio;
+  }
+  /**
    * Finds the best reachable object or character based on active pickup/grapple capabilities
    */
   static findTarget(character, targetX, targetY, candidates, wallHeight = 1, maxSelectDistance = Infinity) {
@@ -18727,12 +18738,22 @@ class GrabIntentArbiter {
     );
     const pickupReach = ((_c = character.pickupModule) == null ? void 0 : _c.enabled) ? character.pickupModule.pickupReachProp.get(character.properties) : 0;
     const grappleReach = ((_d = character.grappleModule) == null ? void 0 : _d.enabled) ? character.grappleModule.grappleReachProp.get(character.properties) : 0;
-    const maxReach = Math.max(pickupReach, grappleReach);
     for (const obj of candidates) {
       if (obj === character || obj === character.heldObject || obj === character.grappledTarget || obj.isHeld) {
         continue;
       }
       if (obj.lastThrower === character) continue;
+      const isLiftable = GrabIntentArbiter.canLift(character, obj);
+      let allowedReach = 0;
+      if (isLiftable && ((_e = character.pickupModule) == null ? void 0 : _e.enabled)) {
+        allowedReach = Math.max(allowedReach, pickupReach);
+      }
+      if ((_f = character.grappleModule) == null ? void 0 : _f.enabled) {
+        allowedReach = Math.max(allowedReach, grappleReach);
+      }
+      if (allowedReach <= 0) {
+        continue;
+      }
       const objZ = Math.max(
         obj.position.z,
         obj.supportingSurfaceHeight ?? 0,
@@ -18741,13 +18762,14 @@ class GrabIntentArbiter {
       const dx = obj.position.x - character.position.x;
       const dy = obj.position.y - character.position.y;
       const dz = objZ - charZ;
-      const dist3D = Math.hypot(dx, dy, dz);
-      if (dist3D > maxReach) continue;
-      const canBeLifted = GrappleCapability.canLift(character, obj);
-      const canPickupThis = Boolean(((_e = character.pickupModule) == null ? void 0 : _e.enabled) && dist3D <= pickupReach && canBeLifted);
-      const canGrappleThis = Boolean(((_f = character.grappleModule) == null ? void 0 : _f.enabled) && dist3D <= grappleReach);
-      if (!canPickupThis && !canGrappleThis) continue;
-      const distToAim = Math.hypot(obj.position.x - targetX, obj.position.y - targetY);
+      const dist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const reachWithBody = allowedReach + (character.colliderRadius ?? 0.35) + (obj.colliderRadius ?? 0.3);
+      if (dist3D > reachWithBody) {
+        continue;
+      }
+      const aimDx = obj.position.x - targetX;
+      const aimDy = obj.position.y - targetY;
+      const distToAim = Math.sqrt(aimDx * aimDx + aimDy * aimDy);
       if (distToAim <= maxSelectDistance && distToAim < shortestDist) {
         shortestDist = distToAim;
         bestCandidate = obj;
@@ -18763,7 +18785,7 @@ class GrabIntentArbiter {
     if (character.heldObject || character.grappledTarget) {
       return { success: false, mode: "none" };
     }
-    const isLiftable = GrappleCapability.canLift(character, target);
+    const isLiftable = GrabIntentArbiter.canLift(character, target);
     if (isLiftable && character.pickupModule && character.pickupModule.enabled) {
       const pickedUp = character.pickupModule.pickup(character, target);
       if (pickedUp) {

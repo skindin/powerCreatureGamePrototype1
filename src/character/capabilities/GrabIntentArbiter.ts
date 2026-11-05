@@ -48,13 +48,24 @@ export class GrabIntentArbiter {
     const grappleReach = character.grappleModule?.enabled
       ? character.grappleModule.grappleReachProp.get(character.properties)
       : 0;
-    const maxReach = Math.max(pickupReach, grappleReach);
 
     for (const obj of candidates) {
       if (obj === character || obj === character.heldObject || obj === character.grappledTarget || obj.isHeld) {
         continue;
       }
       if (obj.lastThrower === character) continue;
+
+      const isLiftable = GrabIntentArbiter.canLift(character, obj);
+      let allowedReach = 0;
+      if (isLiftable && character.pickupModule?.enabled) {
+        allowedReach = Math.max(allowedReach, pickupReach);
+      }
+      if (character.grappleModule?.enabled) {
+        allowedReach = Math.max(allowedReach, grappleReach);
+      }
+      if (allowedReach <= 0) {
+        continue;
+      }
 
       const objZ = Math.max(
         obj.position.z,
@@ -67,7 +78,7 @@ export class GrabIntentArbiter {
       const dz = objZ - charZ;
       const dist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-      const reachWithBody = maxReach + (character.colliderRadius ?? 0.35) + (obj.colliderRadius ?? 0.3);
+      const reachWithBody = allowedReach + (character.colliderRadius ?? 0.35) + (obj.colliderRadius ?? 0.3);
       if (dist3D > reachWithBody) {
         continue;
       }

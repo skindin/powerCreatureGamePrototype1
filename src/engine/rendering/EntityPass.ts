@@ -71,7 +71,6 @@ export class EntityPass {
       }
     }
     const isTargetGrab = targetingChars.length > 0;
-    const isWithinPickupRange = charactersInReach.length > 0 || isTargetGrab;
 
     const isOnLayer2 = isEntityOnLayer2(obj, arena.wallHeight);
     const isHeld = obj.isHeld || allCharacters.some((c) => c.heldObject === obj);
@@ -147,8 +146,8 @@ export class EntityPass {
 
       const primaryTargetChar = targetingChars[0];
       const targetColor = primaryTargetChar ? (primaryTargetChar.playerColor || "#ffffff") : "#ffffff";
-      ctx.strokeStyle = isWithinPickupRange ? (isTargetGrab ? targetColor : "#ffffff") : "rgba(255, 255, 255, 0.45)";
-      ctx.lineWidth = isWithinPickupRange ? 2.5 : 1.5;
+      ctx.strokeStyle = isTargetGrab ? targetColor : "rgba(255, 255, 255, 0.45)";
+      ctx.lineWidth = isTargetGrab ? 2.5 : 1.5;
       ctx.stroke();
 
       // Barrel tip & muzzle detail
@@ -189,8 +188,8 @@ export class EntityPass {
 
       const primaryTargetChar = targetingChars[0];
       const targetColor = primaryTargetChar ? (primaryTargetChar.playerColor || "#ffffff") : "#ffffff";
-      ctx.strokeStyle = isWithinPickupRange ? (isTargetGrab ? targetColor : "#ffffff") : "rgba(255, 255, 255, 0.45)";
-      ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
+      ctx.strokeStyle = isTargetGrab ? targetColor : "rgba(255, 255, 255, 0.45)";
+      ctx.lineWidth = isTargetGrab ? 2.5 : 2;
       ctx.stroke();
 
       const inset = Math.max(3, renderRadius * 0.22);
@@ -242,8 +241,8 @@ export class EntityPass {
       } else {
         const primaryTargetChar = targetingChars[0];
         const targetColor = primaryTargetChar ? (primaryTargetChar.playerColor || "#ffffff") : "#ffffff";
-        ctx.strokeStyle = isWithinPickupRange ? (isTargetGrab ? targetColor : "#ffffff") : "rgba(255, 255, 255, 0.45)";
-        ctx.lineWidth = isWithinPickupRange ? 2.5 : 2;
+        ctx.strokeStyle = isTargetGrab ? targetColor : "rgba(255, 255, 255, 0.45)";
+        ctx.lineWidth = isTargetGrab ? 2.5 : 2;
         ctx.stroke();
       }
  
@@ -296,7 +295,7 @@ export class EntityPass {
 
     EntityPass.drawConsumableEatingRing(ctx, obj, allCharacters, x, y, renderRadius);
 
-    if (isWithinPickupRange && !isHeld) {
+    if (isTargetGrab && !isHeld) {
       const grabRadius = renderRadius + 2;
       ctx.save();
       ctx.beginPath();
@@ -311,35 +310,25 @@ export class EntityPass {
       } else {
         ctx.arc(x, y, grabRadius, 0, Math.PI * 2);
       }
-      if (isTargetGrab) {
-        const primaryTargetChar = targetingChars[0];
-        const themeColor = primaryTargetChar.playerColor || "#38bdf8";
-        ctx.strokeStyle = themeColor;
-        ctx.lineWidth = 2.8;
-        ctx.setLineDash([]);
-        ctx.stroke();
+      const primaryTargetChar = targetingChars[0];
+      const themeColor = primaryTargetChar.playerColor || "#38bdf8";
+      ctx.strokeStyle = themeColor;
+      ctx.lineWidth = 2.8;
+      ctx.setLineDash([]);
+      ctx.stroke();
 
-        ctx.fillStyle = themeColor;
-        ctx.font = "bold 11px sans-serif";
-        ctx.textAlign = "center";
-        const badgeText =
-          allCharacters.length > 1 && primaryTargetChar.playerNumber
-            ? `P${primaryTargetChar.playerNumber} GRAB`
-            : "GRAB";
-        ctx.fillText(badgeText, x, y - grabRadius - 6);
-      } else {
-        const reachColor = (charactersInReach[0]?.playerColor || targetingChars[0]?.playerColor)
-          ? `${(charactersInReach[0]?.playerColor || targetingChars[0]?.playerColor)}99`
-          : "rgba(56, 189, 248, 0.45)";
-        ctx.strokeStyle = reachColor;
-        ctx.lineWidth = 1.8;
-        ctx.setLineDash([4, 4]);
-        ctx.stroke();
-      }
+      ctx.fillStyle = themeColor;
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      const badgeText =
+        allCharacters.length > 1 && primaryTargetChar.playerNumber
+          ? `P${primaryTargetChar.playerNumber} GRAB`
+          : "GRAB";
+      ctx.fillText(badgeText, x, y - grabRadius - 6);
       ctx.restore();
     }
 
-    if (obj.isSleeping && !isWithinPickupRange && !obj.isHeld) {
+    if (obj.isSleeping && !isTargetGrab && !obj.isHeld) {
       ctx.save();
       ctx.font = "bold 9px monospace";
       ctx.fillStyle = "rgba(148, 163, 184, 0.65)";
@@ -420,7 +409,6 @@ export class EntityPass {
       }
     }
     const isTargetGrab = targetingChars.length > 0;
-    const isWithinPickupRange = charactersInReach.length > 0 || isTargetGrab;
 
     const isOnLayer2 = isEntityOnLayer2(char, arena.wallHeight);
     const isHeld = char.isHeld || char.heldBy !== null;
@@ -435,10 +423,10 @@ export class EntityPass {
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = char.color;
     ctx.fill();
-    ctx.strokeStyle = isWithinPickupRange && isTargetGrab
+    ctx.strokeStyle = isTargetGrab
       ? (targetingChars[0].playerColor || "#ffffff")
       : "#ffffff";
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = isTargetGrab ? 3.0 : 2.0;
     ctx.stroke();
 
     this.drawRollIndicator(ctx, char, x, y, r);
@@ -463,36 +451,26 @@ export class EntityPass {
 
     ctx.restore();
 
-    if (isWithinPickupRange && !isHeld) {
+    if (isTargetGrab && !isHeld) {
       const grabRadius = r + 3;
       ctx.save();
       ctx.beginPath();
       ctx.arc(x, y, grabRadius, 0, Math.PI * 2);
-      if (isTargetGrab) {
-        const primaryTargetChar = targetingChars[0];
-        const themeColor = primaryTargetChar.playerColor || "#38bdf8";
-        ctx.strokeStyle = themeColor;
-        ctx.lineWidth = 2.8;
-        ctx.setLineDash([]);
-        ctx.stroke();
+      const primaryTargetChar = targetingChars[0];
+      const themeColor = primaryTargetChar.playerColor || "#38bdf8";
+      ctx.strokeStyle = themeColor;
+      ctx.lineWidth = 2.8;
+      ctx.setLineDash([]);
+      ctx.stroke();
 
-        ctx.fillStyle = themeColor;
-        ctx.font = "bold 11px sans-serif";
-        ctx.textAlign = "center";
-        const badgeText =
-          allCharacters.length > 1 && primaryTargetChar.playerNumber
-            ? `P${primaryTargetChar.playerNumber} GRAB`
-            : "GRAB";
-        ctx.fillText(badgeText, x, y + grabRadius + 14);
-      } else {
-        const reachColor = (charactersInReach[0]?.playerColor || targetingChars[0]?.playerColor)
-          ? `${(charactersInReach[0]?.playerColor || targetingChars[0]?.playerColor)}99`
-          : "rgba(56, 189, 248, 0.45)";
-        ctx.strokeStyle = reachColor;
-        ctx.lineWidth = 1.8;
-        ctx.setLineDash([4, 4]);
-        ctx.stroke();
-      }
+      ctx.fillStyle = themeColor;
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      const badgeText =
+        allCharacters.length > 1 && primaryTargetChar.playerNumber
+          ? `P${primaryTargetChar.playerNumber} GRAB`
+          : "GRAB";
+      ctx.fillText(badgeText, x, y + grabRadius + 14);
       ctx.restore();
     }
 

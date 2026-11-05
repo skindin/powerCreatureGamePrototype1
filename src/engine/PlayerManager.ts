@@ -761,7 +761,6 @@ export class PlayerManager {
       const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject ? kChar.canConsumeHeldObject() : false);
 
       // Target discovery in reach for pickup or swap
-      let grabTargetObjectId: string | null = null;
       let grabTargetObject: GameObject | null = null;
       if (kChar.pickupModule || kChar.grappleModule) {
         const candidateEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects].filter(
@@ -1033,7 +1032,7 @@ export class PlayerManager {
         isSprinting: isSprinting || Boolean(kChar.isSprinting),
         isJumpHeld,
         isGrabHeld,
-        grabTargetObjectId: (isGrabHeld || isSwap) ? grabTargetObjectId : null,
+        grabTargetObjectId: (isGrabHeld || isSwap) && grabTargetObject ? grabTargetObject.id : null,
         isDrop,
         isThrow,
         isSwap,
@@ -1919,11 +1918,6 @@ export class PlayerManager {
     for (const entry of this.players.values()) {
       const char = entry.character;
       const isHolding = char.heldObject !== null;
-      const others = [...this.allCharacters.filter((c) => c !== char), ...objects];
-      const reachable = (char.pickupModule && char.pickupModule.enabled)
-        ? others.filter((o) => char.pickupModule!.isObjectInReach(char, o, this.arena.wallHeight))
-        : [];
-      const hasReachable = reachable.length > 0;
 
       if (entry.isKeyboard) {
         if (!this.inputManager.isKeyboardActive || this.inputManager.isKeyboardSuspended) {
@@ -1953,20 +1947,20 @@ export class PlayerManager {
           this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
         }
 
-        // In both controller and keyboard mode, always select the closest object on the ground to the cursor within range of the character to grab:
-        if (hasReachable) {
-          const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
-          if (reachableGroundObjects.length > 0) {
-            const target = char.pickupModule!.findTargetObject(
-              char,
-              this.inputManager.actualMousePos.x,
-              this.inputManager.actualMousePos.y,
-              reachableGroundObjects,
-              this.arena.wallHeight
-            );
-            if (target) {
-              targetGrabEntities.set(char, target);
-            }
+        // Unified single-object target selection via GrabIntentArbiter:
+        if (!char.heldObject && !char.grappledTarget && (char.pickupModule?.enabled || char.grappleModule?.enabled)) {
+          const candidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter(
+            (o) => o !== char.heldObject && o !== (char as any).grappledTarget && !o.isHeld
+          );
+          const target = GrabIntentArbiter.findTarget(
+            char,
+            this.inputManager.actualMousePos.x,
+            this.inputManager.actualMousePos.y,
+            candidateEntities,
+            this.arena.wallHeight
+          );
+          if (target) {
+            targetGrabEntities.set(char, target);
           }
         }
 
@@ -2007,19 +2001,20 @@ export class PlayerManager {
         slot.aimOffset.x = slot.aimPos.x - char.position.x;
         slot.aimOffset.y = slot.aimPos.y - char.position.y;
 
-        if (hasReachable) {
-          const reachableGroundObjects = reachable.filter((o) => o !== char.heldObject && !o.isHeld);
-          if (reachableGroundObjects.length > 0) {
-            const target = char.pickupModule!.findTargetObject(
-              char,
-              slot.aimPos.x,
-              slot.aimPos.y,
-              reachableGroundObjects,
-              this.arena.wallHeight
-            );
-            if (target) {
-              targetGrabEntities.set(char, target);
-            }
+        // Unified single-object target selection via GrabIntentArbiter:
+        if (!char.heldObject && !char.grappledTarget && (char.pickupModule?.enabled || char.grappleModule?.enabled)) {
+          const candidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter(
+            (o) => o !== char.heldObject && o !== (char as any).grappledTarget && !o.isHeld
+          );
+          const target = GrabIntentArbiter.findTarget(
+            char,
+            slot.aimPos.x,
+            slot.aimPos.y,
+            candidateEntities,
+            this.arena.wallHeight
+          );
+          if (target) {
+            targetGrabEntities.set(char, target);
           }
         }
 
