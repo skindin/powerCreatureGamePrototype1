@@ -297,25 +297,19 @@ export class EntityPass {
 
     if (isTargetGrab && !isHeld) {
       const grabRadius = renderRadius + 2;
-      ctx.save();
-      ctx.beginPath();
-      if (obj.visualShape === "box") {
-        const sz = grabRadius * 2;
-        const cr = Math.max(3, grabRadius * 0.16);
-        if (ctx.roundRect) {
-          ctx.roundRect(x - grabRadius, y - grabRadius, sz, sz, cr);
-        } else {
-          ctx.rect(x - grabRadius, y - grabRadius, sz, sz);
-        }
-      } else {
-        ctx.arc(x, y, grabRadius, 0, Math.PI * 2);
-      }
       const primaryTargetChar = targetingChars[0];
       const themeColor = primaryTargetChar.playerColor || "#38bdf8";
-      ctx.strokeStyle = themeColor;
-      ctx.lineWidth = 2.8;
-      ctx.setLineDash([]);
-      ctx.stroke();
+      const roll = obj.rollModule;
+      const isBumpy = !!(roll && roll.enabled && roll.bumpyRollEnabled && roll.getBumpiness(obj.properties) > 0.01);
+      ctx.save();
+      if (isBumpy) {
+        ctx.beginPath();
+        ctx.arc(x, y, grabRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = themeColor;
+        ctx.lineWidth = 2.8;
+        ctx.setLineDash([]);
+        ctx.stroke();
+      }
 
       ctx.fillStyle = themeColor;
       ctx.font = "bold 11px sans-serif";
@@ -452,17 +446,9 @@ export class EntityPass {
     ctx.restore();
 
     if (isTargetGrab && !isHeld) {
-      const grabRadius = r + 3;
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(x, y, grabRadius, 0, Math.PI * 2);
       const primaryTargetChar = targetingChars[0];
       const themeColor = primaryTargetChar.playerColor || "#38bdf8";
-      ctx.strokeStyle = themeColor;
-      ctx.lineWidth = 2.8;
-      ctx.setLineDash([]);
-      ctx.stroke();
-
+      ctx.save();
       ctx.fillStyle = themeColor;
       ctx.font = "bold 11px sans-serif";
       ctx.textAlign = "center";
@@ -470,7 +456,7 @@ export class EntityPass {
         allCharacters.length > 1 && primaryTargetChar.playerNumber
           ? `P${primaryTargetChar.playerNumber} GRAB`
           : "GRAB";
-      ctx.fillText(badgeText, x, y + grabRadius + 14);
+      ctx.fillText(badgeText, x, y + r + 15);
       ctx.restore();
     }
 
