@@ -474,11 +474,19 @@ export class BallisticTrajectorySolver {
     arena: Arena,
     hoverScale?: number,
     lockedTargetPos?: { x: number; y: number } | null
-  ): { trajectory: TrajectoryCalculation | null; bestRatio: number } {
+  ): { trajectory: TrajectoryCalculation | null; bestRatio: number; savedArcRatio: number } {
     const initialParams: BallisticProjectileParams = {
       ...baseParams,
       hasUserSetArcRatio: false,
     };
+    const baseLaunch = this.computeLaunchVelocity(
+      initialParams,
+      aimTargetX,
+      aimTargetY,
+      arena,
+      hoverScale,
+      lockedTargetPos
+    );
     const baseTraj = this.calculateTrajectoryFromParams(
       initialParams,
       aimTargetX,
@@ -489,12 +497,13 @@ export class BallisticTrajectorySolver {
     );
 
     if (!baseTraj) {
-      return { trajectory: null, bestRatio: 0.5 };
+      return { trajectory: null, bestRatio: 0.5, savedArcRatio: 0.5 };
     }
 
+    const optimalRatio = baseLaunch ? baseLaunch.resolvedArcRatio : 0.5;
     const isBaseClear = !baseTraj.isBlockedByWall && !baseTraj.points.some((p) => p.collidesWall);
     if (isBaseClear) {
-      return { trajectory: baseTraj, bestRatio: baseParams.savedArcRatio ?? 0.5 };
+      return { trajectory: baseTraj, bestRatio: optimalRatio, savedArcRatio: optimalRatio };
     }
 
     let bestRatio: number | null = null;
@@ -551,10 +560,10 @@ export class BallisticTrajectorySolver {
           }
         }
       }
-      return { trajectory: bestTraj, bestRatio };
+      return { trajectory: bestTraj, bestRatio, savedArcRatio: bestRatio };
     }
 
-    return { trajectory: baseTraj, bestRatio: 0.5 };
+    return { trajectory: baseTraj, bestRatio: optimalRatio, savedArcRatio: optimalRatio };
   }
 
   /**

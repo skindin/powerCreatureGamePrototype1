@@ -1,6 +1,6 @@
 {
-  "version": 383,
-  "lastSaved": "2026-11-05T13:00:01.938Z",
+  "version": 384,
+  "lastSaved": "2026-11-05T15:54:55.894Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -15564,14 +15564,41 @@
                 "id": "block-vomit",
                 "name": "Throw Up / Vomit",
                 "enabled": true,
-                "stageTrigger": {
+                "mode": "chargeAndRelease",
+                "chargeTrigger": {
+                  "code": "MouseLeft",
+                  "gateButtons": [
+                    "AltLeft"
+                  ],
+                  "requireCleanPress": true
+                },
+                "aimTrigger": {
                   "code": "AltLeft",
                   "requireCleanPress": false
                 },
                 "fireTrigger": {
                   "code": "MouseLeft",
                   "requireCleanPress": true
-                }
+                },
+                "quickTrigger": {
+                  "code": "MouseLeft",
+                  "gateButtons": [
+                    "AltLeft"
+                  ],
+                  "requireCleanPress": true
+                },
+                "cancelTrigger": {
+                  "code": "KeyX",
+                  "requireCleanPress": true
+                },
+                "arcModulation": {
+                  "source": "mouseDeltaY",
+                  "autoCursorLock": true,
+                  "sensitivity": 0.005
+                },
+                "enableProximityCancel": true,
+                "cancelRadius": 1.5,
+                "triggerMargin": 0.15
               }
             ]
           },
@@ -15966,14 +15993,41 @@
                 "id": "block-vomit-gp",
                 "name": "Throw Up / Vomit",
                 "enabled": true,
-                "stageTrigger": {
+                "mode": "holdAndRelease",
+                "chargeTrigger": {
+                  "code": "GamepadRT",
+                  "gateButtons": [
+                    "GamepadLT"
+                  ],
+                  "requireCleanPress": true
+                },
+                "aimTrigger": {
                   "code": "GamepadLT",
                   "requireCleanPress": false
                 },
                 "fireTrigger": {
                   "code": "GamepadRT",
                   "requireCleanPress": true
-                }
+                },
+                "quickTrigger": {
+                  "code": "GamepadRT",
+                  "gateButtons": [
+                    "GamepadLT"
+                  ],
+                  "requireCleanPress": true
+                },
+                "cancelTrigger": {
+                  "code": null,
+                  "requireCleanPress": true
+                },
+                "triggerMargin": 0.15,
+                "arcModulation": {
+                  "source": "none",
+                  "autoCursorLock": false,
+                  "sensitivity": 0.005
+                },
+                "enableProximityCancel": true,
+                "cancelRadius": 1.5
               }
             ]
           },
@@ -18250,7 +18304,7 @@
               "id": "block-vomit",
               "name": "Throw Up / Vomit",
               "enabled": true,
-              "mode": "holdAndRelease",
+              "mode": "chargeAndRelease",
               "chargeTrigger": {
                 "code": "MouseLeft",
                 "gateButtons": [
@@ -18283,7 +18337,8 @@
                 "sensitivity": 0.005
               },
               "enableProximityCancel": true,
-              "cancelRadius": 1.5
+              "cancelRadius": 1.5,
+              "triggerMargin": 0.15
             }
           ]
         },

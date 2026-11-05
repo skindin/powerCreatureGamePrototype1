@@ -806,17 +806,20 @@ export class ModularBlockEvaluator {
 
           switch (mode) {
             case "chargeAndRelease": {
-              if (isSlotActive(b.chargeTrigger, "hold", false, b.id, "vomit.chargeBow")) {
+              const chargeSlot = b.chargeTrigger?.code ? b.chargeTrigger : b.aimTrigger;
+              const isHoldingCharge = isSlotActive(chargeSlot, "hold", false, b.id, "vomit.chargeBow");
+              if (isHoldingCharge) {
                 isVomitAiming = true;
                 isAimingTrajectory = true;
                 (char as any).isChargingVomit = true;
+                (char as any).isHoldingVomitRelease = false;
                 if (!(char as any).vomitChargeStartTime) {
                   (char as any).vomitChargeStartTime = now;
                 }
-                claimSlot(b.chargeTrigger, b.id, "vomit.chargeBow", false);
+                claimSlot(chargeSlot, b.id, "vomit.chargeBow", false);
               }
 
-              if (isSlotAnyJustReleased(b.chargeTrigger) && (char as any).isChargingVomit) {
+              if (isSlotAnyJustReleased(chargeSlot) && (char as any).isChargingVomit) {
                 const aimDx = effAim.x - char.position.x;
                 const aimDy = effAim.y - char.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
@@ -829,24 +832,31 @@ export class ModularBlockEvaluator {
                   (char as any).vomitChargeProgress = 0;
                   char.activeTrajectory = null;
                   (char as any).isVomitCancelZone = false;
-                  claimSlot(b.chargeTrigger, b.id, "vomit.cancel", false);
+                  claimSlot(chargeSlot, b.id, "vomit.cancel", false);
                 } else {
                   isVomitRequested = true;
                   (char as any).isChargingVomit = false;
                   (char as any).vomitChargeStartTime = null;
                   (char as any).isVomitCancelZone = false;
-                  claimSlot(b.chargeTrigger, b.id, "vomit.fire", true);
+                  claimSlot(chargeSlot, b.id, "vomit.fire", true);
                 }
+              } else if (!isHoldingCharge) {
+                (char as any).isChargingVomit = false;
+                (char as any).vomitChargeStartTime = null;
+                (char as any).vomitChargeProgress = 0;
               }
               break;
             }
 
             case "holdAndRelease": {
-              const holdSlot = b.chargeTrigger || b.aimTrigger;
-              if (isSlotActive(holdSlot, "hold", false, b.id, "vomit.holdAndRelease")) {
+              const holdSlot = b.chargeTrigger?.code ? b.chargeTrigger : b.aimTrigger;
+              const isHolding = isSlotActive(holdSlot, "hold", false, b.id, "vomit.holdAndRelease");
+              if (isHolding) {
                 isVomitAiming = true;
                 isAimingTrajectory = true;
                 (char as any).isHoldingVomitRelease = true;
+                (char as any).isChargingVomit = false;
+                (char as any).vomitChargeStartTime = null;
                 char.hasUserSetArcRatio = false;
                 claimSlot(holdSlot, b.id, "vomit.holdAndRelease", false);
               }
@@ -869,6 +879,8 @@ export class ModularBlockEvaluator {
                   (char as any).isVomitCancelZone = false;
                   claimSlot(holdSlot, b.id, "vomit.fire", true);
                 }
+              } else if (!isHolding) {
+                (char as any).isHoldingVomitRelease = false;
               }
               break;
             }
