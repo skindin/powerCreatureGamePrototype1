@@ -1277,6 +1277,9 @@ export class PlayerManager {
         );
 
         if (thrown) {
+          thrown.applyKnockbackWindow(2500);
+          thrown.isInFlight = true;
+          thrown.wakeUp();
           (char as any)._lastThrowRecoilTime = performance.now();
           char.isUsingItem = false;
           char.eatRateWatts = 0;
@@ -1471,9 +1474,10 @@ export class PlayerManager {
         // Primary Item Ability: Actuates held object's primary ability (e.g. consuming for consumables)
         const grabState = this.getGrabSuppressionState(char.id);
         const isUsingItem = Boolean((pkt as any).isUsingItem) && !grabState.useItemSuppressed;
-        if (isUsingItem && char.heldObject && char.hasPrimaryItemAbility()) {
+        const activeConsumable = char.heldObject || char.grappledTarget;
+        if (isUsingItem && activeConsumable && char.hasPrimaryItemAbility()) {
           char.isUsingItem = true;
-          const heldItem = char.heldObject;
+          const heldItem = activeConsumable;
           let isDepleted = false;
 
           if (heldItem.hasPrimaryItemAbility()) {
@@ -1507,6 +1511,9 @@ export class PlayerManager {
             char.activeTrajectory = null;
             if (char.heldObject === heldItem) {
               char.heldObject = null;
+            }
+            if (char.grappledTarget === heldItem) {
+              char.releaseGrapple();
             }
             if (heldItem) {
               heldItem.isHeld = false;

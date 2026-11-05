@@ -32,7 +32,23 @@ export class MotionIntegrator {
           if (entity.rollModule) {
             entity.rollModule.lastContactRadius = 0;
           }
-          if (entity.isInFlight) {
+          const impactVz = Math.abs(entity.verticalVelocity);
+          if (entity.isInFlight || impactVz > 3.0) {
+            const bMod = entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : (entity.isCharacter ? 0.2 : 0);
+            const absFrac = Math.max(0, 1.0 - Math.min(1.0, bMod * bMod));
+            const shock = impactVz * 60 * absFrac;
+            if (shock > 10) {
+              entity.dispatchImpact({
+                absorbedShock: shock,
+                impactSpeed: impactVz,
+                otherEntity: null,
+                normalX: 0,
+                normalY: 0,
+              });
+            }
+          }
+          const landingHorizSpeed = Math.hypot(entity.velocity.x, entity.velocity.y);
+          if (entity.isInFlight && landingHorizSpeed < 0.25) {
             entity.isInFlight = false;
           }
           const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);
@@ -97,7 +113,8 @@ export class MotionIntegrator {
               (entity as any).climbingModule.isDismountFreefall = false;
             }
           }
-          if (entity.isInFlight) {
+          const landingHorizSpeed2 = Math.hypot(entity.velocity.x, entity.velocity.y);
+          if (entity.isInFlight && landingHorizSpeed2 < 0.25) {
             entity.isInFlight = false;
           }
           const bounceThreshold = Math.max(0.25, 1.25 * arena.gravity * dt);

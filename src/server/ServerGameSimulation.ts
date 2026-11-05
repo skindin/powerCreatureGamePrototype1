@@ -366,6 +366,9 @@ export class ServerGameSimulation {
             launchPos
           );
           if (thrown) {
+            thrown.applyKnockbackWindow(2500);
+            thrown.isInFlight = true;
+            thrown.wakeUp();
             (char as any)._lastServerThrowTime = performance.now();
             (char as any)._pendingThrowUntilMs = 0;
           }

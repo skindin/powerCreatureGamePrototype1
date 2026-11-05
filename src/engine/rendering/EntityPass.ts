@@ -278,7 +278,7 @@ export class EntityPass {
      }
  
      // Active eating nutrient pulse particles when being consumed
-     if (isHeld && allCharacters.some((c) => c.heldObject === obj && c.isUsingItem)) {
+     if ((isHeld || allCharacters.some((c) => c.grappledTarget === obj)) && allCharacters.some((c) => (c.heldObject === obj || c.grappledTarget === obj) && c.isUsingItem)) {
        const pulseT = (performance.now() % 600) / 600;
        const pulseColor = obj.consumableModule?.unlimited
          ? `rgba(255, 20, 147, ${0.85 * (1 - pulseT)})`
@@ -714,7 +714,7 @@ export class EntityPass {
     const cMod = obj.consumableModule || obj.foodModule;
     if (!cMod || !cMod.enabled) return;
 
-    const holdingChar = allCharacters.find((c) => c.heldObject === obj);
+    const holdingChar = allCharacters.find((c) => c.heldObject === obj || c.grappledTarget === obj);
     if (!holdingChar) return;
 
     const isEating = Boolean(holdingChar.isUsingItem && holdingChar.canConsumeHeldObject());

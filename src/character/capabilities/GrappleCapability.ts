@@ -52,16 +52,65 @@ export class GrappleCapability {
     const targetMass = Math.max(0.2, target.hasMass ? target.mass : 1.0);
     const charMass = Math.max(0.2, character.hasMass ? character.mass : 1.2);
 
-    // Accelerate target forward
+    // Calculate unencumbered mechanical work needed for shove + recoil:
+    // W_mech = 0.5 * m_target * v_target^2 + 0.5 * m_char * v_recoil^2
     const shoveSpeed = shoveImpulse / targetMass;
-    target.velocity.x += dirX * shoveSpeed;
-    target.velocity.y += dirY * shoveSpeed;
+    const recoilSpeed = (shoveImpulse * 0.45) / charMass;
+    const mechanicalJoules = 0.5 * targetMass * (shoveSpeed * shoveSpeed) + 0.5 * charMass * (recoilSpeed * recoilSpeed);
+
+    const pool = character.energyPool;
+    const efficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(character.properties) : 0.25);
+    const rawMetabolicJoules = Math.max(10, mechanicalJoules / efficiency);
+    const maxPower = character.grappleModule ? character.grappleModule.maxPowerProp.get(character.properties) : 350;
+    const metabolicJoules = Math.min(rawMetabolicJoules, Math.max(10, maxPower));
+
+    const consumesEnergy = character.grappleModule ? character.grappleModule.consumesEnergy : true;
+    const allowPartial = character.grappleModule ? character.grappleModule.allowPartialPower : false;
+
+    let energyFraction = 1.0;
+    if (consumesEnergy && pool && pool.enabled) {
+      if (pool.isExhausted) {
+        pool.notifyInsufficientEnergy({
+          abilityId: "grapple",
+          demandedAmount: metabolicJoules,
+          isBurst: true,
+          registry: character.properties,
+        });
+        return false;
+      }
+      if (!allowPartial && !pool.canSatisfyFullEnergy(metabolicJoules, 0.05, character.properties)) {
+        pool.notifyInsufficientEnergy({
+          abilityId: "grapple",
+          demandedAmount: metabolicJoules,
+          isBurst: true,
+          registry: character.properties,
+        });
+        return false;
+      }
+      const burstRes = pool.requestInstantBurst({
+        abilityId: "grapple",
+        demandedJoules: metabolicJoules,
+        allowPartialPower: allowPartial,
+        registry: character.properties,
+      });
+      if (!burstRes.granted || burstRes.grantedJoules <= 0.001 || (!allowPartial && burstRes.fraction < 1.0)) {
+        return false;
+      }
+      energyFraction = burstRes.fraction;
+    }
+
+    const effShoveSpeed = shoveSpeed * energyFraction;
+    const effRecoilSpeed = recoilSpeed * energyFraction;
+
+    // Accelerate target forward
+    target.velocity.x += dirX * effShoveSpeed;
+    target.velocity.y += dirY * effShoveSpeed;
     target.wakeUp();
+    target.applyKnockbackWindow(800);
 
     // Symmetrical recoil on character
-    const recoilSpeed = (shoveImpulse * 0.45) / charMass;
-    character.velocity.x -= dirX * recoilSpeed;
-    character.velocity.y -= dirY * recoilSpeed;
+    character.velocity.x -= dirX * effRecoilSpeed;
+    character.velocity.y -= dirY * effRecoilSpeed;
 
     // Release the grapple
     GrappleCapability.releaseGrapple(character);

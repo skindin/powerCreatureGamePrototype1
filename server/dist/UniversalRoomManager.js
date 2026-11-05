@@ -734,19 +734,35 @@ class MotionIntegrator {
           if (entity.rollModule) {
             entity.rollModule.lastContactRadius = 0;
           }
-          if (entity.isInFlight) {
+          const impactVz = Math.abs(entity.verticalVelocity);
+          if (entity.isInFlight || impactVz > 3) {
+            const bMod = entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : entity.isCharacter ? 0.2 : 0;
+            const absFrac = Math.max(0, 1 - Math.min(1, bMod * bMod));
+            const shock = impactVz * 60 * absFrac;
+            if (shock > 10) {
+              entity.dispatchImpact({
+                absorbedShock: shock,
+                impactSpeed: impactVz,
+                otherEntity: null,
+                normalX: 0,
+                normalY: 0
+              });
+            }
+          }
+          const landingHorizSpeed = Math.hypot(entity.velocity.x, entity.velocity.y);
+          if (entity.isInFlight && landingHorizSpeed < 0.25) {
             entity.isInFlight = false;
           }
           const bounceThreshold = Math.max(0.25, 1.25 * arena2.gravity * dt);
           if ((!entity.isCharacter || entity.rollMovementModule) && entity.hasVerticalBounce && entity.bounceMod !== null && entity.bounceMod > 0 && Math.abs(entity.verticalVelocity) > bounceThreshold) {
-            const impactVz = Math.abs(entity.verticalVelocity);
+            const impactVz2 = Math.abs(entity.verticalVelocity);
             entity.verticalVelocity = -entity.verticalVelocity * entity.bounceMod;
             if (entity.hasFriction && entity.rollModule && entity.rollModule.enabled) {
               const roll = entity.rollModule;
               const R = entity.colliderRadius > 0 ? entity.colliderRadius : 0.3;
               const beta = 0.4;
               const e = entity.bounceMod;
-              const normalImpulse = (1 + e) * entity.mass * impactVz;
+              const normalImpulse = (1 + e) * entity.mass * impactVz2;
               const muBounce = arena2.frictionCoeff * entity.dynamicGroundFrictionMod * 0.05;
               const vSlipX = entity.velocity.x - roll.angularVelocity.y * R;
               const vSlipY = entity.velocity.y + roll.angularVelocity.x * R;
@@ -783,7 +799,8 @@ class MotionIntegrator {
               entity.climbingModule.isDismountFreefall = false;
             }
           }
-          if (entity.isInFlight) {
+          const landingHorizSpeed2 = Math.hypot(entity.velocity.x, entity.velocity.y);
+          if (entity.isInFlight && landingHorizSpeed2 < 0.25) {
             entity.isInFlight = false;
           }
           const bounceThreshold = Math.max(0.25, 1.25 * arena2.gravity * dt);
@@ -1381,11 +1398,13 @@ const _GameObject = class _GameObject {
         this.position.y - this.lastThrower.position.y,
         myZ - throwerZ
       );
-      if (dist3D > reach || this.isRestingOnSurface) {
+      const horizSpeed2 = Math.hypot(this.velocity.x, this.velocity.y);
+      if (dist3D > reach || this.isRestingOnSurface && horizSpeed2 < 0.25) {
         this.lastThrower = null;
       }
     }
-    if (this.isInFlight && (this.isRestingOnSurface || this.isHeld)) {
+    const horizSpeed = Math.hypot(this.velocity.x, this.velocity.y);
+    if (this.isInFlight && (this.isRestingOnSurface && horizSpeed < 0.25 || this.isHeld)) {
       this.isInFlight = false;
       this.originalThrower = null;
     }
@@ -1758,7 +1777,6 @@ const _GameObject = class _GameObject {
    * Applies realistic wall/boundary impact dynamics
    */
   resolveWallImpact(normalX, normalY, restitution) {
-    var _a, _b;
     this.lastThrower = null;
     const dot = this.velocity.x * normalX + this.velocity.y * normalY;
     if (dot >= 0) return;
@@ -1773,8 +1791,7 @@ const _GameObject = class _GameObject {
     }
     const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : this.isCharacter ? 0.2 : 0;
     const absorbedFraction = Math.max(0, 1 - Math.min(1, bMod * bMod));
-    const isVoluntary = this.isCharacter && (Boolean(this.isActivelyWalking) || Boolean(this.isSprinting) || Math.hypot(((_a = this.movementInput) == null ? void 0 : _a.x) ?? 0, ((_b = this.movementInput) == null ? void 0 : _b.y) ?? 0) > 0.01);
-    const isThreat = !isVoluntary && this.isUnderKnockback || this.isInFlight;
+    const isThreat = this.isUnderKnockback || this.isInFlight || Boolean(this.lastThrower);
     const kSelf = isThreat ? 1 : this.damageSolverModule ? Math.max(0, Math.min(1, this.damageSolverModule.getSelfImpactWeight(this.properties))) : 0;
     const effectiveSpeed = impactSpeed * kSelf;
     const shockDeceleration = effectiveSpeed * 60 * absorbedFraction;
@@ -4147,6 +4164,7 @@ const ABILITY_METADATA = {
   instant_burst: { name: "Burst", color: "#ec4899" },
   laser_blast: { name: "Laser", color: "#06b6d4" },
   melee: { name: "Melee", color: "#f97316" },
+  grapple: { name: "Shove", color: "#f97316" },
   vomit: { name: "Throw Up", color: "#84cc16" }
 };
 class EnergyPool {
@@ -8615,7 +8633,7 @@ class GrappleModule {
     /** Multiplier on grappleReach before the physical leash snaps from over-extension (default 1.4x) */
     __publicField(this, "breakoutDistanceRatioProp");
     /** Whether maintaining or initiating a grapple consumes energy from EnergyPool */
-    __publicField(this, "consumesEnergy", false);
+    __publicField(this, "consumesEnergy", true);
     /** Whether grapple actions are permitted at partial wattage when energy is low */
     __publicField(this, "allowPartialPower", false);
     /** Maximum wattage capacity for grapple operations */
@@ -8624,7 +8642,7 @@ class GrappleModule {
     this.shoveImpulseProp = new DynamicProperty((options == null ? void 0 : options.shoveImpulse) ?? 16);
     this.breakoutDistanceRatioProp = new DynamicProperty((options == null ? void 0 : options.breakoutDistanceRatio) ?? 1.4);
     this.maxPowerProp = new DynamicProperty((options == null ? void 0 : options.maxPower) ?? 250);
-    if ((options == null ? void 0 : options.consumesEnergy) !== void 0) this.consumesEnergy = options.consumesEnergy;
+    this.consumesEnergy = (options == null ? void 0 : options.consumesEnergy) ?? true;
     if ((options == null ? void 0 : options.allowPartialPower) !== void 0) this.allowPartialPower = options.allowPartialPower;
     if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
   }
@@ -8768,12 +8786,54 @@ class GrappleCapability {
     const targetMass = Math.max(0.2, target.hasMass ? target.mass : 1);
     const charMass = Math.max(0.2, character.hasMass ? character.mass : 1.2);
     const shoveSpeed = shoveImpulse / targetMass;
-    target.velocity.x += dirX * shoveSpeed;
-    target.velocity.y += dirY * shoveSpeed;
-    target.wakeUp();
     const recoilSpeed = shoveImpulse * 0.45 / charMass;
-    character.velocity.x -= dirX * recoilSpeed;
-    character.velocity.y -= dirY * recoilSpeed;
+    const mechanicalJoules = 0.5 * targetMass * (shoveSpeed * shoveSpeed) + 0.5 * charMass * (recoilSpeed * recoilSpeed);
+    const pool = character.energyPool;
+    const efficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(character.properties) : 0.25);
+    const rawMetabolicJoules = Math.max(10, mechanicalJoules / efficiency);
+    const maxPower = character.grappleModule ? character.grappleModule.maxPowerProp.get(character.properties) : 350;
+    const metabolicJoules = Math.min(rawMetabolicJoules, Math.max(10, maxPower));
+    const consumesEnergy = character.grappleModule ? character.grappleModule.consumesEnergy : true;
+    const allowPartial = character.grappleModule ? character.grappleModule.allowPartialPower : false;
+    let energyFraction = 1;
+    if (consumesEnergy && pool && pool.enabled) {
+      if (pool.isExhausted) {
+        pool.notifyInsufficientEnergy({
+          abilityId: "grapple",
+          demandedAmount: metabolicJoules,
+          isBurst: true,
+          registry: character.properties
+        });
+        return false;
+      }
+      if (!allowPartial && !pool.canSatisfyFullEnergy(metabolicJoules, 0.05, character.properties)) {
+        pool.notifyInsufficientEnergy({
+          abilityId: "grapple",
+          demandedAmount: metabolicJoules,
+          isBurst: true,
+          registry: character.properties
+        });
+        return false;
+      }
+      const burstRes = pool.requestInstantBurst({
+        abilityId: "grapple",
+        demandedJoules: metabolicJoules,
+        allowPartialPower: allowPartial,
+        registry: character.properties
+      });
+      if (!burstRes.granted || burstRes.grantedJoules <= 1e-3 || !allowPartial && burstRes.fraction < 1) {
+        return false;
+      }
+      energyFraction = burstRes.fraction;
+    }
+    const effShoveSpeed = shoveSpeed * energyFraction;
+    const effRecoilSpeed = recoilSpeed * energyFraction;
+    target.velocity.x += dirX * effShoveSpeed;
+    target.velocity.y += dirY * effShoveSpeed;
+    target.wakeUp();
+    target.applyKnockbackWindow(800);
+    character.velocity.x -= dirX * effRecoilSpeed;
+    character.velocity.y -= dirY * effRecoilSpeed;
     GrappleCapability.releaseGrapple(character);
     return true;
   }
@@ -9199,16 +9259,18 @@ class Character extends GameObject {
     return list;
   }
   canConsumeHeldObject() {
-    return this.consumeModule ? this.consumeModule.canConsume(this.heldObject) : false;
+    const target = this.heldObject || this.grappledTarget;
+    return this.consumeModule ? this.consumeModule.canConsume(target) : false;
   }
   /**
    * Returns true if the currently held object has an inherent primary ability other than throw.
    */
   hasPrimaryItemAbility() {
-    var _a, _b, _c, _d;
-    if (!this.heldObject) return false;
-    if ((_b = (_a = this.heldObject).hasPrimaryItemAbility) == null ? void 0 : _b.call(_a)) {
-      const type = (_d = (_c = this.heldObject).getPrimaryItemAbilityType) == null ? void 0 : _d.call(_c);
+    var _a, _b;
+    const target = this.heldObject || this.grappledTarget;
+    if (!target) return false;
+    if ((_a = target.hasPrimaryItemAbility) == null ? void 0 : _a.call(target)) {
+      const type = (_b = target.getPrimaryItemAbilityType) == null ? void 0 : _b.call(target);
       if (type === "consume") {
         return this.canConsumeHeldObject();
       }
@@ -9220,10 +9282,11 @@ class Character extends GameObject {
    * Returns true if the held object's primary ability does not require directional aiming (e.g. eating food).
    */
   isPrimaryAbilityNonDirectional() {
-    var _a, _b, _c, _d;
-    if (!this.heldObject) return false;
-    if ((_b = (_a = this.heldObject).hasPrimaryItemAbility) == null ? void 0 : _b.call(_a)) {
-      const type = (_d = (_c = this.heldObject).getPrimaryItemAbilityType) == null ? void 0 : _d.call(_c);
+    var _a, _b;
+    const target = this.heldObject || this.grappledTarget;
+    if (!target) return false;
+    if ((_a = target.hasPrimaryItemAbility) == null ? void 0 : _a.call(target)) {
+      const type = (_b = target.getPrimaryItemAbilityType) == null ? void 0 : _b.call(target);
       if (type === "consume") {
         return this.consumeModule ? !this.consumeModule.involvesDirection : true;
       }
@@ -9244,17 +9307,18 @@ class Character extends GameObject {
    * For any consumable object, its primary ability is to be consumed.
    */
   useHeldItemPrimaryAbility(dt, objects2, arena2) {
-    var _a, _b;
-    if (!this.heldObject) return false;
-    if ((_b = (_a = this.heldObject).hasPrimaryItemAbility) == null ? void 0 : _b.call(_a)) {
-      const res = this.heldObject.usePrimaryItemAbility(dt, this, objects2, arena2);
+    var _a;
+    const target = this.heldObject || this.grappledTarget;
+    if (!target) return false;
+    if ((_a = target.hasPrimaryItemAbility) == null ? void 0 : _a.call(target)) {
+      const res = target.usePrimaryItemAbility(dt, this, objects2, arena2);
       if (res.success && res.watts !== void 0) {
         this.eatRateWatts = res.watts;
       }
       return res.success;
     }
     if (this.consumeModule && this.canConsumeHeldObject()) {
-      const res = this.consumeModule.consume(dt, this, this.heldObject, objects2, arena2);
+      const res = this.consumeModule.consume(dt, this, target, objects2, arena2);
       this.eatRateWatts = res.watts;
       return true;
     }
@@ -9263,6 +9327,9 @@ class Character extends GameObject {
   /**
    * Drops or unholds the currently held object safely.
    */
+  releaseGrapple() {
+    return GrappleCapability.releaseGrapple(this);
+  }
   unhold() {
     if (!this.heldObject) return null;
     const obj = this.heldObject;
@@ -9926,7 +9993,6 @@ class CollisionResolver {
    * Resolves entity collision with an arena wall using discrete rollback or continuous sweep.
    */
   static resolveEntityWallCollision(entity, wall, _arena, dt, globalMode = "dynamic") {
-    var _a, _b;
     if (!entity.hasCollider) return false;
     if (entity.position.z > wall.wallHeight) return false;
     const r = entity.colliderRadius;
@@ -9977,8 +10043,7 @@ class CollisionResolver {
     if (vn < 0) {
       const impactSpeed = Math.abs(vn);
       const absFrac = Math.max(0, 1 - Math.min(1, bRestitution * bRestitution));
-      const isVoluntary = entity.isCharacter && (Boolean(entity.isActivelyWalking) || Boolean(entity.isSprinting) || Math.hypot(((_a = entity.movementInput) == null ? void 0 : _a.x) ?? 0, ((_b = entity.movementInput) == null ? void 0 : _b.y) ?? 0) > 0.01);
-      const isThreat = !isVoluntary && entity.isUnderKnockback || entity.isInFlight;
+      const isThreat = entity.isUnderKnockback || entity.isInFlight || Boolean(entity.lastThrower);
       const kSelf = isThreat ? 1 : entity.damageSolverModule ? Math.max(0, Math.min(1, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0;
       const threatRatio = CollisionResolver.calculateThreatRatio(impactSpeed, 0, kSelf, 0, isThreat, false);
       const effectiveSpeed = impactSpeed * threatRatio;
@@ -10020,7 +10085,7 @@ class CollisionResolver {
    * Applies impulse at contact point respecting the Massless vs Massive rule.
    */
   static applyImpulseAtContact(a, b, normX, normY, velAlongNormal, restitution, collisionType, customImpactSpeed, _normZ = 0) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b;
     const isClosingIn2D = velAlongNormal < 0;
     const impactSpeed = customImpactSpeed !== void 0 ? customImpactSpeed : isClosingIn2D ? Math.abs(velAlongNormal) : 0;
     const vAn0 = a.isImmovable ? 0 : a.velocity.x * normX + a.velocity.y * normY;
@@ -10176,10 +10241,8 @@ class CollisionResolver {
     } else if (a.position.z >= b.position.z && relVz0 > 0.05) {
       uA = Math.hypot(uA, Math.abs(relVz0));
     }
-    const isVoluntaryA = a.isCharacter && (Boolean(a.isActivelyWalking) || Boolean(a.isSprinting) || Math.hypot(((_c = a.movementInput) == null ? void 0 : _c.x) ?? 0, ((_d = a.movementInput) == null ? void 0 : _d.y) ?? 0) > 0.01);
-    const isVoluntaryB = b.isCharacter && (Boolean(b.isActivelyWalking) || Boolean(b.isSprinting) || Math.hypot(((_e = b.movementInput) == null ? void 0 : _e.x) ?? 0, ((_f = b.movementInput) == null ? void 0 : _f.y) ?? 0) > 0.01);
-    const isThreatA = Boolean(!isVoluntaryA && a.isUnderKnockback || a.isInFlight);
-    const isThreatB = Boolean(!isVoluntaryB && b.isUnderKnockback || b.isInFlight);
+    const isThreatA = Boolean(a.isUnderKnockback || a.isInFlight || a.lastThrower);
+    const isThreatB = Boolean(b.isUnderKnockback || b.isInFlight || b.lastThrower);
     const multA = isThreatA ? 1 : a.damageSolverModule ? Math.max(0, Math.min(1, a.damageSolverModule.getSelfImpactWeight(a.properties))) : 0;
     const multB = isThreatB ? 1 : b.damageSolverModule ? Math.max(0, Math.min(1, b.damageSolverModule.getSelfImpactWeight(b.properties))) : 0;
     const threatRatioA = CollisionResolver.calculateThreatRatio(uA, uB, multA, multB, isThreatA, isThreatB);
@@ -18494,6 +18557,9 @@ class ServerGameSimulation {
             launchPos
           );
           if (thrown) {
+            thrown.applyKnockbackWindow(2500);
+            thrown.isInFlight = true;
+            thrown.wakeUp();
             char._lastServerThrowTime = performance.now();
             char._pendingThrowUntilMs = 0;
           }

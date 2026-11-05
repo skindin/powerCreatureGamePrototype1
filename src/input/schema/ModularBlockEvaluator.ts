@@ -1596,7 +1596,8 @@ export class ModularBlockEvaluator {
           }
 
           // Reset toggle if item left hand or was replaced by a different item
-          const currentHeldItemId = char.heldObject?.id ?? null;
+          const activeConsumableTarget = char.heldObject || char.grappledTarget;
+          const currentHeldItemId = activeConsumableTarget?.id ?? null;
           if ((char as any)._isConsumeToggledOn) {
             if (!currentHeldItemId || currentHeldItemId !== (char as any)._toggledConsumeItemId || isDrop || isSwap || isThrow) {
               (char as any)._isConsumeToggledOn = false;
@@ -1609,7 +1610,7 @@ export class ModularBlockEvaluator {
           const canConsumeHeld = Boolean(
             execCtx.heldItemIsEdible ||
             execCtx.heldItemHasPrimaryAbility ||
-            (char.heldObject && char.hasPrimaryItemAbility?.())
+            (activeConsumableTarget && char.hasPrimaryItemAbility?.())
           );
 
           if (isToggleMode) {

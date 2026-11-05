@@ -352,16 +352,18 @@ export class Character extends GameObject {
   public eatRateWatts: number = 0;
 
   public canConsumeHeldObject(): boolean {
-    return this.consumeModule ? this.consumeModule.canConsume(this.heldObject) : false;
+    const target = this.heldObject || this.grappledTarget;
+    return this.consumeModule ? this.consumeModule.canConsume(target) : false;
   }
 
   /**
    * Returns true if the currently held object has an inherent primary ability other than throw.
    */
   public hasPrimaryItemAbility(): boolean {
-    if (!this.heldObject) return false;
-    if (this.heldObject.hasPrimaryItemAbility?.()) {
-      const type = this.heldObject.getPrimaryItemAbilityType?.();
+    const target = this.heldObject || this.grappledTarget;
+    if (!target) return false;
+    if (target.hasPrimaryItemAbility?.()) {
+      const type = target.getPrimaryItemAbilityType?.();
       if (type === "consume") {
         return this.canConsumeHeldObject();
       }
@@ -374,9 +376,10 @@ export class Character extends GameObject {
    * Returns true if the held object's primary ability does not require directional aiming (e.g. eating food).
    */
   public isPrimaryAbilityNonDirectional(): boolean {
-    if (!this.heldObject) return false;
-    if (this.heldObject.hasPrimaryItemAbility?.()) {
-      const type = this.heldObject.getPrimaryItemAbilityType?.();
+    const target = this.heldObject || this.grappledTarget;
+    if (!target) return false;
+    if (target.hasPrimaryItemAbility?.()) {
+      const type = target.getPrimaryItemAbilityType?.();
       if (type === "consume") {
         return this.consumeModule ? !this.consumeModule.involvesDirection : true;
       }
@@ -400,16 +403,17 @@ export class Character extends GameObject {
    * For any consumable object, its primary ability is to be consumed.
    */
   public useHeldItemPrimaryAbility(dt: number, objects?: GameObject[], arena?: Arena): boolean {
-    if (!this.heldObject) return false;
-    if (this.heldObject.hasPrimaryItemAbility?.()) {
-      const res = this.heldObject.usePrimaryItemAbility(dt, this, objects, arena);
+    const target = this.heldObject || this.grappledTarget;
+    if (!target) return false;
+    if (target.hasPrimaryItemAbility?.()) {
+      const res = target.usePrimaryItemAbility(dt, this, objects, arena);
       if (res.success && res.watts !== undefined) {
         this.eatRateWatts = res.watts;
       }
       return res.success;
     }
     if (this.consumeModule && this.canConsumeHeldObject()) {
-      const res = this.consumeModule.consume(dt, this, this.heldObject, objects, arena);
+      const res = this.consumeModule.consume(dt, this, target, objects, arena);
       this.eatRateWatts = res.watts;
       return true;
     }
@@ -419,6 +423,10 @@ export class Character extends GameObject {
   /**
    * Drops or unholds the currently held object safely.
    */
+  public releaseGrapple(): GameObject | null {
+    return GrappleCapability.releaseGrapple(this);
+  }
+
   public unhold(): GameObject | null {
     if (!this.heldObject) return null;
     const obj = this.heldObject;

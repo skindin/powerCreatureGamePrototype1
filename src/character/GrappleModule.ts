@@ -33,7 +33,7 @@ export class GrappleModule {
   public breakoutDistanceRatioProp: DynamicProperty;
 
   /** Whether maintaining or initiating a grapple consumes energy from EnergyPool */
-  public consumesEnergy: boolean = false;
+  public consumesEnergy: boolean = true;
 
   /** Whether grapple actions are permitted at partial wattage when energy is low */
   public allowPartialPower: boolean = false;
@@ -47,7 +47,7 @@ export class GrappleModule {
     this.breakoutDistanceRatioProp = new DynamicProperty(options?.breakoutDistanceRatio ?? 1.4);
     this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 250.0);
 
-    if (options?.consumesEnergy !== undefined) this.consumesEnergy = options.consumesEnergy;
+    this.consumesEnergy = options?.consumesEnergy ?? true;
     if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;
     if (options?.enabled !== undefined) this.enabled = options.enabled;
   }
