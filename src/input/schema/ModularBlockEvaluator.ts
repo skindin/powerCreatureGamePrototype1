@@ -330,6 +330,70 @@ export class ModularBlockEvaluator {
       }
     }
 
+    // Pre-evaluate Throw Up (vomit) aiming & charging state for modal arbitration (LASER / VOMIT > CONSUME > THROW > PICKUP)
+    const hasVomitCapability = Boolean(char.vomitModule && char.vomitModule.enabled);
+    const vomitBlock = hasVomitCapability
+      ? (blocks.find((blk) => blk.enabled && blk.type === "vomit") as VomitControlBlock | undefined)
+      : undefined;
+
+    if (vomitBlock) {
+      const vMode = vomitBlock.mode || "holdAndRelease";
+      const isAimTriggerHeld = Boolean(
+        vomitBlock.aimTrigger?.code &&
+        isSlotActive(vomitBlock.aimTrigger, "hold", false, vomitBlock.id, "vomit.aim")
+      );
+      const isGateButtonsHeld = Boolean(
+        vomitBlock.chargeTrigger?.gateButtons?.length &&
+        vomitBlock.chargeTrigger.gateButtons.every((g) => tokens.isDown(g))
+      ) || Boolean(
+        vomitBlock.fireTrigger?.gateButtons?.length &&
+        vomitBlock.fireTrigger.gateButtons.every((g) => tokens.isDown(g))
+      ) || Boolean(
+        vomitBlock.aimTrigger?.gateButtons?.length &&
+        vomitBlock.aimTrigger.gateButtons.every((g) => tokens.isDown(g))
+      );
+
+      if (isGateButtonsHeld) {
+        if (vomitBlock.chargeTrigger?.gateButtons) {
+          for (const g of vomitBlock.chargeTrigger.gateButtons) {
+            if (tokens.isDown(g)) tokens.claim(g, vomitBlock.id, "vomit.gate");
+          }
+        }
+        if (vomitBlock.fireTrigger?.gateButtons) {
+          for (const g of vomitBlock.fireTrigger.gateButtons) {
+            if (tokens.isDown(g)) tokens.claim(g, vomitBlock.id, "vomit.gate");
+          }
+        }
+        if (vomitBlock.aimTrigger?.gateButtons) {
+          for (const g of vomitBlock.aimTrigger.gateButtons) {
+            if (tokens.isDown(g)) tokens.claim(g, vomitBlock.id, "vomit.gate");
+          }
+        }
+      }
+      const isChargeSlotHeld = Boolean(
+        (vMode === "chargeAndRelease" || vMode === "holdAndRelease") &&
+        isSlotActive(vomitBlock.chargeTrigger, "hold", false, vomitBlock.id, "vomit.charge")
+      );
+      const isTriggerPullActive = Boolean(
+        vMode === "triggerPullForce" &&
+        getSlotAnalogValue(vomitBlock.chargeTrigger) > 0.05
+      );
+
+      if (
+        isAimTriggerHeld ||
+        isGateButtonsHeld ||
+        isChargeSlotHeld ||
+        isTriggerPullActive ||
+        Boolean((char as any).isChargingVomit) ||
+        Boolean((char as any).isHoldingVomitRelease) ||
+        Boolean((char as any).isAimingVomitWallClear) ||
+        Boolean((char as any).isTriggerPullVomiting) ||
+        Boolean(char.isVomitAiming)
+      ) {
+        isVomitAiming = true;
+      }
+    }
+
     // Helper to get effective aim position for abilities:
     // In Raw Direction Mode on Gamepad: abilities aim along the character's raw facing direction.
     // In Cursor Mode (or Mouse/Keyboard): abilities aim at targetAimPos (the cursor).
@@ -557,7 +621,20 @@ export class ModularBlockEvaluator {
             }
 
             // Forward Drive Button (e.g. MouseRight or KeyW)
-            const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forward");
+            const isFwdMatchingVomit = Boolean(
+              (isVomitAiming || (char as any).isChargingVomit || isVomitRequested) &&
+              b.forwardTrigger?.code &&
+              (b.forwardTrigger.code === vomitBlock?.chargeTrigger?.code ||
+               b.forwardTrigger.code === vomitBlock?.aimTrigger?.code ||
+               b.forwardTrigger.code === vomitBlock?.fireTrigger?.code)
+            );
+            const isFwdMatchingLaser = Boolean(
+              (isLaserAiming || isLaserFiring) &&
+              b.forwardTrigger?.code &&
+              (b.forwardTrigger.code === laserBlock?.aimTrigger?.code ||
+               b.forwardTrigger.code === laserBlock?.fireTrigger?.code)
+            );
+            const fwdActive = !isFwdMatchingVomit && !isFwdMatchingLaser && isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forward");
             if (fwdActive && arrive.driveFactor > 0.001) {
               moveX += Math.cos(char.facingAngle) * arrive.driveFactor;
               moveY += Math.sin(char.facingAngle) * arrive.driveFactor;
@@ -704,6 +781,21 @@ export class ModularBlockEvaluator {
         case "jump": {
           const b = block as JumpControlBlock;
           const slot = b.jumpTrigger || b.jump;
+          if (isVomitAiming || (char as any).isChargingVomit || isVomitRequested) {
+            const chargeSlotCode = vomitBlock?.chargeTrigger?.code;
+            const aimSlotCode = vomitBlock?.aimTrigger?.code;
+            const fireSlotCode = vomitBlock?.fireTrigger?.code;
+            if (slot?.code && (slot.code === chargeSlotCode || slot.code === aimSlotCode || slot.code === fireSlotCode)) {
+              break;
+            }
+          }
+          if (isLaserAiming || isLaserFiring) {
+            const laserAimCode = laserBlock?.aimTrigger?.code;
+            const laserFireCode = laserBlock?.fireTrigger?.code;
+            if (slot?.code && (slot.code === laserAimCode || slot.code === laserFireCode)) {
+              break;
+            }
+          }
           const jumpRequiresClean = slot?.requireCleanPress === true || b.requireCleanPress === true;
           if (jumpRequiresClean) {
             if (isSlotActive(slot, "down", true, b.id, "jump")) {
@@ -721,7 +813,7 @@ export class ModularBlockEvaluator {
 
         case "melee": {
           const b = block as MeleeControlBlock;
-          if (isLaserAiming || isLaserFiring) {
+          if (isLaserAiming || isLaserFiring || isVomitAiming || (char as any).isChargingVomit || isVomitRequested) {
             break;
           }
           if (isSlotActive(b.punch, "down", true, b.id, "melee.punch")) {
@@ -816,7 +908,12 @@ export class ModularBlockEvaluator {
                 if (!(char as any).vomitChargeStartTime) {
                   (char as any).vomitChargeStartTime = now;
                 }
-                claimSlot(chargeSlot, b.id, "vomit.chargeBow", false);
+                claimSlot(chargeSlot, b.id, "vomit.chargeBow", true);
+              }
+              if (b.chargeTrigger?.gateButtons) {
+                for (const g of b.chargeTrigger.gateButtons) {
+                  if (tokens.isDown(g)) tokens.claim(g, b.id, "vomit.gate");
+                }
               }
 
               if (isSlotAnyJustReleased(chargeSlot) && (char as any).isChargingVomit) {
@@ -855,7 +952,12 @@ export class ModularBlockEvaluator {
                 (char as any).isChargingVomit = false;
                 (char as any).vomitChargeStartTime = null;
                 char.hasUserSetArcRatio = false;
-                claimSlot(holdSlot, b.id, "vomit.holdAndRelease", false);
+                claimSlot(holdSlot, b.id, "vomit.holdAndRelease", true);
+              }
+              if (b.chargeTrigger?.gateButtons) {
+                for (const g of b.chargeTrigger.gateButtons) {
+                  if (tokens.isDown(g)) tokens.claim(g, b.id, "vomit.gate");
+                }
               }
 
               if (isSlotAnyJustReleased(holdSlot) && (char as any).isHoldingVomitRelease) {
@@ -1019,6 +1121,9 @@ export class ModularBlockEvaluator {
 
         case "laser": {
           const b = block as LaserControlBlock;
+          if (isVomitAiming || (char as any).isChargingVomit || isVomitRequested) {
+            break;
+          }
           if (isLaserAiming) {
             claimSlot(b.aimTrigger, b.id, "laser.aim");
           }
@@ -1403,7 +1508,7 @@ export class ModularBlockEvaluator {
 
         case "itemInteraction": {
           const b = block as ItemInteractionControlBlock;
-          if (isLaserAiming || isLaserFiring) {
+          if (isLaserAiming || isLaserFiring || isVomitAiming || (char as any).isChargingVomit || isVomitRequested) {
             break;
           }
 
