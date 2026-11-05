@@ -33,14 +33,22 @@ export class MotionIntegrator {
             entity.rollModule.lastContactRadius = 0;
           }
           const impactVz = Math.abs(entity.verticalVelocity);
-          if (entity.isInFlight || impactVz > 3.0) {
+          // Contextual collision damage: Involuntary crashes (thrown bodies in flight or under knockback)
+          // always take full damage. Intentional jumps and falls scale by selfImpactWeight (default 0.0 arcade immunity).
+          const isThreat = Boolean(entity.isUnderKnockback || (entity.isInFlight && entity.lastThrower));
+          const kSelf = isThreat
+            ? 1.0
+            : (entity.damageSolverModule ? Math.max(0, Math.min(1.0, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0.0);
+          const effectiveSpeed = impactVz * kSelf;
+
+          if (effectiveSpeed > 0.01) {
             const bMod = entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : (entity.isCharacter ? 0.2 : 0);
             const absFrac = Math.max(0, 1.0 - Math.min(1.0, bMod * bMod));
-            const shock = impactVz * 60 * absFrac;
+            const shock = effectiveSpeed * 60 * absFrac;
             if (shock > 10) {
               entity.dispatchImpact({
                 absorbedShock: shock,
-                impactSpeed: impactVz,
+                impactSpeed: effectiveSpeed,
                 otherEntity: null,
                 normalX: 0,
                 normalY: 0,

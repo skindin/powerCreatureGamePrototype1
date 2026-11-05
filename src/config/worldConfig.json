@@ -1,6 +1,6 @@
 {
-  "version": 389,
-  "lastSaved": "2026-11-05T19:36:36.088Z",
+  "version": 391,
+  "lastSaved": "2026-11-05T22:25:53.233Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -7640,6 +7640,16 @@
           "consumesEnergy": false,
           "allowPartialPower": false
         },
+        "hasGrapple": true,
+        "grappleModule": {
+          "enabled": true,
+          "grappleReach": 1.3,
+          "shoveImpulse": 16,
+          "breakoutDistanceRatio": 1.4,
+          "maxPower": 250,
+          "consumesEnergy": false,
+          "allowPartialPower": false
+        },
         "hasClimbing": true,
         "climbingModule": {
           "enabled": true,
@@ -7755,17 +7765,7 @@
         "hasRollMovement": false,
         "hasLocomotionStance": false,
         "hasEnergyGrowth": false,
-        "hasVomit": false,
-        "hasGrapple": true,
-        "grappleModule": {
-          "enabled": true,
-          "grappleReach": 1.3,
-          "shoveImpulse": 16,
-          "breakoutDistanceRatio": 1.4,
-          "maxPower": 250,
-          "consumesEnergy": false,
-          "allowPartialPower": false
-        }
+        "hasVomit": false
       },
       "controlSchema": {
         "id": "default",
@@ -11396,6 +11396,16 @@
           "consumesEnergy": false,
           "allowPartialPower": false
         },
+        "hasGrapple": true,
+        "grappleModule": {
+          "enabled": true,
+          "grappleReach": 1.3,
+          "shoveImpulse": 16,
+          "breakoutDistanceRatio": 1.4,
+          "maxPower": 250,
+          "consumesEnergy": false,
+          "allowPartialPower": false
+        },
         "hasClimbing": false,
         "hasHealth": true,
         "healthModule": {
@@ -11531,17 +11541,7 @@
           "canWalkWhileRolling": false
         },
         "hasEnergyGrowth": false,
-        "hasVomit": false,
-        "hasGrapple": true,
-        "grappleModule": {
-          "enabled": true,
-          "grappleReach": 1.3,
-          "shoveImpulse": 16,
-          "breakoutDistanceRatio": 1.4,
-          "maxPower": 250,
-          "consumesEnergy": false,
-          "allowPartialPower": false
-        }
+        "hasVomit": false
       },
       "controlSchema": {
         "id": "speed-ball",
@@ -13450,6 +13450,16 @@
           "consumesEnergy": false,
           "allowPartialPower": false
         },
+        "hasGrapple": true,
+        "grappleModule": {
+          "enabled": true,
+          "grappleReach": 1.3,
+          "shoveImpulse": 16,
+          "breakoutDistanceRatio": 1.4,
+          "maxPower": 250,
+          "consumesEnergy": false,
+          "allowPartialPower": false
+        },
         "hasClimbing": false,
         "hasHealth": true,
         "healthModule": {
@@ -13556,17 +13566,7 @@
         "hasRollMovement": false,
         "hasLocomotionStance": false,
         "hasEnergyGrowth": false,
-        "hasVomit": false,
-        "hasGrapple": true,
-        "grappleModule": {
-          "enabled": true,
-          "grappleReach": 1.3,
-          "shoveImpulse": 16,
-          "breakoutDistanceRatio": 1.4,
-          "maxPower": 250,
-          "consumesEnergy": false,
-          "allowPartialPower": false
-        }
+        "hasVomit": false
       },
       "controlSchema": {
         "id": "hunter-mouse-drive",
@@ -15275,6 +15275,16 @@
           "consumesEnergy": false,
           "allowPartialPower": false
         },
+        "hasGrapple": true,
+        "grappleModule": {
+          "enabled": true,
+          "grappleReach": 1.3,
+          "shoveImpulse": 16,
+          "breakoutDistanceRatio": 1.4,
+          "maxPower": 250,
+          "consumesEnergy": false,
+          "allowPartialPower": false
+        },
         "hasClimbing": false,
         "hasHealth": true,
         "healthModule": {
@@ -15381,17 +15391,7 @@
         "hasRollMovement": false,
         "hasLocomotionStance": false,
         "hasEnergyGrowth": false,
-        "hasVomit": false,
-        "hasGrapple": true,
-        "grappleModule": {
-          "enabled": true,
-          "grappleReach": 1.3,
-          "shoveImpulse": 16,
-          "breakoutDistanceRatio": 1.4,
-          "maxPower": 250,
-          "consumesEnergy": false,
-          "allowPartialPower": false
-        }
+        "hasVomit": false
       },
       "controlSchema": {
         "id": "gamepad-hybrid-cursor",
@@ -18885,6 +18885,16 @@
           "consumesEnergy": false,
           "allowPartialPower": false
         },
+        "hasGrapple": true,
+        "grappleModule": {
+          "enabled": true,
+          "grappleReach": 1.3,
+          "shoveImpulse": 16,
+          "breakoutDistanceRatio": 1.4,
+          "maxPower": 250,
+          "consumesEnergy": false,
+          "allowPartialPower": false
+        },
         "hasClimbing": false,
         "hasHealth": true,
         "healthModule": {
@@ -19021,7 +19031,8 @@
             "laser.maxPower": 2000,
             "health.maxHealth": 100,
             "stamina.maxStamina": 10000,
-            "stamina.regenRate": 1000
+            "stamina.regenRate": 1000,
+            "grappleReach": 1.3
           },
           "scaledProperties": [
             {
@@ -19155,16 +19166,6 @@
           "globColor": "#84cc16",
           "consumableTag": "food",
           "consumeRateWatts": 900
-        },
-        "hasGrapple": true,
-        "grappleModule": {
-          "enabled": true,
-          "grappleReach": 1.3,
-          "shoveImpulse": 16,
-          "breakoutDistanceRatio": 1.4,
-          "maxPower": 250,
-          "consumesEnergy": false,
-          "allowPartialPower": false
         }
       },
       "controlSchema": {

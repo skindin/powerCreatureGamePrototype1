@@ -536,9 +536,10 @@ export class SinglePlayerHud {
     }
 
     // Active item consumption (+Watts)
-    if (_char.isUsingItem && _char.canConsumeHeldObject() && _char.heldObject?.consumableModule) {
-      const cMod = _char.heldObject.consumableModule;
-      const consumeWatts = cMod.getConsumeRate(_char.heldObject.properties);
+    const activeConsumable = _char.heldObject || _char.grappledTarget;
+    if (_char.isUsingItem && _char.canConsumeHeldObject() && activeConsumable?.consumableModule) {
+      const cMod = activeConsumable.consumableModule;
+      const consumeWatts = cMod.getConsumeRate(activeConsumable.properties);
       allocations.push({
         key: "consumable_nutrition",
         id: "consumable_nutrition",

@@ -8,13 +8,16 @@ import type { GameObject } from "../../engine/GameObject.js";
 export class GrabIntentArbiter {
   /**
    * Calculates whether a carrier is strong and heavy enough to lift target overhead.
-   * Target must be <= 50% of (carrierMass * carrierStrength) to be lifted.
+   * Target must be <= 50% of (carrierMass * carrierStrength) to be lifted (ratio 2.0).
+   * Also requires an active PickupModule.
    */
   public static canLift(carrier: Character, target: GameObject): boolean {
-    const carrierMass = Math.max(0.1, carrier.hasMass ? carrier.mass : 1.2);
-    const targetMass = Math.max(0.1, target.hasMass ? target.mass : 1.0);
+    if (!carrier.pickupModule || !carrier.pickupModule.enabled) return false;
+    const targetMass = Math.max(0.1, target.hasMass ? target.mass : 0.5);
+    const carrierMass = Math.max(0.1, carrier.hasMass ? (carrier.baseMass ?? carrier.mass) : 1.2);
     const carrierStrength = carrier.hasStrength ? carrier.strength : 1.0;
     const liftRatio = 2.0;
+
     return (carrierMass * carrierStrength) >= targetMass * liftRatio;
   }
 

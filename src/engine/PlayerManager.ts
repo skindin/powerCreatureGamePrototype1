@@ -757,7 +757,7 @@ export class PlayerManager {
     if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
       const kSchema = ControlsInspector.getActiveSchema(kChar);
-      const isHolding = kChar.heldObject !== null;
+      const isHolding = kChar.heldObject !== null || kChar.grappledTarget !== null;
       const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject ? kChar.canConsumeHeldObject() : false);
 
       // Target discovery in reach for pickup or swap
@@ -1078,7 +1078,7 @@ export class PlayerManager {
 
       const cChar = entry.character;
       const gpSchema = ControlsInspector.getActiveSchema(cChar);
-      const isCharHolding = cChar.heldObject !== null;
+      const isCharHolding = cChar.heldObject !== null || cChar.grappledTarget !== null;
       const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject ? cChar.canConsumeHeldObject() : false);
 
       let aimX = slot.aimPos.x;
@@ -1470,69 +1470,65 @@ export class PlayerManager {
         char.heldObject.position.x = heldPos.x;
         char.heldObject.position.y = heldPos.y;
         char.heldObject.position.z = heldPos.z;
+      }
 
-        // Primary Item Ability: Actuates held object's primary ability (e.g. consuming for consumables)
-        const grabState = this.getGrabSuppressionState(char.id);
-        const isUsingItem = Boolean((pkt as any).isUsingItem) && !grabState.useItemSuppressed;
-        const activeConsumable = char.heldObject || char.grappledTarget;
-        if (isUsingItem && activeConsumable && char.hasPrimaryItemAbility()) {
-          char.isUsingItem = true;
-          const heldItem = activeConsumable;
-          let isDepleted = false;
+      // Primary Item Ability: Actuates held or grappled object's primary ability (e.g. consuming for consumables)
+      const grabState = this.getGrabSuppressionState(char.id);
+      const isUsingItem = Boolean((pkt as any).isUsingItem) && !grabState.useItemSuppressed;
+      const activeConsumable = char.heldObject || char.grappledTarget;
+      if (isUsingItem && activeConsumable && char.hasPrimaryItemAbility()) {
+        char.isUsingItem = true;
+        const heldItem = activeConsumable;
+        let isDepleted = false;
 
-          if (heldItem.hasPrimaryItemAbility()) {
-            const res = heldItem.usePrimaryItemAbility(dt, char, objects, this.arena);
-            char.eatRateWatts = res.watts ?? 0;
-            isDepleted = Boolean(res.isDepleted);
-          } else if (char.consumeModule && char.consumeModule.canConsume(heldItem)) {
-            const consumeResult = char.consumeModule.consume(dt, char, heldItem, objects, this.arena);
-            char.eatRateWatts = consumeResult.watts;
-            isDepleted = Boolean(consumeResult.isDepleted);
+        if (heldItem.hasPrimaryItemAbility()) {
+          const res = heldItem.usePrimaryItemAbility(dt, char, objects, this.arena);
+          char.eatRateWatts = res.watts ?? 0;
+          isDepleted = Boolean(res.isDepleted);
+        } else if (char.consumeModule && char.consumeModule.canConsume(heldItem)) {
+          const consumeResult = char.consumeModule.consume(dt, char, heldItem, objects, this.arena);
+          char.eatRateWatts = consumeResult.watts;
+          isDepleted = Boolean(consumeResult.isDepleted);
+        }
+
+        if (isDepleted) {
+          console.log(`🍎 [PlayerManager] Local consumption of ${heldItem?.id} depleted! Removing and unlinking locally`);
+          justDepletedConsumable = true;
+          if (heldItem?.id) {
+            this.onObjectDepleted?.(heldItem.id);
           }
-
-          if (isDepleted) {
-            console.log(`🍎 [PlayerManager] Local consumption of ${heldItem?.id} depleted! Removing and unlinking locally`);
-            justDepletedConsumable = true;
-            if (heldItem?.id) {
-              this.onObjectDepleted?.(heldItem.id);
-            }
-            const grabState = this.getGrabSuppressionState(char.id);
-            grabState.mouseGrabSuppressed = true;
-            grabState.keyEGrabSuppressed = true;
-            grabState.rtGrabSuppressed = true;
-            grabState.bGrabSuppressed = true;
-            char.isUsingItem = false;
-            (char as any)._isConsumeToggledOn = false;
-            (char as any)._toggledConsumeItemId = null;
-            char.eatRateWatts = 0;
-            char.isChargingThrow = false;
-            char.isAimingWallClear = false;
-            char.isHoldingThrowRelease = false;
-            char.activeTrajectory = null;
-            if (char.heldObject === heldItem) {
-              char.heldObject = null;
-            }
-            if (char.grappledTarget === heldItem) {
-              char.releaseGrapple();
-            }
-            if (heldItem) {
-              heldItem.isHeld = false;
-              heldItem.heldBy = null;
-              const idx = objects.indexOf(heldItem);
-              if (idx !== -1) {
-                objects.splice(idx, 1);
-              }
-              if (Array.isArray((this.arena as any).entities)) {
-                const eIdx = (this.arena as any).entities.indexOf(heldItem);
-                if (eIdx !== -1) {
-                  (this.arena as any).entities.splice(eIdx, 1);
-                }
-              }
-            }
-          }
-        } else {
+          grabState.mouseGrabSuppressed = true;
+          grabState.keyEGrabSuppressed = true;
+          grabState.rtGrabSuppressed = true;
+          grabState.bGrabSuppressed = true;
           char.isUsingItem = false;
+          (char as any)._isConsumeToggledOn = false;
+          (char as any)._toggledConsumeItemId = null;
           char.eatRateWatts = 0;
+          char.isChargingThrow = false;
+          char.isAimingWallClear = false;
+          char.isHoldingThrowRelease = false;
+          char.activeTrajectory = null;
+          if (char.heldObject === heldItem) {
+            char.heldObject = null;
+          }
+          if (char.grappledTarget === heldItem) {
+            char.releaseGrapple();
+          }
+          if (heldItem) {
+            heldItem.isHeld = false;
+            heldItem.heldBy = null;
+            const idx = objects.indexOf(heldItem);
+            if (idx !== -1) {
+              objects.splice(idx, 1);
+            }
+            if (Array.isArray((this.arena as any).entities)) {
+              const eIdx = (this.arena as any).entities.indexOf(heldItem);
+              if (eIdx !== -1) {
+                (this.arena as any).entities.splice(eIdx, 1);
+              }
+            }
+          }
         }
       } else {
         char.isUsingItem = false;
@@ -1540,7 +1536,6 @@ export class PlayerManager {
       }
 
       // Explicit grab target resolution
-      const grabState = this.getGrabSuppressionState(char.id);
       const isKeyboardPlayer = !entry || entry.isKeyboard;
 
       // Reset grab suppression as soon as the grab action is not held

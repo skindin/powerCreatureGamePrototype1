@@ -436,6 +436,49 @@ export class Character extends GameObject {
     return obj;
   }
 
+  /**
+   * Smoothly transitions a held object overhead down to a grappled/dragged object on the ground
+   * when the character becomes too weak or small to carry it.
+   */
+  public transitionHeldToGrapple(arena?: Arena): void {
+    if (!this.heldObject) return;
+    const obj = this.unhold();
+    if (!obj) return;
+    const dropPos = this.calculateHeldObjectPosition(arena);
+    obj.position.x = dropPos.x;
+    obj.position.y = dropPos.y;
+    obj.position.z = dropPos.z;
+    obj.velocity.x = this.velocity.x;
+    obj.velocity.y = this.velocity.y;
+    obj.verticalVelocity = 0;
+    obj.wakeUp();
+    if (this.grappleModule && this.grappleModule.enabled) {
+      this.grappledTarget = obj;
+      (obj as any).grappledBy = this;
+    }
+  }
+
+  /**
+   * Smoothly transitions a grappled/dragged object on the ground up into a held object overhead
+   * when the character grows large or strong enough to lift it.
+   */
+  public transitionGrappleToHeld(arena?: Arena): void {
+    if (!this.grappledTarget || this.heldObject) return;
+    if (!this.pickupModule || !this.pickupModule.enabled) return;
+    const obj = this.grappledTarget;
+    GrappleCapability.releaseGrapple(this);
+    this.heldObject = obj;
+    obj.isHeld = true;
+    obj.heldBy = this;
+    obj.velocity.x = 0;
+    obj.velocity.y = 0;
+    obj.verticalVelocity = 0;
+    const heldPos = this.calculateHeldObjectPosition(arena);
+    obj.position.x = heldPos.x;
+    obj.position.y = heldPos.y;
+    obj.position.z = heldPos.z;
+  }
+
   constructor(options: {
     id?: string;
     position?: { x: number; y: number; z?: number };
@@ -868,6 +911,13 @@ export class Character extends GameObject {
 
     // Scale With Energy (updates mass, collider, sprite, and connected module properties from current energy)
     EnergyGrowthCapability.tick(this);
+
+    // Dynamic handoff between Lift and Grapple/Drag as strength/mass scales
+    if (this.heldObject && !GrappleCapability.canHold(this, this.heldObject)) {
+      this.transitionHeldToGrapple(arena);
+    } else if (this.grappledTarget && !this.heldObject && GrappleCapability.canLift(this, this.grappledTarget)) {
+      this.transitionGrappleToHeld(arena);
+    }
 
     // Facing orientation & held object synchronization
     const canAimThrow = Boolean(isAimingInput || this.isAimingTrajectory);

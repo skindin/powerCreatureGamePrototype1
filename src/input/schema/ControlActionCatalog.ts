@@ -333,7 +333,7 @@ export class ControlActionCatalog {
           description: "Uses the primary ability of the held item (e.g. consuming food or activating tools)",
           recommendedMode: "hold",
           execute: (ctx) => {
-            if (ctx.character.heldObject) {
+            if (ctx.character.heldObject || ctx.character.grappledTarget) {
               ctx.character.isUsingItem = true;
             }
           },

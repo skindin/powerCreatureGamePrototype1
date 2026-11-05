@@ -9,15 +9,31 @@ import type { Arena } from "../../engine/Arena.js";
 export class GrappleCapability {
   /**
    * Deterministic physical evaluation of whether a carrier can hoist target overhead into a Full Lift.
-   * Based on Carrier Mass × Carrier Strength >= Target Mass × 2.0.
+   * Target must be <= 50% of (carrierMass * carrierStrength) to be lifted (ratio 2.0).
+   * Also requires an active PickupModule.
    */
   public static canLift(character: Character, target: GameObject): boolean {
-    const targetMass = target.hasMass ? target.mass : 0.5;
-    const carrierMass = character.hasMass ? (character.baseMass ?? character.mass) : 1.2;
+    if (!character.pickupModule || !character.pickupModule.enabled) return false;
+    const targetMass = Math.max(0.1, target.hasMass ? target.mass : 0.5);
+    const carrierMass = Math.max(0.1, character.hasMass ? (character.baseMass ?? character.mass) : 1.2);
     const carrierStrength = character.hasStrength ? character.strength : 1.0;
     const liftRatio = 2.0;
 
     return (carrierMass * carrierStrength) >= targetMass * liftRatio;
+  }
+
+  /**
+   * Deterministic physical evaluation with slight hysteresis (ratio 1.8)
+   * to prevent rapid 60Hz toggling/chatter at the threshold boundary.
+   */
+  public static canHold(character: Character, target: GameObject): boolean {
+    if (!character.pickupModule || !character.pickupModule.enabled) return false;
+    const targetMass = Math.max(0.1, target.hasMass ? target.mass : 0.5);
+    const carrierMass = Math.max(0.1, character.hasMass ? (character.baseMass ?? character.mass) : 1.2);
+    const carrierStrength = character.hasStrength ? character.strength : 1.0;
+    const holdRatio = 1.8;
+
+    return (carrierMass * carrierStrength) >= targetMass * holdRatio;
   }
 
   /**

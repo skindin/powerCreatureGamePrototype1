@@ -242,16 +242,23 @@ export class ServerGameSimulation {
    * Applies exactly one tick of held-item primary ability use (e.g. eating for consumables) for a character.
    */
   private applyItemUse(char: Character, isUsing: boolean, dt: number): void {
-    if (!isUsing || !char.heldObject) return;
-    const heldObj = char.heldObject;
+    if (!isUsing || (!char.heldObject && !char.grappledTarget)) return;
+    const heldObj = char.heldObject || char.grappledTarget;
+    if (!heldObj) return;
     if (heldObj.hasPrimaryItemAbility?.()) {
       const res = heldObj.usePrimaryItemAbility(dt, char, this.objects, this.arena);
       if (res.isDepleted && !heldObj.consumableModule?.unlimited) {
+        if (char.grappledTarget === heldObj) {
+          char.releaseGrapple();
+        }
         this.triggerObjectDeletion(heldObj.id);
       }
     } else if (char.consumeModule && char.consumeModule.canConsume(heldObj)) {
       const result = char.consumeModule.consume(dt, char, heldObj, this.objects, this.arena);
       if (result.isDepleted && !heldObj.consumableModule?.unlimited) {
+        if (char.grappledTarget === heldObj) {
+          char.releaseGrapple();
+        }
         this.triggerObjectDeletion(heldObj.id);
       }
     }
@@ -308,7 +315,7 @@ export class ServerGameSimulation {
       if (pkt) {
         if ((pkt as any).isUsingItem !== undefined) {
           char.isUsingItem = Boolean((pkt as any).isUsingItem);
-        } else if (!char.heldObject || !char.canConsumeHeldObject()) {
+        } else if ((!char.heldObject && !char.grappledTarget) || !char.canConsumeHeldObject()) {
           char.isUsingItem = false;
         }
         if (char.isSprinting !== pkt.isSprinting) {
@@ -500,7 +507,7 @@ export class ServerGameSimulation {
         }
       } else {
         // Neutral step for character without input packet this tick
-        if (!char.heldObject || !char.canConsumeHeldObject()) {
+        if ((!char.heldObject && !char.grappledTarget) || !char.canConsumeHeldObject()) {
           char.isUsingItem = false;
         }
         if (char.laserModule) {
