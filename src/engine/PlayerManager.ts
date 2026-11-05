@@ -1544,25 +1544,35 @@ export class PlayerManager {
           : (grabState.rtGrabSuppressed && grabState.bGrabSuppressed)
       );
 
-      // Dedicated Swap Action: drops current item, discludes it, and grabs selected item
-      if (!isEditMode && (pkt as any).isSwap && !isDeviceSuppressed && char.pickupModule) {
-        const currentlyHeld = char.heldObject;
+      // Dedicated Swap Action: drops current item (or releases grappled target), discludes it, and grabs selected item
+      if (!isEditMode && (pkt as any).isSwap && !isDeviceSuppressed && (char.pickupModule || char.grappleModule)) {
+        const currentlyHeld = char.heldObject || char.grappledTarget;
         const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter((e) => e !== currentlyHeld);
         let targetObj: GameObject | null = null;
         if (pkt.grabTargetObjectId && pkt.grabTargetObjectId !== currentlyHeld?.id) {
           targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId) || null;
         }
         if (!targetObj && aimTarget) {
-          targetObj = char.pickupModule.findTargetObject(char, aimTarget.x, aimTarget.y, otherEntities, this.arena.wallHeight);
+          targetObj = GrabIntentArbiter.findTarget(char, aimTarget.x, aimTarget.y, otherEntities, this.arena.wallHeight);
         }
 
-        // SWAP REQUIREMENT: If holding an item, do NOT drop it unless another object is near enough to swap with!
-        if (currentlyHeld && (!targetObj || !char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight))) {
-          // No candidate object in reach: preserve held object
+        const isTargetInReach = Boolean(
+          targetObj &&
+          ((char.pickupModule?.enabled && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) ||
+           (char.grappleModule?.enabled && char.grappleModule.isTargetInReach(char, targetObj, this.arena.wallHeight)))
+        );
+
+        // SWAP REQUIREMENT: If holding/dragging an item, do NOT drop it unless another object is near enough to swap with!
+        if (currentlyHeld && !isTargetInReach) {
+          // No candidate object in reach: preserve held/grappled object
         } else {
         const droppedObj = currentlyHeld;
         if (droppedObj) {
-          char.pickupModule.drop(char);
+          if (char.grappledTarget === droppedObj) {
+            char.releaseGrapple();
+          } else if (char.pickupModule) {
+            char.pickupModule.drop(char);
+          }
           input.arcModulationCursor = null;
           input.arcModulationDeltaY = 0;
           if (entry && entry.slotIndex !== undefined) {
@@ -1585,7 +1595,7 @@ export class PlayerManager {
           );
         }
 
-        if (targetObj && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) {
+        if (targetObj && isTargetInReach) {
           grabState.grabSuppressed = true;
           if (isKeyboardPlayer) {
             grabState.mouseGrabSuppressed = true;
@@ -1610,7 +1620,8 @@ export class PlayerManager {
               const clone = targetObj.spawnerModule.triggerClone(targetObj, this.arena, objects);
               if (clone) itemToHold = clone;
             }
-            const pickedUp = char.pickupModule.pickup(char, itemToHold);
+            const grabRes = GrabIntentArbiter.executeGrab(char, itemToHold);
+            const pickedUp = grabRes.success;
             if (!pickedUp && itemToHold !== targetObj) {
               const idx = objects.indexOf(itemToHold);
               if (idx !== -1) objects.splice(idx, 1);
@@ -1911,8 +1922,8 @@ export class PlayerManager {
           this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
         }
 
-        // Unified single-object target selection via GrabIntentArbiter:
-        if (!char.heldObject && !char.grappledTarget && (char.pickupModule?.enabled || char.grappleModule?.enabled)) {
+        // Unified single-object target selection via GrabIntentArbiter (including swap/grab candidates while holding or dragging):
+        if (char.pickupModule?.enabled || char.grappleModule?.enabled) {
           const candidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter(
             (o) => o !== char.heldObject && o !== (char as any).grappledTarget && !o.isHeld
           );
@@ -1965,8 +1976,8 @@ export class PlayerManager {
         slot.aimOffset.x = slot.aimPos.x - char.position.x;
         slot.aimOffset.y = slot.aimPos.y - char.position.y;
 
-        // Unified single-object target selection via GrabIntentArbiter:
-        if (!char.heldObject && !char.grappledTarget && (char.pickupModule?.enabled || char.grappleModule?.enabled)) {
+        // Unified single-object target selection via GrabIntentArbiter (including swap/grab candidates while holding or dragging):
+        if (char.pickupModule?.enabled || char.grappleModule?.enabled) {
           const candidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter(
             (o) => o !== char.heldObject && o !== (char as any).grappledTarget && !o.isHeld
           );
