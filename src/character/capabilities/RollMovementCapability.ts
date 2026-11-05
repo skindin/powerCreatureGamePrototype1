@@ -98,6 +98,12 @@ export class RollMovementCapability {
       mod.isBraking = true;
       mod.isRolling = false;
 
+      // Active braking: temporarily increases roll resistance and does not require energy
+      const brakeResistance = mod.brakeRollResistanceProp.get(char.properties);
+      roll.rollResistanceProp.literalValue = brakeResistance;
+      roll.rollResistanceProp.set(brakeResistance, char.properties);
+      char.properties?.set("rollResistance", brakeResistance);
+
       const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
       const spinSpeed = Math.hypot(roll.angularVelocity.x, roll.angularVelocity.y);
       if (curSpeed <= 0.01 && spinSpeed <= 0.01) {
@@ -108,10 +114,6 @@ export class RollMovementCapability {
         roll.updateOrientation(dt);
         return;
       }
-
-      // Active braking: temporarily increases roll resistance and does not require energy
-      const brakeResistance = mod.brakeRollResistanceProp.get(char.properties);
-      roll.rollResistanceProp.set(brakeResistance, char.properties);
 
       // When resting on ground and nearly stopped, clamp residual drift to prevent endless micro-sliding
       if (char.isRestingOnSurface && curSpeed < 0.05 && spinSpeed < 0.05) {
@@ -128,7 +130,9 @@ export class RollMovementCapability {
     mod.isBraking = false;
     // When not braking, restore free roll resistance
     const freeResistance = mod.freeRollResistanceProp.get(char.properties);
+    roll.rollResistanceProp.literalValue = freeResistance;
     roll.rollResistanceProp.set(freeResistance, char.properties);
+    char.properties?.set("rollResistance", freeResistance);
     const inputMag = Math.hypot(movementInput.x, movementInput.y);
 
     if (inputMag > 0.05) {

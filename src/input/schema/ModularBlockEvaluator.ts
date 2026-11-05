@@ -224,6 +224,8 @@ export class ModularBlockEvaluator {
     let moveX = 0;
     let moveY = 0;
     let isSprinting = false;
+    let isBraking = false;
+    char.isBraking = false;
     let isJumpHeld = false;
     let isGrabHeld = false;
     let isDrop = false;
@@ -242,8 +244,20 @@ export class ModularBlockEvaluator {
     const baseAim = execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos || { x: char.position.x + 1, y: char.position.y };
     const targetAimPos = { x: baseAim.x, y: baseAim.y };
 
+    const hasBothRollAndWalkBlocks =
+      blocks.some((blk) => blk.enabled && blk.type === "rollMovement") &&
+      blocks.some((blk) => blk.enabled && (blk.type === "walkSprint" || blk.type === "locomotion"));
+    const isLockedInWalkStance = Boolean(
+      char.locomotionMode === "walk" &&
+      (!char.locomotionStanceModule || !char.locomotionStanceModule.enabled || char.locomotionStanceModule.isRollDisabledByWalkStance)
+    );
+
     // Pre-evaluate locomotion cursor mode states
-    const locoBlock = blocks.find((blk) => blk.enabled && (blk.type === "locomotion" || blk.type === "walkSprint" || blk.type === "rollMovement")) as (WalkSprintControlBlock | RollMovementControlBlock) | undefined;
+    const preferredLocoType = isLockedInWalkStance ? "walkSprint" : "rollMovement";
+    const locoBlock = (
+      blocks.find((blk) => blk.enabled && blk.type === preferredLocoType) ||
+      blocks.find((blk) => blk.enabled && (blk.type === "locomotion" || blk.type === "walkSprint" || blk.type === "rollMovement"))
+    ) as (WalkSprintControlBlock | RollMovementControlBlock) | undefined;
     if (locoBlock) {
       const isToggleMode = locoBlock.cursorSteerMode === "toggleButton";
       if (isToggleMode && locoBlock.cursorSteerTrigger) {
@@ -401,6 +415,14 @@ export class ModularBlockEvaluator {
         case "walkSprint":
         case "locomotion":
         case "rollMovement": {
+          if (hasBothRollAndWalkBlocks) {
+            if (block.type === "rollMovement" && isLockedInWalkStance) {
+              break;
+            }
+            if ((block.type === "walkSprint" || block.type === "locomotion") && !isLockedInWalkStance) {
+              break;
+            }
+          }
           const b = block as WalkSprintControlBlock | RollMovementControlBlock;
           const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
           const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
@@ -640,16 +662,13 @@ export class ModularBlockEvaluator {
           }
 
           // Brake (for rolling creatures)
-          if (b.brake) {
+          if (b.brake && b.brake.code) {
             if (isSlotActive(b.brake, "hold", false, b.id, "locomotion.brake")) {
-              char.isBraking = true;
+              isBraking = true;
               claimSlot(b.brake, b.id, "locomotion.brake", false);
-            } else {
-              char.isBraking = false;
             }
-          } else {
-            char.isBraking = false;
           }
+          char.isBraking = isBraking;
           break;
         }
 
