@@ -209,6 +209,10 @@ export class VomitCapability {
 
       if (char.activeTrajectory) {
         (char.activeTrajectory as any).chargingTowards = char.throwChargingTowards;
+        if (clearRes.trajectory) {
+          (char.activeTrajectory as any).optimalTrajectoryPoints = clearRes.trajectory.points;
+          (char.activeTrajectory as any).flattestBlocked = flattestBlocked;
+        }
       }
     } else if ((char as any).isTriggerPullVomiting) {
       const clearRes = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
@@ -240,6 +244,11 @@ export class VomitCapability {
 
       if (char.activeTrajectory) {
         (char.activeTrajectory as any).chargingTowards = char.throwChargingTowards;
+        (char.activeTrajectory as any).isTriggerPull = true;
+        if (clearRes.trajectory) {
+          (char.activeTrajectory as any).optimalTrajectoryPoints = clearRes.trajectory.points;
+          (char.activeTrajectory as any).flattestBlocked = flattestBlocked;
+        }
       }
     } else if ((char as any).isHoldingVomitRelease || (char as any).isAimingVomitWallClear) {
       char.hasUserSetArcRatio = false;

@@ -6056,11 +6056,13 @@ class BallisticTrajectorySolver {
     const hasArcRange = tMax !== void 0 && tMin !== void 0 && tMax - tMin > 0.05;
     const flattestPoints = hasArcRange && tMin !== void 0 ? simulateGhostArc(tMin) : void 0;
     const steepestPoints = hasArcRange && tMax !== void 0 ? simulateGhostArc(tMax) : void 0;
+    const optimalTrajectoryPoints = hasArcRange && launch.tOpt !== void 0 ? simulateGhostArc(launch.tOpt) : void 0;
     const lastPoint = points[points.length - 1];
     return {
       points,
       flattestPoints,
       steepestPoints,
+      optimalTrajectoryPoints,
       landPoint: {
         x: isBlocked ? lastPoint.x : finalTargetX,
         y: isBlocked ? lastPoint.y : finalTargetY,
@@ -6078,7 +6080,14 @@ class BallisticTrajectorySolver {
       visualShape,
       launchVel: { vx, vy, vz },
       launchPos: { x: startX, y: startY, z: startZ },
-      lockedTargetPos: lockedTargetPos ? { ...lockedTargetPos } : null
+      lockedTargetPos: lockedTargetPos ? { ...lockedTargetPos } : null,
+      maxSpeed: params.maxSpeed,
+      tMin: launch.tMin,
+      tMax: launch.tMax,
+      tOpt: launch.tOpt,
+      optimalRatio: launch.tMax - launch.tMin > 1e-3 ? Math.max(0, Math.min(1, (launch.tOpt - launch.tMin) / (launch.tMax - launch.tMin))) : 0,
+      savedArcRatio: params.savedArcRatio,
+      hasUserSetArcRatio: params.hasUserSetArcRatio
     };
   }
   /**
@@ -8223,6 +8232,10 @@ const _VomitCapability = class _VomitCapability {
       ) : clearRes.trajectory;
       if (char.activeTrajectory) {
         char.activeTrajectory.chargingTowards = char.throwChargingTowards;
+        if (clearRes.trajectory) {
+          char.activeTrajectory.optimalTrajectoryPoints = clearRes.trajectory.points;
+          char.activeTrajectory.flattestBlocked = flattestBlocked;
+        }
       }
     } else if (char.isTriggerPullVomiting) {
       const clearRes = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
@@ -8249,6 +8262,11 @@ const _VomitCapability = class _VomitCapability {
       ) : clearRes.trajectory;
       if (char.activeTrajectory) {
         char.activeTrajectory.chargingTowards = char.throwChargingTowards;
+        char.activeTrajectory.isTriggerPull = true;
+        if (clearRes.trajectory) {
+          char.activeTrajectory.optimalTrajectoryPoints = clearRes.trajectory.points;
+          char.activeTrajectory.flattestBlocked = flattestBlocked;
+        }
       }
     } else if (char.isHoldingVomitRelease || char.isAimingVomitWallClear) {
       char.hasUserSetArcRatio = false;

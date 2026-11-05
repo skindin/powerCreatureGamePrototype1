@@ -3,6 +3,7 @@ import { Vector2D } from "../GameObject.js";
 import { Character } from "../../character/Character.js";
 import { TrajectoryCalculation, TrajectoryPoint } from "../../character/ThrowModule.js";
 import { ViewSettings } from "../Renderer.js";
+import { VomitCapability } from "../../character/capabilities/VomitCapability.js";
 
 /**
  * TrajectoryRenderer
@@ -18,11 +19,33 @@ export class TrajectoryRenderer {
   }
 
   /**
+   * Resolves maximum launch speed for trajectory calculations across both
+   * physical object throws and projectile vomit (Throw Up).
+   */
+  public static getMaxLaunchSpeed(char: Character, traj?: TrajectoryCalculation): number {
+    if (traj && (traj as any).maxSpeed) {
+      return (traj as any).maxSpeed;
+    }
+    if (char.heldObject && char.throwModule) {
+      return char.throwModule.calculateMaxLaunchSpeed(char, char.heldObject);
+    }
+    if (char.vomitModule && char.vomitModule.enabled) {
+      const stats = VomitCapability.computeProspectiveGlobStats(char);
+      if (stats) return stats.launchSpeed;
+      return char.vomitModule.getLaunchSpeed(char.properties);
+    }
+    if (char.throwModule) {
+      return char.throwModule.calculateMaxLaunchSpeed(char, null);
+    }
+    return 28.0;
+  }
+
+  /**
    * Computes the parametric arc ratio [0.0, 1.0] corresponding to the most energy-efficient
    * ballistic throw trajectory (minimum kinetic work / launch speed required to reach the target).
    */
   public static computeOptimalRatio(char: Character, arena: Arena, traj: TrajectoryCalculation): number {
-    if (!char.throwModule || !traj.launchPos || !traj.landPoint) return 0.0;
+    if (!traj.launchPos || !traj.landPoint) return 0.0;
     const startX = traj.launchPos.x;
     const startY = traj.launchPos.y;
     const startZ = traj.launchPos.z;
@@ -36,7 +59,7 @@ export class TrajectoryRenderer {
     const deltaZ = targetZ - startZ;
     const g = arena.gravity || 9.81;
 
-    const maxSpeed = char.throwModule.calculateMaxLaunchSpeed(char, char.heldObject);
+    const maxSpeed = TrajectoryRenderer.getMaxLaunchSpeed(char, traj);
     const aCoeff = 0.25 * g * g;
     const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
     const cCoeff = dist * dist + deltaZ * deltaZ;
@@ -82,7 +105,7 @@ export class TrajectoryRenderer {
     optRatio: number;
     effScreenY: number;
   } | null {
-    if (!char.throwModule || !traj.launchPos || !traj.landPoint) return null;
+    if (!traj.launchPos || !traj.landPoint) return null;
 
     const startX = traj.launchPos.x;
     const startY = traj.launchPos.y;
@@ -96,7 +119,7 @@ export class TrajectoryRenderer {
 
     const deltaZ = targetZ - startZ;
     const g = arena.gravity || 9.81;
-    const maxSpeed = char.throwModule.calculateMaxLaunchSpeed(char, char.heldObject);
+    const maxSpeed = TrajectoryRenderer.getMaxLaunchSpeed(char, traj);
 
     const aCoeff = 0.25 * g * g;
     const bCoeffMax = -(maxSpeed * maxSpeed - g * deltaZ);
@@ -273,16 +296,35 @@ export class TrajectoryRenderer {
 
     // Render ghost preview arcs for the flattest and steepest reachable curves when locked or user has adjusted arc ratio
     // When aiming wall clear or static hold-and-release, do not draw min and max curves: only the active arc and straight sightline
-    const isWallClearAim = Boolean(character?.isAimingWallClear || character?.isHoldingThrowRelease);
-    const isTriggerPull = Boolean(character?.isTriggerPullThrowing || (traj as any)?.isTriggerPull);
-    const isLockHeld = Boolean(traj.lockedTargetPos || character?.throwModule?.hasUserSetArcRatio || isTriggerPull) && !isWallClearAim;
+    const isWallClearAim = Boolean(
+      character?.isAimingWallClear ||
+      character?.isHoldingThrowRelease ||
+      (character as any)?.isAimingVomitWallClear ||
+      (character as any)?.isHoldingVomitRelease
+    );
+    const isTriggerPull = Boolean(
+      character?.isTriggerPullThrowing ||
+      (character as any)?.isTriggerPullVomiting ||
+      (traj as any)?.isTriggerPull
+    );
+    const isCharging = Boolean(
+      character?.isChargingThrow ||
+      (character as any)?.isChargingVomit
+    );
+    const hasUserSetArc = Boolean(
+      character?.hasUserSetArcRatio ||
+      character?.throwModule?.hasUserSetArcRatio ||
+      traj.lockedTargetPos ||
+      isTriggerPull ||
+      isCharging
+    );
+    const isLockHeld = hasUserSetArc && !isWallClearAim;
     let isSnapped = false;
     if (isLockHeld) {
-      const isCharging = Boolean(character?.isChargingThrow);
       const chargingTowards = character?.throwChargingTowards || (traj as any)?.chargingTowards;
 
       if (isTriggerPull) {
-        // Trigger setting for throw:
+        // Trigger setting for throw / vomit:
         // - max traj should only show when there's a wall in the way
         // - min traj should only show when there isn't
         // - faded traj with the trajectory of the most efficient trajectory should show
@@ -307,7 +349,7 @@ export class TrajectoryRenderer {
           }
         }
       } else {
-        // Standard arc modulation:
+        // Standard arc modulation / charging:
         // When charging towards flattest arc -> do not show max height arc
         // When charging towards highest arc -> do not show flattest arc
         const showFlattest = !isCharging || chargingTowards === "flattest";
@@ -321,10 +363,10 @@ export class TrajectoryRenderer {
         }
       }
 
-      // Trajectory Modulation Guide Rail (when holding right-click):
-      // Dotted vertical rail at the 2D average position with optimal detent notch and clamped slider pip.
-      // Strictly hidden when using trigger pull, charging over time, or aiming wall clear
-      const rail = (character && !isCharging && !character.isAimingWallClear && !character.isHoldingThrowRelease && !isTriggerPull)
+      // Trajectory Modulation Guide Rail:
+      // Dotted vertical rail at the 2D average position with optimal detent notch (green dot) and clamped slider pip (white dot).
+      // Strictly hidden when using analog trigger pull or aiming wall clear
+      const rail = (character && !isWallClearAim && !isTriggerPull)
         ? TrajectoryRenderer.calculateMidpointRail(character, arena, traj, ppu, hoverScale)
         : null;
       if (rail) {
@@ -355,10 +397,10 @@ export class TrajectoryRenderer {
 
         // 2. Optimal Detent Point (least energy trajectory pip on the rail) and active slider pip
         if (lineLen > 2) {
-          const curRatio = character?.throwModule?.savedArcRatio ?? 0.0;
+          const curRatio = character?.savedArcRatio ?? character?.throwModule?.savedArcRatio ?? (traj as any)?.savedArcRatio ?? 0.0;
           ctx.setLineDash([]);
 
-          // Visual marker pip left behind at the most energy-efficient trajectory point
+          // Visual marker pip left behind at the most energy-efficient trajectory point (green dot)
           ctx.beginPath();
           ctx.arc(midScreenX, effScreenY, 3.5, 0, Math.PI * 2);
           ctx.fillStyle = "#22c55e";
@@ -367,7 +409,7 @@ export class TrajectoryRenderer {
           ctx.fill();
           ctx.shadowBlur = 0;
 
-          // Active slider pip at user's current trajectory height (smoothly slides without snapping)
+          // Active slider pip at user's current trajectory height (smoothly slides without snapping) (white dot)
           const projX = midScreenX;
           const projY = lowScreenY + curRatio * lineDy;
 

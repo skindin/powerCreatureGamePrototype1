@@ -997,7 +997,8 @@ export class Renderer {
 
           // Draw precision aim reticle if character is not throwing an object (when holding gun, show clean reticle)
           if (!cChar.activeTrajectory || (isCursorHoldingGun && !isCursorThrowOverride)) {
-            const reticleColor = cChar.isThrowCancelZone ? "#ef4444" : cursor.color;
+            const isCancelZone = cChar.isThrowCancelZone || Boolean((cChar as any).isVomitCancelZone);
+            const reticleColor = isCancelZone ? "#ef4444" : cursor.color;
             this.trajectoryRenderer.drawAimReticle(cursorX, cursorY, reticleColor);
           }
         }

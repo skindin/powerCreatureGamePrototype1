@@ -437,12 +437,14 @@ export class BallisticTrajectorySolver {
     const hasArcRange = tMax !== undefined && tMin !== undefined && tMax - tMin > 0.05;
     const flattestPoints = hasArcRange && tMin !== undefined ? simulateGhostArc(tMin) : undefined;
     const steepestPoints = hasArcRange && tMax !== undefined ? simulateGhostArc(tMax) : undefined;
+    const optimalTrajectoryPoints = hasArcRange && launch.tOpt !== undefined ? simulateGhostArc(launch.tOpt) : undefined;
 
     const lastPoint = points[points.length - 1];
     return {
       points,
       flattestPoints,
       steepestPoints,
+      optimalTrajectoryPoints,
       landPoint: {
         x: isBlocked ? lastPoint.x : finalTargetX,
         y: isBlocked ? lastPoint.y : finalTargetY,
@@ -461,6 +463,13 @@ export class BallisticTrajectorySolver {
       launchVel: { vx, vy, vz },
       launchPos: { x: startX, y: startY, z: startZ },
       lockedTargetPos: lockedTargetPos ? { ...lockedTargetPos } : null,
+      maxSpeed: params.maxSpeed,
+      tMin: launch.tMin,
+      tMax: launch.tMax,
+      tOpt: launch.tOpt,
+      optimalRatio: launch.tMax - launch.tMin > 0.001 ? Math.max(0.0, Math.min(1.0, (launch.tOpt - launch.tMin) / (launch.tMax - launch.tMin))) : 0.0,
+      savedArcRatio: params.savedArcRatio,
+      hasUserSetArcRatio: params.hasUserSetArcRatio,
     };
   }
 
