@@ -39,11 +39,14 @@ export class RollMovementCapability {
 
     if (isBraking && mod.brakeConsumesEnergy && char.energyPool) {
       const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
-      if (curSpeed > 0.05) {
+      const spinSpeed = Math.hypot(char.rollModule?.angularVelocity.x ?? 0, char.rollModule?.angularVelocity.y ?? 0);
+      const R = Math.max(0.1, char.colliderRadius);
+      const effSpeed = Math.max(curSpeed, spinSpeed * R);
+      if (effSpeed > 0.05) {
         const brakeDecel = mod.brakeDecelerationProp.get(char.properties);
         const totalMass = Math.max(0.2, char.mass);
         // Rate of mechanical negative work: P = (m * a_brake * v) / 0.25 Watts
-        const rawBrakeWatts = (totalMass * brakeDecel * Math.max(0.5, curSpeed)) / 0.25;
+        const rawBrakeWatts = (totalMass * brakeDecel * Math.max(0.5, effSpeed)) / 0.25;
         const cap = mod.maxBrakePowerProp.get(char.properties);
         const allowPartial = mod.brakeAllowPartialPower;
         let brakeWatts = rawBrakeWatts;
@@ -115,7 +118,8 @@ export class RollMovementCapability {
       mod.isRolling = false;
 
       const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
-      if (curSpeed <= 0.01) {
+      const spinSpeed = Math.hypot(roll.angularVelocity.x, roll.angularVelocity.y);
+      if (curSpeed <= 0.01 && spinSpeed <= 0.01) {
         char.velocity.x = 0;
         char.velocity.y = 0;
         roll.angularVelocity.x = 0;
@@ -129,7 +133,8 @@ export class RollMovementCapability {
 
       if (mod.brakeConsumesEnergy && char.energyPool) {
         const totalMass = Math.max(0.2, char.mass);
-        const rawBrakeWatts = (totalMass * brakeDecel * Math.max(0.5, curSpeed)) / 0.25;
+        const effSpeed = Math.max(curSpeed, spinSpeed * R);
+        const rawBrakeWatts = (totalMass * brakeDecel * Math.max(0.5, effSpeed)) / 0.25;
         const cap = mod.maxBrakePowerProp.get(char.properties);
         const allowPartial = mod.brakeAllowPartialPower;
         let requestedWatts = rawBrakeWatts;
@@ -148,28 +153,35 @@ export class RollMovementCapability {
         powerScale = requestedWatts > 0 ? Math.min(1.0, grantedWatts / requestedWatts) : 0;
       }
 
-      // Smooth physical counter-torque braking:
-      // Reduces linear velocity by effectiveBrakeDecel * dt, coupling angular roll velocity to match
+      // Pure physical counter-torque braking:
+      // Applies braking counter-torque strictly to the ball's angular roll velocity (dω/dt = -α_brake).
+      // Does NOT directly touch linear velocity; ground friction (in MotionIntegrator) naturally
+      // converts the resulting tire/surface slip into physical deceleration and stopping traction.
       if (powerScale > 0.001) {
-        const effectiveBrakeDecel = brakeDecel * powerScale;
-        const speedReduction = Math.min(curSpeed, effectiveBrakeDecel * dt);
-        const newSpeed = curSpeed - speedReduction;
-        if (newSpeed < 0.02) {
+        const angularBrakeDecel = (brakeDecel / R) * powerScale;
+        if (spinSpeed <= 0.01) {
+          roll.angularVelocity.x = 0;
+          roll.angularVelocity.y = 0;
+        } else {
+          const deltaOmega = angularBrakeDecel * dt;
+          const newSpin = Math.max(0, spinSpeed - deltaOmega);
+          if (newSpin < 0.01) {
+            roll.angularVelocity.x = 0;
+            roll.angularVelocity.y = 0;
+          } else {
+            const ratio = newSpin / spinSpeed;
+            roll.angularVelocity.x *= ratio;
+            roll.angularVelocity.y *= ratio;
+          }
+        }
+
+        // When resting on ground and nearly stopped, clamp residual drift to prevent endless sliding
+        if (char.isRestingOnSurface && curSpeed < 0.05 && spinSpeed < 0.05) {
           char.velocity.x = 0;
           char.velocity.y = 0;
           roll.angularVelocity.x = 0;
           roll.angularVelocity.y = 0;
-        } else {
-          const ratio = newSpeed / curSpeed;
-          char.velocity.x *= ratio;
-          char.velocity.y *= ratio;
-          roll.angularVelocity.y = char.velocity.x / R;
-          roll.angularVelocity.x = -char.velocity.y / R;
         }
-      } else {
-        // Starved of power or 0 braking force: creature continues rolling freely!
-        roll.angularVelocity.y = char.velocity.x / R;
-        roll.angularVelocity.x = -char.velocity.y / R;
       }
 
       roll.updateOrientation(dt);

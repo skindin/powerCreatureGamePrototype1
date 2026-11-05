@@ -1,6 +1,6 @@
 {
-  "version": 345,
-  "lastSaved": "2026-11-04T08:28:14.613Z",
+  "version": 347,
+  "lastSaved": "2026-11-04T09:21:21.149Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -3435,7 +3435,10 @@
       "hangDistance": 0.1,
       "preventWalkOff": false
     },
-    "hasDamageSolverModule": true
+    "hasDamageSolverModule": true,
+    "consumeModule": {
+      "consumptionSpeedMultiplier": 2
+    }
   },
   "objects": [
     {
@@ -7462,6 +7465,14 @@
           "consumesEnergy": true,
           "allowPartialPower": true
         },
+        "hasConsume": true,
+        "consumeModule": {
+          "enabled": true,
+          "consumptionSpeedMultiplier": 1,
+          "acceptedTags": [
+            "food"
+          ]
+        },
         "hasLaser": true,
         "laserModule": {
           "maxRange": 15,
@@ -10029,7 +10040,8 @@
                   "requireCleanPress": false
                 },
                 "swapRequiresHolding": false,
-                "triggerPickupWhenEmptyHanded": true
+                "triggerPickupWhenEmptyHanded": true,
+                "consumeMode": "toggle"
               },
               {
                 "type": "throw",
@@ -11160,6 +11172,14 @@
           "consumesEnergy": true,
           "allowPartialPower": true
         },
+        "hasConsume": true,
+        "consumeModule": {
+          "enabled": true,
+          "consumptionSpeedMultiplier": 2,
+          "acceptedTags": [
+            "food"
+          ]
+        },
         "hasLaser": false,
         "hasMelee": true,
         "meleeModule": {
@@ -11296,7 +11316,8 @@
                 "requireCleanPress": false
               },
               "swapRequiresHolding": false,
-              "triggerPickupWhenEmptyHanded": true
+              "triggerPickupWhenEmptyHanded": true,
+              "consumeMode": "toggle"
             },
             {
               "type": "throw",
