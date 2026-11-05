@@ -8283,6 +8283,9 @@ const _VomitCapability = class _VomitCapability {
         char.activeTrajectory = res.trajectory;
       }
     }
+    if (char.activeTrajectory) {
+      char.lastVomitTrajectory = char.activeTrajectory;
+    }
     if (char.isSteeringCursor) {
       char.facingAngle = preservedFacing;
     }
@@ -8341,7 +8344,7 @@ const _VomitCapability = class _VomitCapability {
     let vx = dirX * launchSpeed + char.velocity.x * 0.35;
     let vy = dirY * launchSpeed + char.velocity.y * 0.35;
     let vz = defaultVz;
-    const stagedTraj = char.activeTrajectory;
+    const stagedTraj = char.activeTrajectory || char.lastVomitTrajectory;
     if (stagedTraj && stagedTraj.launchVel && stagedTraj.launchPos) {
       spawnX = stagedTraj.launchPos.x;
       spawnY = stagedTraj.launchPos.y;
@@ -8369,10 +8372,12 @@ const _VomitCapability = class _VomitCapability {
           startY: spawnY,
           startZ: spawnZ,
           colliderRadius: globRadius,
-          maxSpeed: launchSpeed,
+          maxSpeed: (stats == null ? void 0 : stats.launchSpeed) ?? launchSpeed,
           hasGravity: true,
           hasVerticalVelocity: true,
-          visualShape: "circle"
+          visualShape: "circle",
+          hasUserSetArcRatio: char.hasUserSetArcRatio,
+          savedArcRatio: char.savedArcRatio
         },
         char.aimTarget.x,
         char.aimTarget.y,
@@ -8385,6 +8390,8 @@ const _VomitCapability = class _VomitCapability {
         vz = solved.trajectory.launchVel.vz;
       }
     }
+    char.lastVomitTrajectory = null;
+    char.activeTrajectory = null;
     const globId = `vomit_glob_${Date.now()}_${_VomitCapability._globCounter++}`;
     const glob = new GameObject({
       id: globId,

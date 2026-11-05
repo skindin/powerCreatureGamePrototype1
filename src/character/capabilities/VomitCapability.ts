@@ -275,6 +275,10 @@ export class VomitCapability {
       }
     }
 
+    if (char.activeTrajectory) {
+      (char as any).lastVomitTrajectory = char.activeTrajectory;
+    }
+
     if (char.isSteeringCursor) {
       char.facingAngle = preservedFacing;
     }
@@ -354,7 +358,7 @@ export class VomitCapability {
     let vz = defaultVz;
 
     // If staged with trajectory preview, use the exact solved ballistic launch velocity and origin!
-    const stagedTraj = char.activeTrajectory;
+    const stagedTraj = char.activeTrajectory || (char as any).lastVomitTrajectory;
     if (stagedTraj && stagedTraj.launchVel && stagedTraj.launchPos) {
       spawnX = stagedTraj.launchPos.x;
       spawnY = stagedTraj.launchPos.y;
@@ -382,10 +386,12 @@ export class VomitCapability {
           startY: spawnY,
           startZ: spawnZ,
           colliderRadius: globRadius,
-          maxSpeed: launchSpeed,
+          maxSpeed: stats?.launchSpeed ?? launchSpeed,
           hasGravity: true,
           hasVerticalVelocity: true,
           visualShape: "circle",
+          hasUserSetArcRatio: char.hasUserSetArcRatio,
+          savedArcRatio: char.savedArcRatio,
         },
         char.aimTarget.x,
         char.aimTarget.y,
@@ -398,6 +404,10 @@ export class VomitCapability {
         vz = solved.trajectory.launchVel.vz;
       }
     }
+
+    // Clean up staged trajectory state after launch
+    (char as any).lastVomitTrajectory = null;
+    char.activeTrajectory = null;
 
     // 3. Create physical freebody glob with ConsumableModule so it can be re-eaten
     const globId = `vomit_glob_${Date.now()}_${VomitCapability._globCounter++}`;

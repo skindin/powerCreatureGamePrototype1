@@ -831,6 +831,7 @@ export class ModularBlockEvaluator {
                   (char as any).vomitChargeStartTime = null;
                   (char as any).vomitChargeProgress = 0;
                   char.activeTrajectory = null;
+                  (char as any).lastVomitTrajectory = null;
                   (char as any).isVomitCancelZone = false;
                   claimSlot(chargeSlot, b.id, "vomit.cancel", false);
                 } else {
@@ -840,10 +841,6 @@ export class ModularBlockEvaluator {
                   (char as any).isVomitCancelZone = false;
                   claimSlot(chargeSlot, b.id, "vomit.fire", true);
                 }
-              } else if (!isHoldingCharge) {
-                (char as any).isChargingVomit = false;
-                (char as any).vomitChargeStartTime = null;
-                (char as any).vomitChargeProgress = 0;
               }
               break;
             }
@@ -871,6 +868,7 @@ export class ModularBlockEvaluator {
                   isVomitRequested = false;
                   (char as any).isHoldingVomitRelease = false;
                   char.activeTrajectory = null;
+                  (char as any).lastVomitTrajectory = null;
                   (char as any).isVomitCancelZone = false;
                   claimSlot(holdSlot, b.id, "vomit.cancel", false);
                 } else {
@@ -879,8 +877,6 @@ export class ModularBlockEvaluator {
                   (char as any).isVomitCancelZone = false;
                   claimSlot(holdSlot, b.id, "vomit.fire", true);
                 }
-              } else if (!isHolding) {
-                (char as any).isHoldingVomitRelease = false;
               }
               break;
             }
@@ -1047,12 +1043,12 @@ export class ModularBlockEvaluator {
 
         case "throw": {
           const b = block as ThrowControlBlock;
-          if (isLaserAiming || isLaserFiring || isVomitAiming) {
+          if (isLaserAiming || isLaserFiring || isVomitAiming || isVomitRequested || (char as any).isChargingVomit) {
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
             char.isHoldingThrowRelease = false;
             char.isTriggerPullThrowing = false;
-            if (!isVomitAiming) {
+            if (!isVomitAiming && !isVomitRequested && !(char as any).isChargingVomit) {
               char.activeTrajectory = null;
             }
             (char as any)._throwRequiresFreshPress = true;
@@ -1063,7 +1059,9 @@ export class ModularBlockEvaluator {
             char.isAimingWallClear = false;
             char.isHoldingThrowRelease = false;
             char.isTriggerPullThrowing = false;
-            char.activeTrajectory = null;
+            if (!isVomitAiming && !isVomitRequested && !(char as any).isChargingVomit && !(char as any).isHoldingVomitRelease) {
+              char.activeTrajectory = null;
+            }
             break;
           }
 
