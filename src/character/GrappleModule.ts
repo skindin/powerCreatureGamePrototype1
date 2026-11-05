@@ -45,7 +45,7 @@ export class GrappleModule {
     this.grappleReachProp = new DynamicProperty(options?.grappleReach ?? 1.3);
     this.shoveImpulseProp = new DynamicProperty(options?.shoveImpulse ?? 16.0);
     this.breakoutDistanceRatioProp = new DynamicProperty(options?.breakoutDistanceRatio ?? 1.4);
-    this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 250.0);
+    this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 1000.0);
 
     this.consumesEnergy = options?.consumesEnergy ?? true;
     if (options?.allowPartialPower !== undefined) this.allowPartialPower = options.allowPartialPower;

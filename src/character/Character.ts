@@ -76,6 +76,9 @@ export class Character extends GameObject {
   public isHoldingThrowRelease: boolean = false;
   public isTriggerPullThrowing: boolean = false;
   public triggerThrowPower: number = 0;
+  public isChargingShove: boolean = false;
+  public shoveChargeStartTime: number | null = null;
+  public shoveChargeProgress: number = 0;
   public hasDiedAwaitingNewPickup: boolean = false;
   private _heldObject: GameObject | null = null;
   public get heldObject(): GameObject | null {
@@ -338,6 +341,9 @@ export class Character extends GameObject {
 
     const throwMod = ThrowCapability.getAnticipatedModifier(this);
     if (throwMod) list.push(throwMod);
+
+    const grappleMod = GrappleCapability.getAnticipatedModifier(this);
+    if (grappleMod) list.push(grappleMod);
 
     const laserMod = LaserCapability.getAnticipatedModifier(this);
     if (laserMod) list.push(laserMod);
@@ -730,7 +736,7 @@ export class Character extends GameObject {
       }
     }
 
-    const shouldFaceCursor = Boolean(this.heldObject && aimTargetPos && (isAimingInput || this.isAimingTrajectory));
+    const shouldFaceCursor = Boolean((this.heldObject || this.grappledTarget) && aimTargetPos && (isAimingInput || this.isAimingTrajectory || this.isChargingShove));
 
     if (shouldFaceCursor && aimTargetPos) {
       const dx = aimTargetPos.x - this.position.x;

@@ -1,6 +1,13 @@
-import type { Character } from "../Character.js";
+import type { Character, AnticipatedModifier } from "../Character.js";
 import type { GameObject } from "../../engine/GameObject.js";
 import type { Arena } from "../../engine/Arena.js";
+
+export interface ShoveKinematics {
+  shoveSpeed: number;
+  recoilSpeed: number;
+  demandedMetabolicJoules: number;
+  mechanicalJoules: number;
+}
 
 /**
  * Isolated capability slice for Grapple & Drag physics, two-way leash distance constraint,
@@ -40,6 +47,10 @@ export class GrappleCapability {
    * Releases any active grapple on the character and notifies target
    */
   public static releaseGrapple(character: Character): GameObject | null {
+    character.isChargingShove = false;
+    character.shoveChargeStartTime = null;
+    character.shoveChargeProgress = 0;
+
     const target = character.grappledTarget;
     if (!target) return null;
 
@@ -51,9 +62,105 @@ export class GrappleCapability {
   }
 
   /**
+   * Computes shove kinematics and metabolic energy cost scaled by chargeProgress (0.0 to 1.0)
+   * and aligned with ThrowModule power capacity so shoving while dragging scales comparably to throwing.
+   */
+  public static calculateShoveKinematics(
+    character: Character,
+    target: GameObject,
+    chargeProgress: number = 1.0
+  ): ShoveKinematics {
+    const strength = character.hasStrength ? character.strength : 1.0;
+    const grappleCap = character.grappleModule
+      ? character.grappleModule.maxPowerProp.get(character.properties)
+      : 1000.0;
+    const throwCap = character.throwModule
+      ? character.throwModule.maxPowerProp.get(character.properties)
+      : 1000.0;
+    const baseCap = Math.max(grappleCap, throwCap);
+    const maxPowerCap = Math.max(25, baseCap * strength);
+
+    const shoveImpulse = character.grappleModule
+      ? character.grappleModule.shoveImpulseProp.get(character.properties)
+      : 16.0;
+    const impulseScale = Math.max(0.25, shoveImpulse / 16.0);
+
+    const clampedCharge = Math.max(0, Math.min(1, chargeProgress));
+    // Speed scales from 35% on an instant tap (0 charge) up to 100% at full charge
+    const speedFraction = 0.35 + 0.65 * clampedCharge;
+    const energyFractionOfCap = Math.min(1.5, (speedFraction * speedFraction) * (impulseScale * impulseScale));
+
+    const demandedMetabolicJoules = Math.max(25, maxPowerCap * energyFractionOfCap);
+
+    const pool = character.energyPool;
+    const efficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(character.properties) : 0.25);
+    const mechanicalJoules = demandedMetabolicJoules * efficiency;
+
+    const targetMass = Math.max(0.2, target.hasMass ? target.mass : 1.0);
+    const charMass = Math.max(0.2, character.hasMass ? character.mass : 1.2);
+
+    // Conservation of momentum & energy partitioning between target and character recoil:
+    // v_recoil = 0.45 * (m_target / m_char) * v_shove
+    // W_mech = 0.5 * m_target * v_shove^2 + 0.5 * m_char * v_recoil^2
+    //        = 0.5 * m_target * v_shove^2 * (1 + 0.45^2 * (m_target / m_char))
+    const recoilMomentumFactor = 0.45;
+    const recoilWorkFactor = 1.0 + (recoilMomentumFactor * recoilMomentumFactor) * (targetMass / charMass);
+    const shoveSpeed = Math.sqrt((2.0 * mechanicalJoules) / (targetMass * recoilWorkFactor));
+    const recoilSpeed = shoveSpeed * recoilMomentumFactor * (targetMass / charMass);
+
+    return {
+      shoveSpeed,
+      recoilSpeed,
+      demandedMetabolicJoules,
+      mechanicalJoules,
+    };
+  }
+
+  /**
+   * Computes any live anticipated energy modifier for the HUD while charging a shove.
+   */
+  public static getAnticipatedModifier(character: Character): AnticipatedModifier | null {
+    if (
+      !character.isChargingShove ||
+      !character.grappledTarget ||
+      character.isThrowCancelZone ||
+      !character.energyPool ||
+      !character.energyPool.enabled
+    ) {
+      return null;
+    }
+
+    const kinematics = GrappleCapability.calculateShoveKinematics(
+      character,
+      character.grappledTarget,
+      character.shoveChargeProgress ?? 0
+    );
+    const allowPartial = character.grappleModule ? character.grappleModule.allowPartialPower : false;
+    const pool = character.energyPool;
+    if (pool.isExhausted || (!allowPartial && !pool.canSatisfyFullEnergy(kinematics.demandedMetabolicJoules, 0.05, character.properties))) {
+      return null;
+    }
+
+    return {
+      id: "anticipated_shove",
+      abilityId: "grapple",
+      name: "Shove",
+      color: "#f43f5e",
+      amount: Math.round(kinematics.demandedMetabolicJoules),
+      isBurst: true,
+      isPositive: false,
+      order: 950,
+    };
+  }
+
+  /**
    * Executes a grounded shove / push on the grappled target along the aim angle or character facing angle
    */
-  public static executeShove(character: Character, aimAngle?: number): boolean {
+  public static executeShove(
+    character: Character,
+    aimAngle?: number,
+    chargeProgress: number = 1.0
+  ): boolean {
     const target = character.grappledTarget;
     if (!target) return false;
 
@@ -61,25 +168,10 @@ export class GrappleCapability {
     const dirX = Math.cos(angle);
     const dirY = Math.sin(angle);
 
-    const shoveImpulse = character.grappleModule
-      ? character.grappleModule.shoveImpulseProp.get(character.properties)
-      : 16.0;
-
-    const targetMass = Math.max(0.2, target.hasMass ? target.mass : 1.0);
-    const charMass = Math.max(0.2, character.hasMass ? character.mass : 1.2);
-
-    // Calculate unencumbered mechanical work needed for shove + recoil:
-    // W_mech = 0.5 * m_target * v_target^2 + 0.5 * m_char * v_recoil^2
-    const shoveSpeed = shoveImpulse / targetMass;
-    const recoilSpeed = (shoveImpulse * 0.45) / charMass;
-    const mechanicalJoules = 0.5 * targetMass * (shoveSpeed * shoveSpeed) + 0.5 * charMass * (recoilSpeed * recoilSpeed);
+    const { shoveSpeed, recoilSpeed, demandedMetabolicJoules } =
+      GrappleCapability.calculateShoveKinematics(character, target, chargeProgress);
 
     const pool = character.energyPool;
-    const efficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(character.properties) : 0.25);
-    const rawMetabolicJoules = Math.max(10, mechanicalJoules / efficiency);
-    const maxPower = character.grappleModule ? character.grappleModule.maxPowerProp.get(character.properties) : 350;
-    const metabolicJoules = Math.min(rawMetabolicJoules, Math.max(10, maxPower));
-
     const consumesEnergy = true; // Shove impulse always consumes explosive burst energy from EnergyPool
     const allowPartial = character.grappleModule ? character.grappleModule.allowPartialPower : false;
 
@@ -88,35 +180,46 @@ export class GrappleCapability {
       if (pool.isExhausted) {
         pool.notifyInsufficientEnergy({
           abilityId: "grapple",
-          demandedAmount: metabolicJoules,
+          demandedAmount: demandedMetabolicJoules,
           isBurst: true,
           registry: character.properties,
         });
+        character.isChargingShove = false;
+        character.shoveChargeStartTime = null;
+        character.shoveChargeProgress = 0;
         return false;
       }
-      if (!allowPartial && !pool.canSatisfyFullEnergy(metabolicJoules, 0.05, character.properties)) {
+      if (!allowPartial && !pool.canSatisfyFullEnergy(demandedMetabolicJoules, 0.05, character.properties)) {
         pool.notifyInsufficientEnergy({
           abilityId: "grapple",
-          demandedAmount: metabolicJoules,
+          demandedAmount: demandedMetabolicJoules,
           isBurst: true,
           registry: character.properties,
         });
+        character.isChargingShove = false;
+        character.shoveChargeStartTime = null;
+        character.shoveChargeProgress = 0;
         return false;
       }
       const burstRes = pool.requestInstantBurst({
         abilityId: "grapple",
-        demandedJoules: metabolicJoules,
+        demandedJoules: demandedMetabolicJoules,
         allowPartialPower: allowPartial,
         registry: character.properties,
       });
       if (!burstRes.granted || burstRes.grantedJoules <= 0.001 || (!allowPartial && burstRes.fraction < 1.0)) {
+        character.isChargingShove = false;
+        character.shoveChargeStartTime = null;
+        character.shoveChargeProgress = 0;
         return false;
       }
       energyFraction = burstRes.fraction;
     }
 
-    const effShoveSpeed = shoveSpeed * energyFraction;
-    const effRecoilSpeed = recoilSpeed * energyFraction;
+    // Kinetic energy scales with v^2, so speed scales with sqrt(energyFraction)
+    const speedScale = Math.sqrt(Math.max(0, energyFraction));
+    const effShoveSpeed = shoveSpeed * speedScale;
+    const effRecoilSpeed = recoilSpeed * speedScale;
 
     // Accelerate target forward
     target.velocity.x += dirX * effShoveSpeed;

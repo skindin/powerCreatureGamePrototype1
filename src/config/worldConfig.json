@@ -3541,7 +3541,7 @@
       "grappleReach": 1.3,
       "shoveImpulse": 16,
       "breakoutDistanceRatio": 1.4,
-      "maxPower": 250,
+      "maxPower": 1000,
       "consumesEnergy": true,
       "allowPartialPower": false
     }
@@ -7646,7 +7646,7 @@
           "grappleReach": 1.3,
           "shoveImpulse": 16,
           "breakoutDistanceRatio": 1.4,
-          "maxPower": 250,
+          "maxPower": 1000,
           "consumesEnergy": true,
           "allowPartialPower": false
         },
@@ -11402,7 +11402,7 @@
           "grappleReach": 1.3,
           "shoveImpulse": 16,
           "breakoutDistanceRatio": 1.4,
-          "maxPower": 250,
+          "maxPower": 1000,
           "consumesEnergy": true,
           "allowPartialPower": false
         },
@@ -13456,7 +13456,7 @@
           "grappleReach": 1.3,
           "shoveImpulse": 16,
           "breakoutDistanceRatio": 1.4,
-          "maxPower": 250,
+          "maxPower": 1000,
           "consumesEnergy": true,
           "allowPartialPower": false
         },
@@ -15281,7 +15281,7 @@
           "grappleReach": 1.3,
           "shoveImpulse": 16,
           "breakoutDistanceRatio": 1.4,
-          "maxPower": 250,
+          "maxPower": 1000,
           "consumesEnergy": true,
           "allowPartialPower": false
         },
@@ -18891,7 +18891,7 @@
           "grappleReach": 1.3,
           "shoveImpulse": 16,
           "breakoutDistanceRatio": 1.4,
-          "maxPower": 250,
+          "maxPower": 1000,
           "consumesEnergy": true,
           "allowPartialPower": false
         },

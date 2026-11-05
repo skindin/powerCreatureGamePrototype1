@@ -506,6 +506,86 @@ export class EntityPass {
       ctx.arc(tx, ty, 4, 0, Math.PI * 2);
       ctx.fillStyle = char.playerColor || "#f59e0b";
       ctx.fill();
+
+      // Shove charge-and-release directional indicator on top of grappled target
+      if (char.isChargingShove) {
+        const progress = Math.max(0, Math.min(1, char.shoveChargeProgress ?? 0));
+        const angle = char.facingAngle ?? 0;
+        const dirX = Math.cos(angle);
+        const dirY = Math.sin(angle);
+        const targetRadiusPx = (target.colliderRadius ?? 0.4) * ppu;
+
+        if (char.isThrowCancelZone) {
+          ctx.setLineDash([5, 4]);
+          ctx.strokeStyle = "rgba(239, 68, 68, 0.9)";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(tx, ty, targetRadiusPx + 8, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.font = "bold 11px monospace";
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#ef4444";
+          ctx.fillText("CANCEL", tx, ty - targetRadiusPx - 14);
+        } else {
+          ctx.setLineDash([]);
+          const startDist = targetRadiusPx + 4;
+          const minArrowLen = 22;
+          const maxArrowLen = 78;
+          const arrowLen = minArrowLen + (maxArrowLen - minArrowLen) * progress;
+
+          const sx = tx + dirX * startDist;
+          const sy = ty + dirY * startDist;
+          const ex = sx + dirX * arrowLen;
+          const ey = sy + dirY * arrowLen;
+          const maxEx = sx + dirX * maxArrowLen;
+          const maxEy = sy + dirY * maxArrowLen;
+
+          // Ghost track showing 100% full shove charge reach
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(maxEx, maxEy);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+          ctx.lineWidth = 6;
+          ctx.lineCap = "round";
+          ctx.stroke();
+
+          // Active charged shove shaft
+          const chargeColor = progress >= 0.99 ? "#fef08a" : (char.playerColor || "#f59e0b");
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(ex, ey);
+          ctx.strokeStyle = chargeColor;
+          ctx.lineWidth = 6;
+          ctx.lineCap = "round";
+          ctx.stroke();
+
+          // Arrowhead at current charge tip
+          const headLen = 11 + 4 * progress;
+          const headAngle = Math.PI / 6;
+          ctx.beginPath();
+          ctx.moveTo(ex, ey);
+          ctx.lineTo(
+            ex - headLen * Math.cos(angle - headAngle),
+            ey - headLen * Math.sin(angle - headAngle)
+          );
+          ctx.lineTo(
+            ex - headLen * Math.cos(angle + headAngle),
+            ey - headLen * Math.sin(angle + headAngle)
+          );
+          ctx.closePath();
+          ctx.fillStyle = chargeColor;
+          ctx.fill();
+
+          // Charge percentage pill above target
+          const pct = Math.round((0.35 + 0.65 * progress) * 100);
+          ctx.font = "bold 11px monospace";
+          ctx.textAlign = "center";
+          ctx.fillStyle = chargeColor;
+          ctx.fillText(`SHOVE ${pct}%`, tx, ty - targetRadiusPx - 12);
+        }
+      }
+
       ctx.restore();
     }
   }

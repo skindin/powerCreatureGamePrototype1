@@ -1147,6 +1147,9 @@ export class ModularBlockEvaluator {
           const b = block as ThrowControlBlock;
           if (isLaserAiming || isLaserFiring || isVomitAiming || isVomitRequested || (char as any).isChargingVomit) {
             char.isChargingThrow = false;
+            char.isChargingShove = false;
+            char.shoveChargeStartTime = null;
+            char.shoveChargeProgress = 0;
             char.isAimingWallClear = false;
             char.isHoldingThrowRelease = false;
             char.isTriggerPullThrowing = false;
@@ -1168,15 +1171,87 @@ export class ModularBlockEvaluator {
                 (char as any)._pickupPressCode &&
                 (tokens.isDown((char as any)._pickupPressCode) || isButtonCodePhysicallyDown((char as any)._pickupPressCode))
               );
-              if (!isStillHoldingInitialPickup && shoveTrigger && isSlotActive(shoveTrigger, "down", true, b.id, "throw.shove")) {
-                const aimAngle = (targetAimPos.x !== char.position.x || targetAimPos.y !== char.position.y)
-                  ? Math.atan2(targetAimPos.y - char.position.y, targetAimPos.x - char.position.x)
-                  : char.facingAngle;
-                GrappleCapability.executeShove(char, aimAngle);
-                claimSlot(shoveTrigger, b.id, "throw.shove", true);
-                (char as any)._isConsumeToggledOn = false;
-                (char as any)._toggledConsumeItemId = null;
+
+              if ((char as any)._throwRequiresFreshPress && !isStillHoldingInitialPickup) {
+                const isHeldNow = Boolean(
+                  shoveTrigger &&
+                  (getSlotAnalogValue(shoveTrigger) > 0.05 ||
+                    isSlotActive(shoveTrigger, "down", false, b.id, "check") ||
+                    isSlotActive(shoveTrigger, "hold", false, b.id, "check"))
+                );
+                if (!isHeldNow) {
+                  (char as any)._throwRequiresFreshPress = false;
+                }
               }
+
+              // Allow explicit cancel button while charging shove
+              if (
+                char.isChargingShove &&
+                b.cancelTrigger &&
+                isSlotActive(b.cancelTrigger, "down", true, b.id, "throw.cancelButton")
+              ) {
+                char.isChargingShove = false;
+                char.shoveChargeStartTime = null;
+                char.shoveChargeProgress = 0;
+                char.isThrowCancelZone = false;
+                (char as any)._throwRequiresFreshPress = true;
+                claimSlot(b.cancelTrigger, b.id, "throw.cancelButton", true);
+              } else if (!isStillHoldingInitialPickup && !(char as any)._throwRequiresFreshPress && shoveTrigger) {
+                const effAim = getEffectiveAimPos();
+                const aimDx = effAim.x - char.position.x;
+                const aimDy = effAim.y - char.position.y;
+                const distToAim = Math.hypot(aimDx, aimDy);
+                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+                const isHoldingShove =
+                  isSlotActive(shoveTrigger, "hold", false, b.id, "throw.shoveCharge") ||
+                  isSlotActive(shoveTrigger, "down", false, b.id, "throw.shoveCharge") ||
+                  getSlotAnalogValue(shoveTrigger) > 0.1;
+
+                if (isHoldingShove) {
+                  char.isChargingShove = true;
+                  if (!char.shoveChargeStartTime) {
+                    char.shoveChargeStartTime = now;
+                  }
+                  const chargeDurationMs = 700;
+                  char.shoveChargeProgress = Math.min(
+                    1.0,
+                    Math.max(0.0, (now - char.shoveChargeStartTime) / chargeDurationMs)
+                  );
+                  char.isThrowCancelZone = Boolean(b.enableProximityCancel && distToAim < cancelDistance);
+                  if (distToAim > 0.05) {
+                    char.facingAngle = Math.atan2(aimDy, aimDx);
+                  }
+                  claimSlot(shoveTrigger, b.id, "throw.shoveCharge", false);
+                }
+
+                if (isSlotAnyJustReleased(shoveTrigger) && char.isChargingShove) {
+                  if (b.enableProximityCancel && distToAim < cancelDistance) {
+                    char.isChargingShove = false;
+                    char.shoveChargeStartTime = null;
+                    char.shoveChargeProgress = 0;
+                    char.isThrowCancelZone = false;
+                    claimSlot(shoveTrigger, b.id, "throw.shoveCancel", false);
+                  } else {
+                    const finalCharge = char.shoveChargeStartTime
+                      ? Math.min(1.0, Math.max(0.0, (now - char.shoveChargeStartTime) / 700))
+                      : char.shoveChargeProgress;
+                    const aimAngle = distToAim > 0.05 ? Math.atan2(aimDy, aimDx) : char.facingAngle;
+                    GrappleCapability.executeShove(char, aimAngle, finalCharge);
+                    char.isChargingShove = false;
+                    char.shoveChargeStartTime = null;
+                    char.shoveChargeProgress = 0;
+                    char.isThrowCancelZone = false;
+                    claimSlot(shoveTrigger, b.id, "throw.shove", true);
+                    (char as any)._isConsumeToggledOn = false;
+                    (char as any)._toggledConsumeItemId = null;
+                  }
+                }
+              }
+            } else {
+              char.isChargingShove = false;
+              char.shoveChargeStartTime = null;
+              char.shoveChargeProgress = 0;
             }
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
@@ -1187,6 +1262,10 @@ export class ModularBlockEvaluator {
             }
             break;
           }
+
+          char.isChargingShove = false;
+          char.shoveChargeStartTime = null;
+          char.shoveChargeProgress = 0;
 
           // Gun Wielding: If holding a gun, check if throw override trigger is active.
           // If not active, show high-speed ballistic bullet trajectory and suppress physical throwing.
