@@ -5,6 +5,8 @@ import { GunModule } from "../GunModule.js";
 import { RollMovementModule } from "../../character/RollMovementModule.js";
 import { WalkingModule } from "../../character/WalkingModule.js";
 import { LocomotionStanceModule } from "../../character/LocomotionStanceModule.js";
+import { EnergyGrowthModule } from "../../character/EnergyGrowthModule.js";
+import { VomitModule } from "../../character/VomitModule.js";
 import { Prefab } from "./Prefab.js";
 import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
@@ -275,6 +277,72 @@ export class PrefabManager {
       controlSchema: JSON.parse(JSON.stringify(GamepadHybridSchema)),
     });
     this.prefabs.set(fighterPrefab.id, fighterPrefab);
+
+    // 🧬 Default "Bio-Grower" character prefab (Scale With Energy + Projectile Vomit)
+    const growerArchetype = new Character({
+      id: "archetype_grower_character",
+      name: "Bio-Grower",
+      color: "#10b981",
+      colliderRadius: 0.40,
+      mass: 1.2,
+    });
+    growerArchetype.bounceMod = 0.15;
+    growerArchetype.laserModule = null;
+    if (growerArchetype.energyPool) {
+      growerArchetype.energyPool.maxEnergyJoules = 20000;
+      growerArchetype.energyPool.currentEnergyJoules = 6666.67;
+      growerArchetype.energyPool.staminaCapacityJoules = 5000;
+      growerArchetype.energyPool.currentStaminaJoules = 5000;
+    }
+    growerArchetype.energyGrowthModule = new EnergyGrowthModule({
+      enabled: true,
+      minScaleMultiplier: 0.5,
+      maxScaleMultiplier: 2.0,
+      startingScaleMultiplier: 1.0,
+      baseMass: 1.2,
+      baseColliderRadius: 0.40,
+      baseSpriteRadius: 0.40,
+      connectedProperties: EnergyGrowthModule.createDefaultConnectedProperties(),
+    });
+    growerArchetype.vomitModule = new VomitModule({
+      enabled: true,
+      globEnergyJoules: 2000,
+      launchSpeed: 11.0,
+      cooldownSeconds: 0.35,
+      globColor: "#84cc16",
+      consumeRateWatts: 1000,
+    });
+    growerArchetype.prefabId = "prefab_grower_character";
+
+    const growerSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
+    if (growerSchema.keyboardMouse?.blocks) {
+      growerSchema.keyboardMouse.blocks.push({
+        id: "blk_kbm_vomit",
+        type: "vomit",
+        name: "Projectile Vomit",
+        enabled: true,
+        vomit: { code: "KeyV", requireCleanPress: true },
+      });
+    }
+    if (growerSchema.gamepad?.blocks) {
+      growerSchema.gamepad.blocks.push({
+        id: "blk_gp_vomit",
+        type: "vomit",
+        name: "Projectile Vomit",
+        enabled: true,
+        vomit: { code: "GamepadLB", requireCleanPress: true },
+      });
+    }
+    growerArchetype.controlSchema = growerSchema;
+
+    const growerPrefab = new Prefab({
+      id: "prefab_grower_character",
+      name: "Bio-Grower",
+      icon: "🧬",
+      archetype: growerArchetype,
+      controlSchema: JSON.parse(JSON.stringify(growerSchema)),
+    });
+    this.prefabs.set(growerPrefab.id, growerPrefab);
   }
 
   public getAll(): Prefab[] {
@@ -291,6 +359,7 @@ export class PrefabManager {
   public loadFromConfig(configs: SerializedPrefabConfig[]): void {
     if (!configs || !Array.isArray(configs)) return;
     this.prefabs.clear();
+    this.initDefaultPrefabs();
     for (const cfg of configs) {
       if (!cfg || !cfg.id || !cfg.archetype) continue;
       const arc = cfg.archetype as any;
@@ -299,7 +368,8 @@ export class PrefabManager {
         cfg.id === "prefab_speed_ball" ||
         cfg.id === "prefab_hunter" ||
         cfg.id === "prefab_fighter" ||
-        Boolean(arc.walkingModule || arc.jumpModule || arc.rollMovementModule || arc.isCharacter);
+        cfg.id === "prefab_grower_character" ||
+        Boolean(arc.walkingModule || arc.jumpModule || arc.rollMovementModule || arc.energyGrowthModule || arc.vomitModule || arc.isCharacter);
 
       let archetype: GameObject;
       if (isCharacterConfig) {
