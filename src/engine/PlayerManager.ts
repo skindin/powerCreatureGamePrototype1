@@ -1191,6 +1191,7 @@ export class PlayerManager {
     isReplay = false
   ): void {
     const input = this.inputManager;
+    (this.arena as any).worldObjects = objects;
 
     for (const [playerId, pkt] of inputs) {
       const entry = this.players.get(playerId);

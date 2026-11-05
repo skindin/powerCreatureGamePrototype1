@@ -314,29 +314,69 @@ export class VomitCapability {
     });
     glob.consumableModule.initialColliderRadius = globRadius;
 
-    // Prevent self-collision on the initial launch frames
+    // Prevent self-collision on the initial launch frames (matches ThrowModule flight handoff)
+    glob.lastThrower = char;
+    glob.originalThrower = char;
+    glob.isInFlight = true;
+    glob.wakeUp();
     (glob as any).thrownByCharacter = char;
     (glob as any).throwGraceTimer = 0.18;
 
-    // 4. Add glob to scene object arrays
-    const targetList =
-      objects ??
-      ((arena as any)?.entities as GameObject[] | undefined) ??
-      ((typeof window !== "undefined" ? (window as any).gameObjects : undefined) as GameObject[] | undefined);
+    // Impart rolling angular velocity along the launch direction
+    if (glob.hasFriction && glob.rollModule && glob.rollModule.enabled) {
+      const R = globRadius > 0 ? globRadius : 0.22;
+      glob.rollModule.angularVelocity.y = vx / R;
+      glob.rollModule.angularVelocity.x = -vy / R;
+    }
 
-    if (Array.isArray(targetList) && !targetList.includes(glob)) {
-      targetList.push(glob);
+    // 4. Add glob to scene object arrays (ensure mutable worldObjects array receives the glob)
+    const worldObjects = (arena as any)?.worldObjects as GameObject[] | undefined;
+    if (Array.isArray(worldObjects) && !worldObjects.includes(glob)) {
+      worldObjects.push(glob);
+    }
+    if (Array.isArray(objects) && !objects.includes(glob)) {
+      objects.push(glob);
+    }
+    const arenaEntities = (arena as any)?.entities as GameObject[] | undefined;
+    if (Array.isArray(arenaEntities) && !arenaEntities.includes(glob)) {
+      arenaEntities.push(glob);
+    }
+    const winObjects = (typeof window !== "undefined" ? (window as any).gameObjects : undefined) as GameObject[] | undefined;
+    if (Array.isArray(winObjects) && !winObjects.includes(glob)) {
+      winObjects.push(glob);
     }
     char.onSpawnWorldObject?.(glob);
 
-    // 5. Apply physical recoil impulse to the character
+    // 5. Apply physical recoil (kickback) impulse to the character
     const recoilMult = mod.getRecoilMultiplier(char.properties);
     if (recoilMult > 0) {
       const charMass = Math.max(0.25, char.mass);
-      const actualHorizSpeed = Math.hypot(vx, vy);
-      const recoilDeltaV = (globMass * actualHorizSpeed * recoilMult) / charMass;
+      const effectiveGlobMass = Math.max(globMass, (expelledEnergy / 1000) * 0.45);
+      const actual3DSpeed = Math.hypot(vx, vy, vz);
+      const effectiveJetSpeed = Math.max(actual3DSpeed, launchSpeed * 0.8);
+      const recoilDeltaV = (effectiveGlobMass * effectiveJetSpeed * recoilMult) / charMass;
+
+      // Dampen any forward velocity component opposing the kickback so recoil is always crisp
+      const fwdDot = char.velocity.x * dirX + char.velocity.y * dirY;
+      if (fwdDot > 0) {
+        char.velocity.x -= dirX * fwdDot * 0.75;
+        char.velocity.y -= dirY * fwdDot * 0.75;
+      }
+
       char.velocity.x -= dirX * recoilDeltaV;
       char.velocity.y -= dirY * recoilDeltaV;
+
+      if (char.isAboveGround) {
+        const recoilRatio = (effectiveGlobMass * recoilMult) / charMass;
+        const deltaVz = vz - char.verticalVelocity;
+        char.verticalVelocity -= deltaVz * recoilRatio * 0.5;
+      }
+
+      if (char.walkingModule) {
+        char.walkingModule.isBrakingPlanned = false;
+        char.walkingModule.wasMovingLastTick = false;
+      }
+      (char as any)._lastThrowRecoilTime = performance.now();
     }
 
     return glob;

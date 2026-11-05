@@ -754,6 +754,17 @@ export class Character extends GameObject {
       }
     }
 
+    // Staged Throw Up trajectory & execution BEFORE position integration so recoil kickback integrates immediately
+    if (this.isVomitAiming && this.vomitModule && this.vomitModule.enabled) {
+      this.isAiming = true;
+      this.aimTarget = aimTargetPos;
+      VomitCapability.updateTrajectoryPreview(this, arena, aimTargetPos);
+    }
+    if (this.isVomitRequested && this.vomitModule && this.vomitModule.enabled) {
+      this.vomit(entities, arena);
+      this.isVomitRequested = false;
+    }
+
     // Base physics & collisions
     this.updatePosition(dt, arena);
 
@@ -765,15 +776,9 @@ export class Character extends GameObject {
       this.jump(arena, movementInput);
     }
 
-    // Combat abilities (Laser, Melee & Vomit)
+    // Combat abilities (Laser & Melee)
     LaserCapability.actuate(this, dt, arena);
     MeleeCapability.actuate(this, arena);
-    if (this.isVomitAiming && this.vomitModule && this.vomitModule.enabled) {
-      VomitCapability.updateTrajectoryPreview(this, arena, aimTargetPos);
-    }
-    if (this.isVomitRequested && this.vomitModule && this.vomitModule.enabled) {
-      this.vomit(entities, arena);
-    }
 
     // Energy pool stamina recovery (runs after all physical abilities and buffers in the tick)
     if (this.energyPool && this.energyPool.enabled) {

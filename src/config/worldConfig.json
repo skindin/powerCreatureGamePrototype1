@@ -1,6 +1,6 @@
 {
-  "version": 381,
-  "lastSaved": "2026-11-05T12:34:28.100Z",
+  "version": 383,
+  "lastSaved": "2026-11-05T13:00:01.938Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -15503,7 +15503,8 @@
                 "fireWeapon": {
                   "code": "MouseLeft",
                   "requireCleanPress": true
-                }
+                },
+                "consumeMode": "toggle"
               },
               {
                 "type": "throw",
@@ -15549,25 +15550,6 @@
                 "enabled": true,
                 "punch": {
                   "code": "MouseRight"
-                }
-              },
-              {
-                "type": "laser",
-                "id": "block-laser",
-                "name": "Laser Beam",
-                "enabled": true,
-                "aimTrigger": {
-                  "code": "AltLeft",
-                  "gateButtons": []
-                },
-                "aimMode": "mouseWorldPos",
-                "fireTrigger": {
-                  "code": "MouseRight",
-                  "autoFireWhenAiming": false
-                },
-                "powerLevel": {
-                  "source": "mouseWheel",
-                  "sensitivity": 1
                 }
               },
               {
@@ -16469,7 +16451,6 @@
         "hasRollMovement": false,
         "hasLocomotionStance": false,
         "hasEnergyGrowth": true,
-        "hasVomit": true,
         "energyGrowthModule": {
           "enabled": true,
           "minScaleMultiplier": 0.2,
@@ -16509,24 +16490,6 @@
               "enabled": true,
               "curveMode": "cross_section",
               "curve": "cross_section",
-              "rateMultiplier": 1,
-              "customExponent": 0.67
-            },
-            {
-              "propertyKey": "walk.maxWalkSpeed",
-              "key": "walk.maxWalkSpeed",
-              "enabled": true,
-              "curveMode": "cbrt",
-              "curve": "cbrt",
-              "rateMultiplier": 1,
-              "customExponent": 0.67
-            },
-            {
-              "propertyKey": "walk.maxSprintSpeed",
-              "key": "walk.maxSprintSpeed",
-              "enabled": true,
-              "curveMode": "cbrt",
-              "curve": "cbrt",
               "rateMultiplier": 1,
               "customExponent": 0.67
             },
@@ -16640,6 +16603,7 @@
             }
           ]
         },
+        "hasVomit": true,
         "vomitModule": {
           "enabled": true,
           "energyPerGlob": 1200,
@@ -18225,7 +18189,8 @@
               "fireWeapon": {
                 "code": "MouseLeft",
                 "requireCleanPress": true
-              }
+              },
+              "consumeMode": "toggle"
             },
             {
               "type": "throw",
@@ -18271,25 +18236,6 @@
               "enabled": true,
               "punch": {
                 "code": "MouseRight"
-              }
-            },
-            {
-              "type": "laser",
-              "id": "block-laser",
-              "name": "Laser Beam",
-              "enabled": true,
-              "aimTrigger": {
-                "code": "AltLeft",
-                "gateButtons": []
-              },
-              "aimMode": "mouseWorldPos",
-              "fireTrigger": {
-                "code": "MouseRight",
-                "autoFireWhenAiming": false
-              },
-              "powerLevel": {
-                "source": "mouseWheel",
-                "sensitivity": 1
               }
             },
             {

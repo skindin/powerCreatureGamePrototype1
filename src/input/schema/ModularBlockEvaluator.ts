@@ -334,6 +334,7 @@ export class ModularBlockEvaluator {
     const vomitBlock = hasVomitCapability
       ? (blocks.find((blk) => blk.enabled && blk.type === "vomit") as VomitControlBlock | undefined)
       : undefined;
+    const vomitFireCode = vomitBlock ? (vomitBlock.fireTrigger?.code || vomitBlock.vomit?.code || null) : null;
 
     if (vomitBlock) {
       const stageSlot = vomitBlock.stageTrigger || vomitBlock.aimTrigger;
@@ -346,13 +347,23 @@ export class ModularBlockEvaluator {
             isLaserAiming = false;
           }
         }
+        const fireDownNow = Boolean(
+          fireSlot?.code && (
+            tokens.isDown(fireSlot.code) ||
+            getSlotAnalogValue(fireSlot) > 0.15
+          )
+        );
+        const wasFireDown = Boolean((char as any)._prevVomitFireDown);
+        (char as any)._prevVomitFireDown = fireDownNow;
+
         if (isVomitAiming && fireSlot?.code) {
           const reqClean = fireSlot.requireCleanPress !== false;
-          if (isSlotActive(fireSlot, reqClean ? "down" : "hold", reqClean, vomitBlock.id, "vomit.expel")) {
+          const justPressedFire = fireDownNow && !wasFireDown;
+          if (reqClean ? justPressedFire : fireDownNow) {
             isVomitRequested = true;
-            claimSlot(fireSlot, vomitBlock.id, "vomit.expel", reqClean);
-          } else if (tokens.isDown(fireSlot.code)) {
-            claimSlot(fireSlot, vomitBlock.id, "vomit.stageHold", false);
+            tokens.consume(fireSlot.code, vomitBlock.id, "vomit.expel");
+          } else if (fireDownNow) {
+            tokens.consume(fireSlot.code, vomitBlock.id, "vomit.stageSuppress");
           }
         }
       } else if (fireSlot?.code) {
@@ -362,6 +373,8 @@ export class ModularBlockEvaluator {
           claimSlot(fireSlot, vomitBlock.id, "vomit.expel", reqClean);
         }
       }
+    } else {
+      (char as any)._prevVomitFireDown = false;
     }
 
     // Helper to get effective aim position for abilities:
@@ -487,7 +500,8 @@ export class ModularBlockEvaluator {
             }
           }
           const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
-          const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
+          const isSuppressedByVomitStage = isVomitAiming && Boolean(vomitFireCode && b.forwardTrigger?.code === vomitFireCode);
+          const fwdActive = !isSuppressedByVomitStage && isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
 
           if (isSteerCursorActive) {
             if (b.cursorSteerMode === "whenHoldingButton") {
@@ -590,7 +604,7 @@ export class ModularBlockEvaluator {
             }
 
             // Forward Drive Button (e.g. MouseRight or KeyW)
-            const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forward");
+            const fwdActive = !isSuppressedByVomitStage && isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forward");
             if (fwdActive && arrive.driveFactor > 0.001) {
               moveX += Math.cos(char.facingAngle) * arrive.driveFactor;
               moveY += Math.sin(char.facingAngle) * arrive.driveFactor;

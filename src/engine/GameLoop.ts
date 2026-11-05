@@ -153,6 +153,10 @@ export class GameLoop {
   }) {
     this.arena = options.arena;
     this.objects = options.objects;
+    (this.arena as any).worldObjects = this.objects;
+    if (typeof window !== "undefined") {
+      (window as any).gameObjects = this.objects;
+    }
     this.renderer = options.renderer;
     this.inputManager = options.inputManager;
     this.devPanel = options.devPanel;
@@ -539,6 +543,7 @@ export class GameLoop {
     const input = this.inputManager;
 
     // Synchronize active entities and visual altitude scale on arena
+    (this.arena as any).worldObjects = this.objects;
     this.arena.entities = [...this.allCharacters, ...this.objects];
     this.arena.visualAltitudeScale = this.renderer.getHoverScale();
 

@@ -78,9 +78,11 @@ export const DefaultControlBlocks: ControlBlock[] = [
   {
     type: "vomit",
     id: "block-vomit",
-    name: "Projectile Vomit",
+    name: "Throw Up",
     enabled: true,
-    vomit: { code: "KeyV", requireCleanPress: false },
+    stageTrigger: { code: "AltLeft", requireCleanPress: false },
+    fireTrigger: { code: "MouseLeft", requireCleanPress: true },
+    vomit: { code: "MouseLeft", requireCleanPress: true },
   },
   {
     type: "laser",
@@ -177,9 +179,11 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
   {
     type: "vomit",
     id: "block-vomit-gp",
-    name: "Projectile Vomit",
+    name: "Throw Up",
     enabled: true,
-    vomit: { code: "GamepadLB", requireCleanPress: false },
+    stageTrigger: { code: "GamepadLT", requireCleanPress: false },
+    fireTrigger: { code: "GamepadRT", requireCleanPress: true },
+    vomit: { code: "GamepadRT", requireCleanPress: true },
   },
   {
     type: "laser",
@@ -888,9 +892,11 @@ export const SpeedBallControlBlocks: ControlBlock[] = [
   {
     type: "vomit",
     id: "block-vomit",
-    name: "Projectile Vomit",
+    name: "Throw Up",
     enabled: true,
-    vomit: { code: "KeyV", requireCleanPress: false },
+    stageTrigger: { code: "AltLeft", requireCleanPress: false },
+    fireTrigger: { code: "MouseLeft", requireCleanPress: true },
+    vomit: { code: "MouseLeft", requireCleanPress: true },
   },
   {
     type: "facing",
@@ -970,9 +976,11 @@ export const SpeedBallGamepadControlBlocks: ControlBlock[] = [
   {
     type: "vomit",
     id: "block-vomit-gp",
-    name: "Projectile Vomit",
+    name: "Throw Up",
     enabled: true,
-    vomit: { code: "GamepadLB", requireCleanPress: false },
+    stageTrigger: { code: "GamepadLT", requireCleanPress: false },
+    fireTrigger: { code: "GamepadRT", requireCleanPress: true },
+    vomit: { code: "GamepadRT", requireCleanPress: true },
   },
   {
     type: "facing",
