@@ -735,14 +735,15 @@ class MotionIntegrator {
             entity.rollModule.lastContactRadius = 0;
           }
           const impactVz = Math.abs(entity.verticalVelocity);
-          const isThreat = Boolean(entity.isUnderKnockback || entity.isInFlight && entity.lastThrower);
+          const isThreat = Boolean(entity.isUnderKnockback || entity.isInFlight || entity.originalThrower || entity.lastThrower);
           const kSelf = isThreat ? 1 : entity.damageSolverModule ? Math.max(0, Math.min(1, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0;
-          const effectiveSpeed = impactVz * kSelf;
+          const impactSpeed = isThreat ? Math.hypot(entity.velocity.x, entity.velocity.y, impactVz) : impactVz;
+          const effectiveSpeed = impactSpeed * kSelf;
           if (effectiveSpeed > 0.01) {
             const bMod = entity.hasBounce && entity.bounceMod !== null ? entity.bounceMod : entity.isCharacter ? 0.2 : 0;
             const absFrac = Math.max(0, 1 - Math.min(1, bMod * bMod));
             const shock = effectiveSpeed * 60 * absFrac;
-            if (shock > 10) {
+            if (shock > 0.01) {
               entity.dispatchImpact({
                 absorbedShock: shock,
                 impactSpeed: effectiveSpeed,
@@ -1794,7 +1795,7 @@ const _GameObject = class _GameObject {
     }
     const bMod = this.hasBounce && this.bounceMod !== null ? this.bounceMod : this.isCharacter ? 0.2 : 0;
     const absorbedFraction = Math.max(0, 1 - Math.min(1, bMod * bMod));
-    const isThreat = this.isUnderKnockback || this.isInFlight || Boolean(this.lastThrower);
+    const isThreat = Boolean(this.isUnderKnockback || this.isInFlight || this.originalThrower || this.lastThrower);
     const kSelf = isThreat ? 1 : this.damageSolverModule ? Math.max(0, Math.min(1, this.damageSolverModule.getSelfImpactWeight(this.properties))) : 0;
     const effectiveSpeed = impactSpeed * kSelf;
     const shockDeceleration = effectiveSpeed * 60 * absorbedFraction;
@@ -10193,7 +10194,7 @@ class CollisionResolver {
     if (vn < 0) {
       const impactSpeed = Math.abs(vn);
       const absFrac = Math.max(0, 1 - Math.min(1, bRestitution * bRestitution));
-      const isThreat = entity.isUnderKnockback || entity.isInFlight || Boolean(entity.lastThrower);
+      const isThreat = Boolean(entity.isUnderKnockback || entity.isInFlight || entity.originalThrower || entity.lastThrower);
       const kSelf = isThreat ? 1 : entity.damageSolverModule ? Math.max(0, Math.min(1, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0;
       const threatRatio = CollisionResolver.calculateThreatRatio(impactSpeed, 0, kSelf, 0, isThreat, false);
       const effectiveSpeed = impactSpeed * threatRatio;
@@ -10363,10 +10364,6 @@ class CollisionResolver {
     }
     const hardnessA = ((_a = a.consumableModule) == null ? void 0 : _a.tag) === "food" ? 0.2 : 1;
     const hardnessB = ((_b = b.consumableModule) == null ? void 0 : _b.tag) === "food" ? 0.2 : 1;
-    const massA = Math.max(0.1, a.mass);
-    const massB = Math.max(0.1, b.mass);
-    const massRatioA = massB / (massA + massB);
-    const massRatioB = massA / (massA + massB);
     const relNorm0 = vAn0 - vBn0;
     let uA = 0;
     let uB = 0;
@@ -10391,16 +10388,16 @@ class CollisionResolver {
     } else if (a.position.z >= b.position.z && relVz0 > 0.05) {
       uA = Math.hypot(uA, Math.abs(relVz0));
     }
-    const isThreatA = Boolean(a.isUnderKnockback || a.isInFlight || a.lastThrower);
-    const isThreatB = Boolean(b.isUnderKnockback || b.isInFlight || b.lastThrower);
+    const isThreatA = Boolean(a.isUnderKnockback || a.isInFlight || a.originalThrower || a.lastThrower);
+    const isThreatB = Boolean(b.isUnderKnockback || b.isInFlight || b.originalThrower || b.lastThrower);
     const multA = isThreatA ? 1 : a.damageSolverModule ? Math.max(0, Math.min(1, a.damageSolverModule.getSelfImpactWeight(a.properties))) : 0;
     const multB = isThreatB ? 1 : b.damageSolverModule ? Math.max(0, Math.min(1, b.damageSolverModule.getSelfImpactWeight(b.properties))) : 0;
     const threatRatioA = CollisionResolver.calculateThreatRatio(uA, uB, multA, multB, isThreatA, isThreatB);
     const threatRatioB = CollisionResolver.calculateThreatRatio(uB, uA, multB, multA, isThreatB, isThreatA);
     const effectiveDeltaVa = deltaVa * threatRatioA;
     const effectiveDeltaVb = deltaVb * threatRatioB;
-    const shockA = Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
-    const shockB = Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
+    const shockA = Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB;
+    const shockB = Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA;
     if (shockA > 0.01) {
       a.dispatchImpact({
         absorbedShock: shockA,
@@ -10409,7 +10406,7 @@ class CollisionResolver {
         normalX: -normX,
         normalY: -normY
       });
-      if (b.isInFlight || shockA > 100) {
+      if (a.isInFlight || b.isInFlight || shockA > 100) {
         a.applyKnockbackWindow(600);
       }
     }
@@ -10421,7 +10418,7 @@ class CollisionResolver {
         normalX: normX,
         normalY: normY
       });
-      if (a.isInFlight || shockB > 100) {
+      if (a.isInFlight || b.isInFlight || shockB > 100) {
         b.applyKnockbackWindow(600);
       }
     }

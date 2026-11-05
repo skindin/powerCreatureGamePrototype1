@@ -420,7 +420,7 @@ export class CollisionResolver {
       const impactSpeed = Math.abs(vn);
       // Plasticity fraction: bouncier entity absorbs far less injury (elastic rebound vs plastic damage: 1 - e^2)
       const absFrac = Math.max(0, 1.0 - Math.min(1.0, bRestitution * bRestitution));
-      const isThreat = entity.isUnderKnockback || entity.isInFlight || Boolean(entity.lastThrower);
+      const isThreat = Boolean(entity.isUnderKnockback || entity.isInFlight || entity.originalThrower || entity.lastThrower);
       const kSelf = isThreat
         ? 1.0
         : (entity.damageSolverModule ? Math.max(0, Math.min(1.0, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0.0);
@@ -646,12 +646,6 @@ export class CollisionResolver {
     const hardnessA = a.consumableModule?.tag === "food" ? 0.20 : 1.0;
     const hardnessB = b.consumableModule?.tag === "food" ? 0.20 : 1.0;
 
-    // Reduced mass coupling factor: lighter items (e.g. an apple) deliver significantly less kinetic energy into heavier targets
-    const massA = Math.max(0.1, a.mass);
-    const massB = Math.max(0.1, b.mass);
-    const massRatioA = massB / (massA + massB);
-    const massRatioB = massA / (massA + massB);
-
     // Symmetrical closing threat breakdown along contact normal:
     // Uses pre-impulse velocities (vAn0, vBn0) before momentum impulses altered them
     const relNorm0 = vAn0 - vBn0; // Positive when closing in 2D
@@ -688,8 +682,8 @@ export class CollisionResolver {
     // Active threats (1.0): bodies in flight (thrown items/projectiles) or under knockback (hurled bodies).
     // Resting obstacles, props, or pushed items: deliver 0 active threat to a character walking/running into them.
     // Characters under voluntary locomotion use their selfImpactWeight multiplier (default 0.0 = arcade bump immunity).
-    const isThreatA = Boolean(a.isUnderKnockback || a.isInFlight || a.lastThrower);
-    const isThreatB = Boolean(b.isUnderKnockback || b.isInFlight || b.lastThrower);
+    const isThreatA = Boolean(a.isUnderKnockback || a.isInFlight || a.originalThrower || a.lastThrower);
+    const isThreatB = Boolean(b.isUnderKnockback || b.isInFlight || b.originalThrower || b.lastThrower);
 
     const multA = isThreatA
       ? 1.0
@@ -704,8 +698,8 @@ export class CollisionResolver {
     const effectiveDeltaVa = deltaVa * threatRatioA;
     const effectiveDeltaVb = deltaVb * threatRatioB;
 
-    const shockA = Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB * (massRatioA * 2);
-    const shockB = Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA * (massRatioB * 2);
+    const shockA = Math.abs(effectiveDeltaVa) * 60 * absFracA * hardnessB;
+    const shockB = Math.abs(effectiveDeltaVb) * 60 * absFracB * hardnessA;
 
     if (shockA > 0.01) {
       a.dispatchImpact({
@@ -715,8 +709,8 @@ export class CollisionResolver {
         normalX: -normX,
         normalY: -normY,
       });
-      // Knockback window is only applied for true high-impact events or active projectiles, never incidental nudges
-      if (b.isInFlight || shockA > 100) {
+      // Knockback window is applied for true high-impact events or if either entity was in flight
+      if (a.isInFlight || b.isInFlight || shockA > 100) {
         a.applyKnockbackWindow(600);
       }
     }
@@ -729,8 +723,8 @@ export class CollisionResolver {
         normalX: normX,
         normalY: normY,
       });
-      // Knockback window is only applied for true high-impact events or active projectiles, never incidental nudges
-      if (a.isInFlight || shockB > 100) {
+      // Knockback window is applied for true high-impact events or if either entity was in flight
+      if (a.isInFlight || b.isInFlight || shockB > 100) {
         b.applyKnockbackWindow(600);
       }
     }
