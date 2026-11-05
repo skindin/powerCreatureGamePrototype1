@@ -915,6 +915,15 @@ export class Renderer {
         }
       }
 
+      // 7b. Active Grapple Tether Leashes (Renders ON TOP of all ground and elevated entity sprites!)
+      EntityPass.drawGrappleTethers(
+        ctx,
+        characters,
+        ppu,
+        this.viewSettings,
+        (obj) => this.getEffectiveObjectPosition(obj, arena, characters)
+      );
+
       // 8. Collider Position Outlines (Renders ON TOP OF EVERYTHING - only the shadow fill is covered!)
       for (const entity of allRenderables) {
         const isHeld = Boolean(

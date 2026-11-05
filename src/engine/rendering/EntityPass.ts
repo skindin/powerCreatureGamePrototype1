@@ -459,15 +459,36 @@ export class EntityPass {
       ctx.fillText(badgeText, x, y + r + 15);
       ctx.restore();
     }
+  }
 
-    // Render active grapple tether leash
-    if (char.grappledTarget) {
+  /**
+   * Renders active grapple tether leashes on top of all entity sprites.
+   */
+  public static drawGrappleTethers(
+    ctx: CanvasRenderingContext2D,
+    characters: Character[],
+    ppu: number,
+    viewSettings: ViewSettings,
+    getEffectivePos: (entity: GameObject) => { x: number; y: number; z: number }
+  ): void {
+    const useHover = viewSettings.verticalVisuals === "hover" || viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? viewSettings.visualAltitudeScale : 0;
+
+    for (const char of characters) {
+      if (!char.grappledTarget) continue;
       const target = char.grappledTarget;
+
+      const charEffPos = getEffectivePos(char);
+      const vx = char.visualOffset ? char.visualOffset.x : 0;
+      const vy = char.visualOffset ? char.visualOffset.y : 0;
+      const x = (charEffPos.x - vx) * ppu;
+      const y = (charEffPos.y - vy - charEffPos.z * hoverScale) * ppu;
+
+      const targetEffPos = getEffectivePos(target);
       const targetVx = target.visualOffset ? target.visualOffset.x : 0;
       const targetVy = target.visualOffset ? target.visualOffset.y : 0;
-      const targetHoverScale = useHover ? viewSettings.visualAltitudeScale : 0;
-      const tx = (target.position.x - targetVx) * ppu;
-      const ty = (target.position.y - targetVy - target.position.z * targetHoverScale) * ppu;
+      const tx = (targetEffPos.x - targetVx) * ppu;
+      const ty = (targetEffPos.y - targetVy - targetEffPos.z * hoverScale) * ppu;
 
       ctx.save();
       ctx.beginPath();
