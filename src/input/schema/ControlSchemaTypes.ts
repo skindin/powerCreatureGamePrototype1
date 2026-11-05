@@ -380,10 +380,20 @@ export interface VomitControlBlock {
   id: string;
   name?: string;
   enabled: boolean;
-  stageTrigger?: BlockInputSlot; // Hold button to stage Throw Up attack and display ballistic aim trajectory (e.g. AltLeft)
-  aimTrigger?: BlockInputSlot;   // Alias for stageTrigger
-  fireTrigger?: BlockInputSlot;  // Button pressed while staging to execute Throw Up attack (e.g. MouseLeft)
-  vomit?: BlockInputSlot;        // Alias / fallback trigger for fireTrigger
+  mode?: ThrowBlockMode;          // Defaults to "holdAndRelease"
+  chargeTrigger?: BlockInputSlot; // For holdAndRelease, chargeAndRelease, and triggerPullForce
+  aimTrigger?: BlockInputSlot;    // For aimAndFire and aimWallClear
+  fireTrigger?: BlockInputSlot;   // For aimAndFire
+  quickTrigger?: BlockInputSlot;  // For quickOptimal and quickWallClear
+  cancelTrigger?: BlockInputSlot; // Optional button to cancel active trajectory preview/charging
+  triggerMargin?: number;         // Deadzone margin (default 0.15) before analog trigger increases force
+  arcModulation?: {
+    source?: "mouseDeltaY" | "mouseWheel" | "none";
+    autoCursorLock?: boolean;
+    sensitivity?: number;
+  };
+  enableProximityCancel?: boolean; // Optional toggle to cancel when cursor is near character
+  cancelRadius?: number;           // Optional radius within which aiming cancels the throw up
 }
 
 export interface LaserControlBlock {

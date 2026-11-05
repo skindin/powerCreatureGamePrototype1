@@ -763,6 +763,9 @@ export class Character extends GameObject {
     if (this.isVomitRequested && this.vomitModule && this.vomitModule.enabled) {
       this.vomit(entities, arena);
       this.isVomitRequested = false;
+      if (!this.isVomitAiming) {
+        this.activeTrajectory = null;
+      }
     }
 
     // Base physics & collisions

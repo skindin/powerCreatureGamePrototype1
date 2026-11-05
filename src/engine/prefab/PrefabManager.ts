@@ -348,8 +348,15 @@ export class PrefabManager {
         type: "vomit",
         name: "Throw Up / Vomit",
         enabled: true,
-        stageTrigger: { code: "AltLeft", requireCleanPress: false },
+        mode: "holdAndRelease",
+        chargeTrigger: { code: "MouseLeft", gateButtons: ["AltLeft"], requireCleanPress: true },
+        aimTrigger: { code: "AltLeft", requireCleanPress: false },
         fireTrigger: { code: "MouseLeft", requireCleanPress: true },
+        quickTrigger: { code: "MouseLeft", gateButtons: ["AltLeft"], requireCleanPress: true },
+        cancelTrigger: { code: "KeyX", requireCleanPress: true },
+        arcModulation: { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 },
+        enableProximityCancel: true,
+        cancelRadius: 1.5,
       });
     }
     if (growerSchema.gamepad?.blocks) {
@@ -361,8 +368,16 @@ export class PrefabManager {
         type: "vomit",
         name: "Throw Up / Vomit",
         enabled: true,
-        stageTrigger: { code: "GamepadLT", requireCleanPress: false },
+        mode: "holdAndRelease",
+        chargeTrigger: { code: "GamepadRT", gateButtons: ["GamepadLT"], requireCleanPress: true },
+        aimTrigger: { code: "GamepadLT", requireCleanPress: false },
         fireTrigger: { code: "GamepadRT", requireCleanPress: true },
+        quickTrigger: { code: "GamepadRT", gateButtons: ["GamepadLT"], requireCleanPress: true },
+        cancelTrigger: { code: null, requireCleanPress: true },
+        triggerMargin: 0.15,
+        arcModulation: { source: "none", autoCursorLock: false, sensitivity: 0.005 },
+        enableProximityCancel: true,
+        cancelRadius: 1.5,
       });
     }
     growerArchetype.controlSchema = growerSchema;

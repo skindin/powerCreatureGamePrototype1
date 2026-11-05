@@ -5,6 +5,7 @@ import { ThrowModule } from "../ThrowModule.js";
 import { BallisticTrajectorySolver } from "../BallisticTrajectorySolver.js";
 import type { Character, AnticipatedModifier } from "../Character.js";
 import type { Arena } from "../../engine/Arena.js";
+import type { VomitControlBlock } from "../../input/schema/ControlSchemaTypes.js";
 
 /**
  * Isolated capability slice for Projectile Vomit ("Throw Up").
@@ -70,21 +71,21 @@ export class VomitCapability {
   }
 
   public static getAnticipatedModifier(char: Character): AnticipatedModifier | null {
-    if (!char.isVomitAiming || !this.canVomit(char)) {
+    if (!char.isVomitAiming || !this.canVomit(char) || !char.activeTrajectory) {
       return null;
     }
     const stats = this.computeProspectiveGlobStats(char);
-    if (!stats) return null;
+    if (!stats || stats.availableEnergy < 50) return null;
 
-    const isInsufficient = stats.availableEnergy < 50;
     return {
-      id: "vomit",
-      name: isInsufficient ? "Throw Up (Low Energy)" : "Throw Up",
-      amount: stats.requestedEnergy,
+      id: "anticipated_vomit",
+      abilityId: "vomit",
+      name: "Throw Up",
+      color: "#84cc16",
+      amount: Math.round(stats.expelledEnergy),
       isBurst: true,
-      unit: "J",
-      color: isInsufficient ? "#ef4444" : "#84cc16",
-      insufficient: isInsufficient,
+      isPositive: false,
+      order: 950,
     };
   }
 
@@ -107,6 +108,21 @@ export class VomitCapability {
     const aimDx = aimTargetPos.x - char.position.x;
     const aimDy = aimTargetPos.y - char.position.y;
     const distToAim = Math.hypot(aimDx, aimDy);
+
+    const vomitBlock = (char.controlSchema?.gamepad?.blocks || char.controlSchema?.keyboardMouse?.blocks)?.find(
+      (b) => b.type === "vomit"
+    ) as VomitControlBlock | undefined;
+
+    if (vomitBlock?.enableProximityCancel) {
+      const cancelRadius = vomitBlock.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + stats.globRadius + 0.3);
+      if (distToAim < cancelRadius) {
+        char.activeTrajectory = null;
+        (char as any).isVomitCancelZone = true;
+        if (char.isSteeringCursor) char.facingAngle = preservedFacing;
+        return;
+      }
+    }
+    (char as any).isVomitCancelZone = false;
 
     if (distToAim > 0.05) {
       char.facingAngle = Math.atan2(aimDy, aimDx);
@@ -133,26 +149,120 @@ export class VomitCapability {
       startY = clamped.y;
     }
 
-    const res = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
-      {
-        startX,
-        startY,
-        startZ,
-        colliderRadius: stats.globRadius,
-        maxSpeed: stats.launchSpeed,
-        hasGravity: true,
-        hasVerticalVelocity: true,
-        visualShape: "circle",
-        hasUserSetArcRatio: char.hasUserSetArcRatio,
-        savedArcRatio: char.savedArcRatio,
-      },
-      aimTargetPos.x,
-      aimTargetPos.y,
-      arena,
-      arena.visualAltitudeScale
-    );
+    const baseParams = {
+      startX,
+      startY,
+      startZ,
+      colliderRadius: stats.globRadius,
+      maxSpeed: stats.launchSpeed,
+      hasGravity: true,
+      hasVerticalVelocity: true,
+      visualShape: "circle" as const,
+      hasUserSetArcRatio: char.hasUserSetArcRatio,
+      savedArcRatio: char.savedArcRatio,
+    };
 
-    char.activeTrajectory = res.trajectory;
+    if ((char as any).isChargingVomit) {
+      const clearRes = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
+        baseParams,
+        aimTargetPos.x,
+        aimTargetPos.y,
+        arena,
+        arena.visualAltitudeScale
+      );
+      const startRatio = clearRes.savedArcRatio ?? 0.5;
+      const flattestBlocked = Boolean(clearRes.trajectory?.flattestPoints?.some((pt) => pt.collidesWall));
+
+      const now = performance.now();
+      const start = (char as any).vomitChargeStartTime ?? now;
+      const holdMs = Math.max(0, now - start);
+      const chargeProgress = Math.min(1.0, holdMs / 700);
+      (char as any).vomitChargeProgress = chargeProgress;
+
+      const targetRatio = flattestBlocked ? 1.0 : 0.0;
+      const chargedRatio = startRatio + (targetRatio - startRatio) * chargeProgress;
+      char.throwChargingTowards = flattestBlocked ? "steepest" : "flattest";
+      char.hasUserSetArcRatio = true;
+      char.savedArcRatio = chargedRatio;
+
+      char.activeTrajectory = chargeProgress > 0.001
+        ? BallisticTrajectorySolver.calculateTrajectoryForParams(
+            { ...baseParams, hasUserSetArcRatio: true, savedArcRatio: chargedRatio },
+            aimTargetPos.x,
+            aimTargetPos.y,
+            arena,
+            arena.visualAltitudeScale
+          ).trajectory
+        : clearRes.trajectory;
+
+      if (char.activeTrajectory) {
+        (char.activeTrajectory as any).chargingTowards = char.throwChargingTowards;
+      }
+    } else if ((char as any).isTriggerPullVomiting) {
+      const clearRes = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
+        baseParams,
+        aimTargetPos.x,
+        aimTargetPos.y,
+        arena,
+        arena.visualAltitudeScale
+      );
+      const startRatio = clearRes.savedArcRatio ?? 0.5;
+      const flattestBlocked = Boolean(clearRes.trajectory?.flattestPoints?.some((pt) => pt.collidesWall));
+      const targetRatio = flattestBlocked ? 1.0 : 0.0;
+      const f = (char as any).triggerVomitPower ?? 0;
+      const pulledRatio = startRatio + (targetRatio - startRatio) * f;
+
+      char.throwChargingTowards = flattestBlocked ? "steepest" : "flattest";
+      char.hasUserSetArcRatio = true;
+      char.savedArcRatio = pulledRatio;
+
+      char.activeTrajectory = f > 0.001
+        ? BallisticTrajectorySolver.calculateTrajectoryForParams(
+            { ...baseParams, hasUserSetArcRatio: true, savedArcRatio: pulledRatio },
+            aimTargetPos.x,
+            aimTargetPos.y,
+            arena,
+            arena.visualAltitudeScale
+          ).trajectory
+        : clearRes.trajectory;
+
+      if (char.activeTrajectory) {
+        (char.activeTrajectory as any).chargingTowards = char.throwChargingTowards;
+      }
+    } else if ((char as any).isHoldingVomitRelease || (char as any).isAimingVomitWallClear) {
+      char.hasUserSetArcRatio = false;
+      char.throwChargingTowards = undefined;
+      const res = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
+        { ...baseParams, hasUserSetArcRatio: false },
+        aimTargetPos.x,
+        aimTargetPos.y,
+        arena,
+        arena.visualAltitudeScale
+      );
+      char.activeTrajectory = res.trajectory;
+      char.savedArcRatio = res.savedArcRatio;
+    } else {
+      char.throwChargingTowards = undefined;
+      if (char.hasUserSetArcRatio) {
+        const res = BallisticTrajectorySolver.calculateTrajectoryForParams(
+          baseParams,
+          aimTargetPos.x,
+          aimTargetPos.y,
+          arena,
+          arena.visualAltitudeScale
+        );
+        char.activeTrajectory = res.trajectory;
+      } else {
+        const res = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
+          baseParams,
+          aimTargetPos.x,
+          aimTargetPos.y,
+          arena,
+          arena.visualAltitudeScale
+        );
+        char.activeTrajectory = res.trajectory;
+      }
+    }
 
     if (char.isSteeringCursor) {
       char.facingAngle = preservedFacing;
@@ -202,9 +312,7 @@ export class VomitCapability {
     pool.currentEnergyProp.set(newEnergy, char.properties);
 
     // Register visual burst modifier on EnergyPool HUD
-    if (typeof (pool as any).recordInstantConsumption === "function") {
-      (pool as any).recordInstantConsumption("vomit", "Throw Up", expelledEnergy, "#84cc16");
-    }
+    pool.recordInstantConsumption("vomit", expelledEnergy);
 
     const globRadius = stats?.globRadius ?? 0.22;
     const globMass = stats?.globMass ?? Math.max(0.15, Math.min(2.5, expelledEnergy / 2500));

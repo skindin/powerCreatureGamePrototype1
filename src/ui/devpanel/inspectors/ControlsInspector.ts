@@ -1880,22 +1880,156 @@ export class ControlsInspector {
 
       case "vomit": {
         const b = block as VomitControlBlock;
-        b.stageTrigger = b.stageTrigger || b.aimTrigger || { code: this.activeTab === "gamepad" ? "GamepadLT" : "AltLeft" };
-        b.fireTrigger = b.fireTrigger || b.vomit || { code: this.activeTab === "gamepad" ? "GamepadRT" : "MouseLeft", requireCleanPress: true };
+        const isGp = this.activeTab === "gamepad";
+        b.mode = b.mode || "holdAndRelease";
+        b.chargeTrigger = b.chargeTrigger || (isGp
+          ? { code: "GamepadRT", gateButtons: ["GamepadLT"], requireCleanPress: true }
+          : { code: "MouseLeft", gateButtons: ["AltLeft"], requireCleanPress: true });
+        b.aimTrigger = b.aimTrigger || { code: isGp ? "GamepadLT" : "AltLeft", requireCleanPress: false };
+        b.fireTrigger = b.fireTrigger || { code: isGp ? "GamepadRT" : "MouseLeft", requireCleanPress: true };
+        b.quickTrigger = b.quickTrigger || (isGp
+          ? { code: "GamepadRT", gateButtons: ["GamepadLT"], requireCleanPress: true }
+          : { code: "MouseLeft", gateButtons: ["AltLeft"], requireCleanPress: true });
+        b.cancelTrigger = b.cancelTrigger || { code: null, requireCleanPress: true };
+        b.arcModulation = b.arcModulation || { source: isGp ? "none" : "mouseDeltaY", autoCursorLock: !isGp, sensitivity: 0.005 };
+        b.enableProximityCancel = Boolean(b.enableProximityCancel);
+        b.cancelRadius = b.cancelRadius ?? 1.5;
+        b.triggerMargin = b.triggerMargin ?? 0.15;
+
+        let modeSpecificHtml = "";
+        if (b.mode === "chargeAndRelease") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "chargeTrigger", b.chargeTrigger, "Charge & Release Throw Up Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Hold to charge trajectory/power, release to launch Throw Up.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "triggerPullForce") {
+          modeSpecificHtml = `
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div>
+                ${this.renderInputSlot(b.id, "chargeTrigger", b.chargeTrigger, "Analog Throw Up Trigger (e.g. GamepadRT)")}
+                <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                  Pull trigger to scale force & trajectory height. Releasing the trigger launches Throw Up.
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                <span style="font-size: 0.68rem; color: #94a3b8;">Trigger Deadzone Margin:</span>
+                <input type="number" step="0.05" min="0.0" max="0.5" class="block-throw-trigger-margin dev-input" data-block-id="${b.id}" value="${b.triggerMargin ?? 0.15}" style="width: 55px; font-size: 0.72rem; padding: 2px 4px; background: #0f172a; color: #fff; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; text-align: center;" />
+                <span style="font-size: 0.65rem; color: #64748b;">(0.0–0.5 threshold before force begins increasing)</span>
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "holdAndRelease") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "chargeTrigger", b.chargeTrigger, "Hold to Aim & Release Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Hold to preview lowest energy trajectory that reaches target without charging. Release to launch Throw Up.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "aimAndFire") {
+          modeSpecificHtml = `
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+              <div>
+                ${this.renderInputSlot(b.id, "aimTrigger", b.aimTrigger, "Aim Arc Preview Button")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "fireTrigger", b.fireTrigger, "Launch / Fire Throw Up Button")}
+              </div>
+              <div>
+                <span style="font-size: 0.64rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Arc Modulation (1D Input)</span>
+                <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                  <select class="block-throw-arc-source dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                    <option value="mouseDeltaY" ${b.arcModulation.source === "mouseDeltaY" ? "selected" : ""}>🖱️ Mouse Delta Y (Vertical Drag)</option>
+                    <option value="mouseWheel" ${b.arcModulation.source === "mouseWheel" ? "selected" : ""}>🎡 Mouse Scroll Wheel</option>
+                    <option value="none" ${b.arcModulation.source === "none" ? "selected" : ""}>🚫 None / Fixed Arc</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "quickOptimal") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "quickTrigger", b.quickTrigger, "Instant Optimal Throw Up Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Launches Throw Up immediately along the most efficient flattest ballistic arc on press.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "quickWallClear") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "quickTrigger", b.quickTrigger, "Instant Wall-Clear Throw Up Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Instantly calculates and fires the lowest energy trajectory that clears all intervening walls.
+              </div>
+            </div>
+          `;
+        } else if (b.mode === "aimWallClear") {
+          modeSpecificHtml = `
+            <div>
+              ${this.renderInputSlot(b.id, "aimTrigger", b.aimTrigger, "Aim Wall-Clear Button")}
+              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+                Hold to preview lowest energy trajectory that clears intervening walls, release to fire.
+              </div>
+            </div>
+          `;
+        }
+
+        const isHoldAndReleaseMode = b.mode === "chargeAndRelease" || b.mode === "aimWallClear" || b.mode === "holdAndRelease" || b.mode === "triggerPullForce";
+        const proximityCancelHtml = isHoldAndReleaseMode
+          ? `
+            <div style="margin-top: 6px; padding-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.72rem; color: #e2e8f0;">
+                <input type="checkbox" class="block-throw-cancel-toggle" data-block-id="${b.id}" ${b.enableProximityCancel ? "checked" : ""} style="cursor: pointer; accent-color: #38bdf8;" />
+                <span>Cancel Throw Up when target pos is close to character</span>
+              </label>
+              ${
+                b.enableProximityCancel
+                  ? `
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 0.68rem; color: #94a3b8;">Cancel Radius:</span>
+                  <input type="number" step="0.1" min="0.2" max="10" class="block-throw-cancel-radius dev-input" data-block-id="${b.id}" value="${b.cancelRadius ?? 1.5}" style="width: 55px; font-size: 0.72rem; padding: 2px 4px; background: #0f172a; color: #fff; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 4px; text-align: center;" />
+                  <span style="font-size: 0.65rem; color: #64748b;">tiles</span>
+                </div>
+              `
+                  : ""
+              }
+            </div>
+          `
+          : "";
+
+        const cancelSlotHtml = `
+          <div style="margin-top: 4px; padding-top: 8px; border-top: 1px dashed rgba(148, 163, 184, 0.2);">
+            ${this.renderInputSlot(b.id, "cancelTrigger", b.cancelTrigger, "Cancel Trajectory Button (Optional)")}
+            <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
+              Press while aiming or charging Throw Up to immediately cancel the trajectory preview without firing.
+            </div>
+          </div>
+        `;
+
         return `
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
-            <div>
-              ${this.renderInputSlot(b.id, "stageTrigger", b.stageTrigger, "Stage & Aim Trajectory Button (Hold)")}
-              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
-                Hold this button to stage Throw Up attack and display the ballistic aim trajectory preview.
-              </div>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.68rem; font-weight: 700; color: #38bdf8;">Trajectory Manipulation Style:</span>
+              <select class="block-throw-mode dev-select" data-block-id="${b.id}" style="font-size: 0.72rem; padding: 3px 8px; background: #0f172a; color: #fff; border: 1px solid rgba(56,189,248,0.4); border-radius: 4px;">
+                <option value="holdAndRelease" ${b.mode === "holdAndRelease" ? "selected" : ""}>🏹 Hold & Release (Static Lowest Energy Arc)</option>
+                <option value="chargeAndRelease" ${b.mode === "chargeAndRelease" ? "selected" : ""}>🏹 Charge and Release (Bow style)</option>
+                <option value="triggerPullForce" ${b.mode === "triggerPullForce" ? "selected" : ""}>🎮 Analog Trigger Pull Force (Scale Force with Trigger, Release to Fire)</option>
+                <option value="aimAndFire" ${b.mode === "aimAndFire" ? "selected" : ""}>🎯 Aim & Fire (Preview button + Launch button)</option>
+                <option value="quickOptimal" ${b.mode === "quickOptimal" ? "selected" : ""}>⚡ Most Efficient (Quick Optimal Arc)</option>
+                <option value="quickWallClear" ${b.mode === "quickWallClear" ? "selected" : ""}>🧱 Quick Wall-Clear (Lowest Energy No Wall Collision)</option>
+                <option value="aimWallClear" ${b.mode === "aimWallClear" ? "selected" : ""}>🏹 Aim Wall-Clear (Aim Lowest Energy, Release to Fire)</option>
+              </select>
             </div>
-            <div>
-              ${this.renderInputSlot(b.id, "fireTrigger", b.fireTrigger, "Use Throw Up Attack Button")}
-              <div style="font-size: 0.62rem; color: #64748b; margin-top: 3px;">
-                Press this button while holding the Stage button (e.g. Alt + Left Click) to launch the Throw Up glob along the trajectory.
-              </div>
-            </div>
+            ${modeSpecificHtml}
+            ${cancelSlotHtml}
+            ${proximityCancelHtml}
           </div>
         `;
       }
@@ -3144,15 +3278,27 @@ export class ControlsInspector {
               id: newId,
               name: "Throw Up / Vomit",
               enabled: true,
-              stageTrigger: { code: "GamepadLT", requireCleanPress: false },
+              mode: "holdAndRelease",
+              chargeTrigger: { code: "GamepadRT", gateButtons: ["GamepadLT"], requireCleanPress: true },
+              aimTrigger: { code: "GamepadLT", requireCleanPress: false },
               fireTrigger: { code: "GamepadRT", requireCleanPress: true },
+              quickTrigger: { code: "GamepadRT", gateButtons: ["GamepadLT"], requireCleanPress: true },
+              arcModulation: { source: "none", autoCursorLock: false, sensitivity: 0.005 },
+              enableProximityCancel: false,
+              cancelRadius: 1.5,
             } : {
               type: "vomit",
               id: newId,
               name: "Throw Up / Vomit",
               enabled: true,
-              stageTrigger: { code: "AltLeft", requireCleanPress: false },
+              mode: "holdAndRelease",
+              chargeTrigger: { code: "MouseLeft", gateButtons: ["AltLeft"], requireCleanPress: true },
+              aimTrigger: { code: "AltLeft", requireCleanPress: false },
               fireTrigger: { code: "MouseLeft", requireCleanPress: true },
+              quickTrigger: { code: "MouseLeft", gateButtons: ["AltLeft"], requireCleanPress: true },
+              arcModulation: { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 },
+              enableProximityCancel: false,
+              cancelRadius: 1.5,
             });
           } else if (type === "laser") {
             blocks.push(isGamepad ? {
@@ -3456,26 +3602,28 @@ export class ControlsInspector {
         });
       });
 
-      // Throw mode
+      // Throw / Vomit mode
       root.querySelectorAll(".block-throw-mode").forEach((sel) => {
         sel.addEventListener("change", (e) => {
           const bId = (sel as HTMLElement).dataset.blockId;
-          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock;
+          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock | VomitControlBlock | undefined;
           if (block) {
             block.mode = (e.target as HTMLSelectElement).value as any;
+            ControlsInspector.syncLiveWorkingSchema();
             this.renderActiveView();
           }
         });
       });
 
-      // Throw arc source
+      // Throw / Vomit arc source
       root.querySelectorAll(".block-throw-arc-source").forEach((sel) => {
         sel.addEventListener("change", (e) => {
           const bId = (sel as HTMLElement).dataset.blockId;
-          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock;
+          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock | VomitControlBlock | undefined;
           if (block) {
             block.arcModulation = block.arcModulation || {};
             block.arcModulation.source = (e.target as HTMLSelectElement).value as any;
+            ControlsInspector.syncLiveWorkingSchema();
             this.renderActiveView();
           }
         });
@@ -3493,40 +3641,43 @@ export class ControlsInspector {
         });
       });
 
-      // Throw proximity cancel toggle
+      // Throw / Vomit proximity cancel toggle
       root.querySelectorAll(".block-throw-cancel-toggle").forEach((chk) => {
         chk.addEventListener("change", (e) => {
           const bId = (chk as HTMLElement).dataset.blockId;
-          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock;
+          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock | VomitControlBlock | undefined;
           if (block) {
             block.enableProximityCancel = (e.target as HTMLInputElement).checked;
             if (block.cancelRadius === undefined) block.cancelRadius = 1.5;
+            ControlsInspector.syncLiveWorkingSchema();
             this.renderActiveView();
           }
         });
       });
 
-      // Throw proximity cancel radius input
+      // Throw / Vomit proximity cancel radius input
       root.querySelectorAll(".block-throw-cancel-radius").forEach((inp) => {
         inp.addEventListener("change", (e) => {
           const bId = (inp as HTMLElement).dataset.blockId;
-          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock;
+          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock | VomitControlBlock | undefined;
           if (block) {
             const val = parseFloat((e.target as HTMLInputElement).value);
             block.cancelRadius = isNaN(val) ? 1.5 : Math.max(0.1, val);
+            ControlsInspector.syncLiveWorkingSchema();
             this.renderActiveView();
           }
         });
       });
 
-      // Throw trigger pull deadzone margin input
+      // Throw / Vomit trigger pull deadzone margin input
       root.querySelectorAll(".block-throw-trigger-margin").forEach((inp) => {
         inp.addEventListener("change", (e) => {
           const bId = (inp as HTMLElement).dataset.blockId;
-          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock;
+          const block = blocks.find((b) => b.id === bId) as ThrowControlBlock | VomitControlBlock | undefined;
           if (block) {
             const val = parseFloat((e.target as HTMLInputElement).value);
             block.triggerMargin = isNaN(val) ? 0.15 : Math.max(0.0, Math.min(0.5, val));
+            ControlsInspector.syncLiveWorkingSchema();
             this.renderActiveView();
           }
         });

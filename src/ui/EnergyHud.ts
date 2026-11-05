@@ -725,6 +725,7 @@ export class SinglePlayerHud {
     let tagsHtml = "";
     for (const vb of sortedBlocks) {
       if (vb.currentWatts <= 0.01) continue;
+      if (isAlertActive && alert && vb.isAnticipated && vb.id === alert.abilityId) continue;
 
       const rateSuffix = vb.isBurst ? "" : "/s";
       const energyAmount = Math.round(vb.stableWatts);

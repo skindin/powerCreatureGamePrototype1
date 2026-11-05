@@ -13,6 +13,7 @@ import { BallisticTrajectorySolver } from "../BallisticTrajectorySolver.js";
 export class ThrowCapability {
   public static getAnticipatedModifier(char: Character): AnticipatedModifier | null {
     if (
+      !char.isVomitAiming &&
       char.activeTrajectory &&
       char.heldObject &&
       char.throwModule &&

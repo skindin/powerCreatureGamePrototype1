@@ -47,6 +47,7 @@ export const ABILITY_METADATA: Record<string, { name: string; color: string }> =
   instant_burst: { name: "Burst", color: "#ec4899" },
   laser_blast: { name: "Laser", color: "#06b6d4" },
   melee: { name: "Melee", color: "#f97316" },
+  vomit: { name: "Throw Up", color: "#84cc16" },
 };
 
 /**
@@ -302,6 +303,7 @@ export class EnergyPool {
     this._demands.clear();
     this._totalDemand = 0;
   }
+
   public notifyInsufficientEnergy(options: {
     abilityId: string;
     demandedAmount: number;
@@ -767,6 +769,32 @@ export class EnergyPool {
       fraction,
       peakWatts
     };
+  }
+
+  /**
+   * Records an instantaneous energy consumption event (such as expelling caloric energy via Throw Up)
+   * on the HUD power allocations list without draining stamina a second time.
+   */
+  public recordInstantConsumption(abilityId: string, joules: number): void {
+    if (joules <= 0.001) return;
+    this._nextOrderId++;
+    const meta = ABILITY_METADATA[abilityId] || {
+      name: abilityId ? abilityId.charAt(0).toUpperCase() + abilityId.slice(1) : "Burst",
+      color: "#84cc16",
+    };
+    this._activeAllocations.set(abilityId, {
+      id: abilityId,
+      name: meta.name,
+      color: meta.color,
+      demandedWatts: joules,
+      grantedWatts: joules,
+      fraction: 1.0,
+      allowPartialPower: false,
+      order: this._nextOrderId,
+      isBurst: true,
+      burstTimer: 0.55,
+      lastTick: this._currentTick,
+    });
   }
 
   /**

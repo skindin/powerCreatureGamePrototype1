@@ -17,6 +17,7 @@ import type { InputManager } from "../../ui/InputManager.js";
 import { InputPressTokenManager } from "./InputPressTokenManager.js";
 import type { PlayerInputPacket } from "../../engine/physics/StateHistoryBuffer.js";
 import { ThrowCapability } from "../../character/capabilities/ThrowCapability.js";
+import { VomitCapability } from "../../character/capabilities/VomitCapability.js";
 import { ControlSchemaArbiter } from "./ControlSchemaArbiter.js";
 import { BulletManager } from "../../engine/bullet/BulletManager.js";
 
@@ -329,54 +330,6 @@ export class ModularBlockEvaluator {
       }
     }
 
-    // Pre-evaluate Throw Up (vomit) staging & firing state
-    const hasVomitCapability = Boolean(char.vomitModule && char.vomitModule.enabled);
-    const vomitBlock = hasVomitCapability
-      ? (blocks.find((blk) => blk.enabled && blk.type === "vomit") as VomitControlBlock | undefined)
-      : undefined;
-    const vomitFireCode = vomitBlock ? (vomitBlock.fireTrigger?.code || vomitBlock.vomit?.code || null) : null;
-
-    if (vomitBlock) {
-      const stageSlot = vomitBlock.stageTrigger || vomitBlock.aimTrigger;
-      const fireSlot = vomitBlock.fireTrigger || vomitBlock.vomit;
-      if (stageSlot?.code) {
-        if (isSlotActive(stageSlot, "hold", false, vomitBlock.id, "vomit.stage")) {
-          isVomitAiming = true;
-          claimSlot(stageSlot, vomitBlock.id, "vomit.stage", false);
-          if (!isLaserFiring) {
-            isLaserAiming = false;
-          }
-        }
-        const fireDownNow = Boolean(
-          fireSlot?.code && (
-            tokens.isDown(fireSlot.code) ||
-            getSlotAnalogValue(fireSlot) > 0.15
-          )
-        );
-        const wasFireDown = Boolean((char as any)._prevVomitFireDown);
-        (char as any)._prevVomitFireDown = fireDownNow;
-
-        if (isVomitAiming && fireSlot?.code) {
-          const reqClean = fireSlot.requireCleanPress !== false;
-          const justPressedFire = fireDownNow && !wasFireDown;
-          if (reqClean ? justPressedFire : fireDownNow) {
-            isVomitRequested = true;
-            tokens.consume(fireSlot.code, vomitBlock.id, "vomit.expel");
-          } else if (fireDownNow) {
-            tokens.consume(fireSlot.code, vomitBlock.id, "vomit.stageSuppress");
-          }
-        }
-      } else if (fireSlot?.code) {
-        const reqClean = fireSlot.requireCleanPress === true;
-        if (isSlotActive(fireSlot, reqClean ? "down" : "hold", reqClean, vomitBlock.id, "vomit.expel")) {
-          isVomitRequested = true;
-          claimSlot(fireSlot, vomitBlock.id, "vomit.expel", reqClean);
-        }
-      }
-    } else {
-      (char as any)._prevVomitFireDown = false;
-    }
-
     // Helper to get effective aim position for abilities:
     // In Raw Direction Mode on Gamepad: abilities aim along the character's raw facing direction.
     // In Cursor Mode (or Mouse/Keyboard): abilities aim at targetAimPos (the cursor).
@@ -458,10 +411,11 @@ export class ModularBlockEvaluator {
       return false;
     };
 
-    // Order blocks deterministically so stance switching runs first and facing runs after movement vectors are computed
+    // Order blocks deterministically so stance switching and vomit trajectory run first, and facing runs after movement vectors are computed
     const orderedBlocks = [
       ...blocks.filter((b) => b.type === "locomotionStance"),
-      ...blocks.filter((b) => b.type !== "locomotionStance" && b.type !== "facing"),
+      ...blocks.filter((b) => b.type === "vomit"),
+      ...blocks.filter((b) => b.type !== "locomotionStance" && b.type !== "vomit" && b.type !== "facing"),
       ...blocks.filter((b) => b.type === "facing"),
     ];
 
@@ -500,8 +454,7 @@ export class ModularBlockEvaluator {
             }
           }
           const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
-          const isSuppressedByVomitStage = isVomitAiming && Boolean(vomitFireCode && b.forwardTrigger?.code === vomitFireCode);
-          const fwdActive = !isSuppressedByVomitStage && isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
+          const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
 
           if (isSteerCursorActive) {
             if (b.cursorSteerMode === "whenHoldingButton") {
@@ -604,7 +557,7 @@ export class ModularBlockEvaluator {
             }
 
             // Forward Drive Button (e.g. MouseRight or KeyW)
-            const fwdActive = !isSuppressedByVomitStage && isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forward");
+            const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forward");
             if (fwdActive && arrive.driveFactor > 0.001) {
               moveX += Math.cos(char.facingAngle) * arrive.driveFactor;
               moveY += Math.sin(char.facingAngle) * arrive.driveFactor;
@@ -780,16 +733,278 @@ export class ModularBlockEvaluator {
 
         case "vomit": {
           const b = block as VomitControlBlock;
+          const mode = b.mode || "holdAndRelease";
           if (isLaserAiming || isLaserFiring || !char.vomitModule || !char.vomitModule.enabled) {
+            (char as any).isChargingVomit = false;
+            (char as any).isHoldingVomitRelease = false;
+            (char as any).isAimingVomitWallClear = false;
+            (char as any).isTriggerPullVomiting = false;
+            (char as any).triggerVomitPower = 0;
+            (char as any).vomitChargeStartTime = null;
+            (char as any).vomitChargeProgress = 0;
+            (char as any)._vomitRequiresFreshPress = true;
             break;
           }
-          const stageSlot = b.stageTrigger || b.aimTrigger;
-          const fireSlot = b.fireTrigger || b.vomit;
-          if (isVomitAiming && stageSlot?.code) {
-            claimSlot(stageSlot, b.id, "vomit.stage", false);
+
+          if ((char as any)._vomitRequiresFreshPress) {
+            const slotsToCheck = [b.chargeTrigger, b.aimTrigger, b.fireTrigger, b.quickTrigger].filter(Boolean);
+            const anyHeld = slotsToCheck.some((slot) => {
+              const triggerVal = getSlotAnalogValue(slot);
+              const isDown = isSlotActive(slot, "down", false, b.id, "check");
+              const isHold = isSlotActive(slot, "hold", false, b.id, "check");
+              return triggerVal > 0.05 || isDown || isHold;
+            });
+            if (anyHeld) {
+              (char as any).isChargingVomit = false;
+              (char as any).isHoldingVomitRelease = false;
+              (char as any).isAimingVomitWallClear = false;
+              (char as any).isTriggerPullVomiting = false;
+              (char as any).triggerVomitPower = 0;
+              (char as any).vomitChargeStartTime = null;
+              (char as any).vomitChargeProgress = 0;
+              char.activeTrajectory = null;
+              break;
+            } else {
+              (char as any)._vomitRequiresFreshPress = false;
+            }
           }
-          if (isVomitRequested && fireSlot?.code) {
-            claimSlot(fireSlot, b.id, "vomit.expel", fireSlot.requireCleanPress !== false);
+
+          const isAimingOrChargingVomit = Boolean(
+            (char as any).isChargingVomit ||
+            (char as any).isHoldingVomitRelease ||
+            (char as any).isAimingVomitWallClear ||
+            (char as any).isTriggerPullVomiting ||
+            char.isVomitAiming ||
+            (mode === "chargeAndRelease" && isSlotActive(b.chargeTrigger, "hold", false, b.id, "check")) ||
+            (mode === "holdAndRelease" && isSlotActive(b.chargeTrigger, "hold", false, b.id, "check")) ||
+            (mode === "aimAndFire" && isSlotActive(b.aimTrigger, "hold", false, b.id, "check")) ||
+            (mode === "aimWallClear" && isSlotActive(b.aimTrigger, "hold", false, b.id, "check")) ||
+            (mode === "triggerPullForce" && getSlotAnalogValue(b.chargeTrigger) > 0.05)
+          );
+
+          if (isAimingOrChargingVomit && b.cancelTrigger && isSlotActive(b.cancelTrigger, "down", true, b.id, "vomit.cancelButton")) {
+            isVomitRequested = false;
+            isVomitAiming = false;
+            isAimingTrajectory = false;
+            char.isVomitAiming = false;
+            char.isAimingTrajectory = false;
+            (char as any).isChargingVomit = false;
+            (char as any).isHoldingVomitRelease = false;
+            (char as any).isAimingVomitWallClear = false;
+            (char as any).isTriggerPullVomiting = false;
+            (char as any).triggerVomitPower = 0;
+            (char as any).vomitChargeStartTime = null;
+            (char as any).vomitChargeProgress = 0;
+            (char as any).isVomitCancelZone = false;
+            char.activeTrajectory = null;
+            (char as any)._vomitRequiresFreshPress = true;
+            claimSlot(b.cancelTrigger, b.id, "vomit.cancelButton", true);
+            break;
+          }
+
+          const effAim = getEffectiveAimPos();
+
+          switch (mode) {
+            case "chargeAndRelease": {
+              if (isSlotActive(b.chargeTrigger, "hold", false, b.id, "vomit.chargeBow")) {
+                isVomitAiming = true;
+                isAimingTrajectory = true;
+                (char as any).isChargingVomit = true;
+                if (!(char as any).vomitChargeStartTime) {
+                  (char as any).vomitChargeStartTime = now;
+                }
+                claimSlot(b.chargeTrigger, b.id, "vomit.chargeBow", false);
+              }
+
+              if (isSlotAnyJustReleased(b.chargeTrigger) && (char as any).isChargingVomit) {
+                const aimDx = effAim.x - char.position.x;
+                const aimDy = effAim.y - char.position.y;
+                const distToAim = Math.hypot(aimDx, aimDy);
+                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+                if (b.enableProximityCancel && distToAim < cancelDistance) {
+                  isVomitRequested = false;
+                  (char as any).isChargingVomit = false;
+                  (char as any).vomitChargeStartTime = null;
+                  (char as any).vomitChargeProgress = 0;
+                  char.activeTrajectory = null;
+                  (char as any).isVomitCancelZone = false;
+                  claimSlot(b.chargeTrigger, b.id, "vomit.cancel", false);
+                } else {
+                  isVomitRequested = true;
+                  (char as any).isChargingVomit = false;
+                  (char as any).vomitChargeStartTime = null;
+                  (char as any).isVomitCancelZone = false;
+                  claimSlot(b.chargeTrigger, b.id, "vomit.fire", true);
+                }
+              }
+              break;
+            }
+
+            case "holdAndRelease": {
+              const holdSlot = b.chargeTrigger || b.aimTrigger;
+              if (isSlotActive(holdSlot, "hold", false, b.id, "vomit.holdAndRelease")) {
+                isVomitAiming = true;
+                isAimingTrajectory = true;
+                (char as any).isHoldingVomitRelease = true;
+                char.hasUserSetArcRatio = false;
+                claimSlot(holdSlot, b.id, "vomit.holdAndRelease", false);
+              }
+
+              if (isSlotAnyJustReleased(holdSlot) && (char as any).isHoldingVomitRelease) {
+                const aimDx = effAim.x - char.position.x;
+                const aimDy = effAim.y - char.position.y;
+                const distToAim = Math.hypot(aimDx, aimDy);
+                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+                if (b.enableProximityCancel && distToAim < cancelDistance) {
+                  isVomitRequested = false;
+                  (char as any).isHoldingVomitRelease = false;
+                  char.activeTrajectory = null;
+                  (char as any).isVomitCancelZone = false;
+                  claimSlot(holdSlot, b.id, "vomit.cancel", false);
+                } else {
+                  isVomitRequested = true;
+                  (char as any).isHoldingVomitRelease = false;
+                  (char as any).isVomitCancelZone = false;
+                  claimSlot(holdSlot, b.id, "vomit.fire", true);
+                }
+              }
+              break;
+            }
+
+            case "aimAndFire": {
+              const hasAimTrigger = Boolean(b.aimTrigger?.code);
+              if (hasAimTrigger && isSlotActive(b.aimTrigger, "hold", false, b.id, "vomit.aim")) {
+                isVomitAiming = true;
+                isAimingTrajectory = true;
+                claimSlot(b.aimTrigger, b.id, "vomit.aim", false);
+              }
+
+              if ((!hasAimTrigger || isVomitAiming) && isSlotActive(b.fireTrigger, "down", true, b.id, "vomit.fire")) {
+                isVomitRequested = true;
+                claimSlot(b.fireTrigger, b.id, "vomit.fire", true);
+              }
+
+              if (b.arcModulation && b.arcModulation.source !== "none" && isVomitAiming) {
+                const isMouseDelta = b.arcModulation.source === "mouseDeltaY";
+                if (isMouseDelta && b.arcModulation.autoCursorLock) {
+                  activeRawDragThisFrame = true;
+                  if (!input.isRawDragging) {
+                    ModularBlockEvaluator.activeRawDragBlockId = b.id;
+                    input.beginRawDrag((_dx, dy) => {
+                      const sens = b.arcModulation?.sensitivity || 0.005;
+                      const cur = this.getAccumulatorValue(b.id, 0.5);
+                      const next = Math.max(0.0, Math.min(1.0, cur - dy * sens));
+                      this.setAccumulatorValue(b.id, next);
+                      char.savedArcRatio = next;
+                      char.hasUserSetArcRatio = true;
+                    });
+                  }
+                } else if (b.arcModulation.source === "mouseWheel") {
+                  const rawDelta = input.aimLockRawDelta || input.arcModulationDeltaY || 0;
+                  if (rawDelta !== 0) {
+                    const sens = b.arcModulation.sensitivity || 0.05;
+                    const cur = this.getAccumulatorValue(b.id, 0.5);
+                    const next = Math.max(0.0, Math.min(1.0, cur + rawDelta * sens));
+                    this.setAccumulatorValue(b.id, next);
+                    char.savedArcRatio = next;
+                    char.hasUserSetArcRatio = true;
+                  }
+                }
+              }
+              break;
+            }
+
+            case "quickOptimal": {
+              if (isSlotActive(b.quickTrigger, "down", true, b.id, "vomit.fire")) {
+                char.hasUserSetArcRatio = false;
+                isVomitRequested = true;
+                claimSlot(b.quickTrigger, b.id, "vomit.fire", true);
+              }
+              break;
+            }
+
+            case "quickWallClear": {
+              if (isSlotActive(b.quickTrigger, "down", true, b.id, "vomit.fire") && execCtx.arena) {
+                char.hasUserSetArcRatio = false;
+                char.isVomitAiming = true;
+                VomitCapability.updateTrajectoryPreview(char, execCtx.arena, effAim);
+                isVomitRequested = true;
+                claimSlot(b.quickTrigger, b.id, "vomit.fire", true);
+              }
+              break;
+            }
+
+            case "aimWallClear": {
+              if (isSlotActive(b.aimTrigger, "hold", false, b.id, "vomit.aimWallClear")) {
+                isVomitAiming = true;
+                isAimingTrajectory = true;
+                (char as any).isAimingVomitWallClear = true;
+                claimSlot(b.aimTrigger, b.id, "vomit.aimWallClear", false);
+              }
+
+              if (isSlotAnyJustReleased(b.aimTrigger) && (char as any).isAimingVomitWallClear) {
+                const aimDx = effAim.x - char.position.x;
+                const aimDy = effAim.y - char.position.y;
+                const distToAim = Math.hypot(aimDx, aimDy);
+                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+                if (b.enableProximityCancel && distToAim < cancelDistance) {
+                  isVomitRequested = false;
+                  (char as any).isAimingVomitWallClear = false;
+                  char.activeTrajectory = null;
+                  (char as any).isVomitCancelZone = false;
+                  claimSlot(b.aimTrigger, b.id, "vomit.cancel", false);
+                } else {
+                  isVomitRequested = true;
+                  (char as any).isAimingVomitWallClear = false;
+                  (char as any).isVomitCancelZone = false;
+                  claimSlot(b.aimTrigger, b.id, "vomit.fire", true);
+                }
+              }
+              break;
+            }
+
+            case "triggerPullForce": {
+              const triggerVal = getSlotAnalogValue(b.chargeTrigger);
+              const margin = b.triggerMargin ?? 0.15;
+              const isTouchingTrigger = triggerVal > 0.05;
+
+              if (isTouchingTrigger) {
+                isVomitAiming = true;
+                isAimingTrajectory = true;
+                (char as any).isTriggerPullVomiting = true;
+                const forceFraction = triggerVal <= margin
+                  ? 0.0
+                  : Math.min(1.0, (triggerVal - margin) / (1.0 - margin));
+                (char as any).triggerVomitPower = forceFraction;
+                claimSlot(b.chargeTrigger, b.id, "vomit.triggerPull", false);
+              }
+
+              const isReleased = isSlotAnyJustReleased(b.chargeTrigger) || (!isTouchingTrigger && Boolean((char as any).isTriggerPullVomiting));
+              if (isReleased && (char as any).isTriggerPullVomiting) {
+                const aimDx = effAim.x - char.position.x;
+                const aimDy = effAim.y - char.position.y;
+                const distToAim = Math.hypot(aimDx, aimDy);
+                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+
+                if (b.enableProximityCancel && distToAim < cancelDistance) {
+                  isVomitRequested = false;
+                  (char as any).isTriggerPullVomiting = false;
+                  (char as any).triggerVomitPower = 0;
+                  char.activeTrajectory = null;
+                  (char as any).isVomitCancelZone = false;
+                  claimSlot(b.chargeTrigger, b.id, "vomit.cancel", false);
+                } else {
+                  isVomitRequested = true;
+                  (char as any).isTriggerPullVomiting = false;
+                  (char as any).isVomitCancelZone = false;
+                  claimSlot(b.chargeTrigger, b.id, "vomit.fire", true);
+                }
+              }
+              break;
+            }
           }
           break;
         }
@@ -1504,7 +1719,7 @@ export class ModularBlockEvaluator {
     char.isMeleeRequested = isMeleeRequested;
     char.isVomitAiming = isVomitAiming;
     char.isVomitRequested = isVomitRequested;
-    if (wasVomitAiming && !isVomitAiming && !isAimingTrajectory) {
+    if (wasVomitAiming && !isVomitAiming && !isVomitRequested && !isAimingTrajectory) {
       char.activeTrajectory = null;
     }
 
