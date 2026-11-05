@@ -24,6 +24,7 @@ import { LaserCapability } from "./capabilities/LaserCapability.js";
 import { MeleeCapability } from "./capabilities/MeleeCapability.js";
 import { RollMovementModule } from "./RollMovementModule.js";
 import { RollMovementCapability } from "./capabilities/RollMovementCapability.js";
+import { LocomotionStanceModule, type LocomotionMode } from "./LocomotionStanceModule.js";
 import type { ControlSchema } from "../input/schema/ControlSchemaTypes.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
@@ -149,6 +150,7 @@ export class Character extends GameObject {
   public healthModule: HealthModule | null;
   public consumeModule: ConsumeModule | null = new ConsumeModule();
   public laserModule: LaserModule | null = null;
+  public locomotionStanceModule: LocomotionStanceModule | null = null;
   public energyPool: EnergyPool | null;
 
   /** Backwards compatibility getter for energy bus references */
@@ -246,6 +248,47 @@ export class Character extends GameObject {
     if (group === "default" || group === "main") {
       this.stagedAction = stage;
     }
+  }
+
+  private _internalLocomotionMode: LocomotionMode = "walk";
+
+  /**
+   * Active locomotion mode ("walk" | "roll" | "fly").
+   * Governed by LocomotionStanceModule if installed, or internal state.
+   */
+  public get locomotionMode(): LocomotionMode {
+    if (this.locomotionStanceModule && this.locomotionStanceModule.enabled) {
+      return this.locomotionStanceModule.activeMode;
+    }
+    if (this._internalLocomotionMode) {
+      return this._internalLocomotionMode;
+    }
+    if (this.rollMovementModule && !this.walkingModule) {
+      return "roll";
+    }
+    return "walk";
+  }
+
+  public set locomotionMode(val: LocomotionMode) {
+    this._internalLocomotionMode = val;
+    if (this.locomotionStanceModule) {
+      this.locomotionStanceModule.setMode(val);
+    }
+  }
+
+  /**
+   * Cycles to the next available supported locomotion mode (e.g. Walk -> Roll -> Walk).
+   */
+  public cycleLocomotionMode(): LocomotionMode {
+    if (this.locomotionStanceModule && this.locomotionStanceModule.enabled) {
+      const mode = this.locomotionStanceModule.cycleMode();
+      this._internalLocomotionMode = mode;
+      return mode;
+    }
+    const current = this.locomotionMode;
+    const next: LocomotionMode = current === "walk" ? "roll" : "walk";
+    this.locomotionMode = next;
+    return next;
   }
 
   /**
@@ -629,9 +672,14 @@ export class Character extends GameObject {
     }
 
     // Phase 1: Pre-register active ability demands for proportional power rationing
-    const canWalk = LocomotionCapability.registerDemand(this, movementInput);
-    if (this.rollMovementModule) {
-      RollMovementCapability.registerDemand(this, movementInput, this.isBraking, this.isSprinting);
+    const mode = this.locomotionMode;
+    let canWalk = false;
+    if (mode === "walk") {
+      canWalk = LocomotionCapability.registerDemand(this, movementInput);
+    } else if (mode === "roll") {
+      if (this.rollMovementModule) {
+        RollMovementCapability.registerDemand(this, movementInput, this.isBraking, this.isSprinting);
+      }
     }
     HealthRegenCapability.registerDemand(this);
     const canClimb = ClimbingCapability.registerDemand(this, isClimbInput, arena);
@@ -644,9 +692,12 @@ export class Character extends GameObject {
       this.jump(arena, movementInput);
     }
 
-    LocomotionCapability.actuate(this, canWalk, movementInput, dt, arena);
-    if (this.rollMovementModule) {
-      RollMovementCapability.actuate(this, movementInput, this.isBraking, this.isSprinting, dt, arena);
+    if (mode === "walk") {
+      LocomotionCapability.actuate(this, canWalk, movementInput, dt, arena);
+    } else if (mode === "roll") {
+      if (this.rollMovementModule) {
+        RollMovementCapability.actuate(this, movementInput, this.isBraking, this.isSprinting, dt, arena);
+      }
     }
 
     // Base physics & collisions

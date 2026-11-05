@@ -6453,6 +6453,7 @@ class Character extends GameObject {
     __publicField(this, "healthModule");
     __publicField(this, "consumeModule", new ConsumeModule());
     __publicField(this, "laserModule", null);
+    __publicField(this, "locomotionStanceModule", null);
     __publicField(this, "energyPool");
     /** Toggle indicating if jumping consumes energy from EnergyPool */
     __publicField(this, "jumpConsumesEnergy", true);
@@ -6497,6 +6498,7 @@ class Character extends GameObject {
      * Named stage set dictionary supporting multiple concurrent stage groups.
      */
     __publicField(this, "stagedActions", { default: "none" });
+    __publicField(this, "_internalLocomotionMode", "walk");
     /**
      * Character-specific control schema loaded from its archetype or Prefab.
      */
@@ -6671,6 +6673,42 @@ class Character extends GameObject {
     if (group === "default" || group === "main") {
       this.stagedAction = stage;
     }
+  }
+  /**
+   * Active locomotion mode ("walk" | "roll" | "fly").
+   * Governed by LocomotionStanceModule if installed, or internal state.
+   */
+  get locomotionMode() {
+    if (this.locomotionStanceModule && this.locomotionStanceModule.enabled) {
+      return this.locomotionStanceModule.activeMode;
+    }
+    if (this._internalLocomotionMode) {
+      return this._internalLocomotionMode;
+    }
+    if (this.rollMovementModule && !this.walkingModule) {
+      return "roll";
+    }
+    return "walk";
+  }
+  set locomotionMode(val) {
+    this._internalLocomotionMode = val;
+    if (this.locomotionStanceModule) {
+      this.locomotionStanceModule.setMode(val);
+    }
+  }
+  /**
+   * Cycles to the next available supported locomotion mode (e.g. Walk -> Roll -> Walk).
+   */
+  cycleLocomotionMode() {
+    if (this.locomotionStanceModule && this.locomotionStanceModule.enabled) {
+      const mode = this.locomotionStanceModule.cycleMode();
+      this._internalLocomotionMode = mode;
+      return mode;
+    }
+    const current = this.locomotionMode;
+    const next = current === "walk" ? "roll" : "walk";
+    this.locomotionMode = next;
+    return next;
   }
   /**
    * Retrieves any currently anticipated energy modifiers (e.g. previewing throw trajectory cost, charging laser, etc.).
@@ -6865,9 +6903,14 @@ class Character extends GameObject {
     if (this.energyPool && this.energyPool.enabled) {
       this.energyPool.beginTick();
     }
-    const canWalk = LocomotionCapability.registerDemand(this, movementInput);
-    if (this.rollMovementModule) {
-      RollMovementCapability.registerDemand(this, movementInput, this.isBraking, this.isSprinting);
+    const mode = this.locomotionMode;
+    let canWalk = false;
+    if (mode === "walk") {
+      canWalk = LocomotionCapability.registerDemand(this, movementInput);
+    } else if (mode === "roll") {
+      if (this.rollMovementModule) {
+        RollMovementCapability.registerDemand(this, movementInput, this.isBraking, this.isSprinting);
+      }
     }
     HealthRegenCapability.registerDemand(this);
     const canClimb = ClimbingCapability.registerDemand(this, isClimbInput, arena2);
@@ -6876,9 +6919,12 @@ class Character extends GameObject {
     if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena2, movementInput);
     }
-    LocomotionCapability.actuate(this, canWalk, movementInput, dt, arena2);
-    if (this.rollMovementModule) {
-      RollMovementCapability.actuate(this, movementInput, this.isBraking, this.isSprinting, dt, arena2);
+    if (mode === "walk") {
+      LocomotionCapability.actuate(this, canWalk, movementInput, dt, arena2);
+    } else if (mode === "roll") {
+      if (this.rollMovementModule) {
+        RollMovementCapability.actuate(this, movementInput, this.isBraking, this.isSprinting, dt, arena2);
+      }
     }
     this.updatePosition(dt, arena2);
     HealthRegenCapability.actuate(this, dt, arena2);
@@ -8865,6 +8911,36 @@ class RollMovementModule {
   }
   set maxBrakePower(val) {
     this.maxBrakePowerProp.literalValue = val;
+  }
+}
+class LocomotionStanceModule {
+  constructor(options) {
+    __publicField(this, "enabled", true);
+    __publicField(this, "activeMode", "walk");
+    __publicField(this, "supportedModes", ["walk", "roll"]);
+    if ((options == null ? void 0 : options.enabled) !== void 0) this.enabled = options.enabled;
+    if (options == null ? void 0 : options.activeMode) this.activeMode = options.activeMode;
+    if (options == null ? void 0 : options.supportedModes) this.supportedModes = [...options.supportedModes];
+  }
+  /**
+   * Sets the active locomotion mode.
+   */
+  setMode(mode) {
+    if (!this.supportedModes.includes(mode)) {
+      this.supportedModes.push(mode);
+    }
+    this.activeMode = mode;
+    return true;
+  }
+  /**
+   * Cycles to the next available supported mode.
+   */
+  cycleMode() {
+    if (this.supportedModes.length <= 1) return this.activeMode;
+    const curIdx = this.supportedModes.indexOf(this.activeMode);
+    const nextIdx = (curIdx + 1) % this.supportedModes.length;
+    this.activeMode = this.supportedModes[nextIdx];
+    return this.activeMode;
   }
 }
 class ClimbingModule {
@@ -11345,6 +11421,16 @@ const DefaultControlBlocks = [
     requireCleanPress: false
   },
   {
+    type: "locomotionStance",
+    id: "block-stance",
+    name: "Locomotion Stance Switcher",
+    enabled: true,
+    cycleTrigger: { code: "KeyC", requireCleanPress: true },
+    walkTrigger: { code: "Digit1" },
+    rollTrigger: { code: "Digit2" },
+    flyTrigger: { code: "Digit3" }
+  },
+  {
     type: "itemInteraction",
     id: "block-items",
     name: "Item Interaction",
@@ -11426,6 +11512,13 @@ const DefaultGamepadControlBlocks = [
     enabled: true,
     jump: { code: "GamepadA", requireCleanPress: false },
     requireCleanPress: false
+  },
+  {
+    type: "locomotionStance",
+    id: "block-stance-gp",
+    name: "Locomotion Stance Switcher",
+    enabled: true,
+    cycleTrigger: { code: "GamepadLB", requireCleanPress: true }
   },
   {
     type: "itemInteraction",
@@ -12111,6 +12204,16 @@ const SpeedBallControlBlocks = [
     brake: { code: "Space", requireCleanPress: false }
   },
   {
+    type: "locomotionStance",
+    id: "block-stance",
+    name: "Locomotion Stance Switcher",
+    enabled: true,
+    cycleTrigger: { code: "KeyC", requireCleanPress: true },
+    walkTrigger: { code: "Digit1" },
+    rollTrigger: { code: "Digit2" },
+    flyTrigger: { code: "Digit3" }
+  },
+  {
     type: "itemInteraction",
     id: "block-items",
     name: "Item Interaction",
@@ -12175,6 +12278,13 @@ const SpeedBallGamepadControlBlocks = [
     cursorSteerTrigger: { code: "GamepadLB" },
     cursorSteerMode: "toggleButton",
     rawDirectionWhileWalking: true
+  },
+  {
+    type: "locomotionStance",
+    id: "block-stance-gp",
+    name: "Locomotion Stance Switcher",
+    enabled: true,
+    cycleTrigger: { code: "GamepadLB", requireCleanPress: true }
   },
   {
     type: "itemInteraction",
@@ -12483,7 +12593,12 @@ class PrefabManager {
       speedBallArchetype.bounceModule.bounceMod = 0.85;
       speedBallArchetype.bounceModule.verticalBounce = true;
     }
-    speedBallArchetype.walkingModule = null;
+    speedBallArchetype.walkingModule = new WalkingModule({
+      walkConsumesEnergy: false,
+      walkAllowPartialPower: false,
+      sprintConsumesEnergy: true,
+      sprintAllowPartialPower: true
+    });
     speedBallArchetype.laserModule = null;
     speedBallArchetype.rollModule = new RollModule({
       rollResistance: 0.08,
@@ -12500,6 +12615,11 @@ class PrefabManager {
       rollAllowPartialPower: true
     });
     speedBallArchetype.rollMovementModule.registerProperties(speedBallArchetype.properties);
+    speedBallArchetype.locomotionStanceModule = new LocomotionStanceModule({
+      activeMode: "roll",
+      supportedModes: ["roll", "walk"],
+      enabled: true
+    });
     speedBallArchetype.prefabId = "prefab_speed_ball";
     speedBallArchetype.controlSchema = JSON.parse(JSON.stringify(SpeedBallControlSchema));
     const speedBallPrefab = new Prefab({
@@ -18592,6 +18712,41 @@ const _ControlsInspector = class _ControlsInspector {
           </div>
         `;
       }
+      case "locomotionStance": {
+        const b = block;
+        return `
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+              <div>
+                ${this.renderInputSlot(b.id, "cycleTrigger", b.cycleTrigger, "Cycle Stance (Next Mode)")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "walkTrigger", b.walkTrigger, "Direct: Walk Mode (Optional)")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "rollTrigger", b.rollTrigger, "Direct: Roll Mode (Optional)")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "flyTrigger", b.flyTrigger, "Direct: Fly Mode (Optional)")}
+              </div>
+            </div>
+
+            <!-- Hold to Shift Mode option -->
+            <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px; padding-top: 6px; border-top: 1px dashed rgba(148,163,184,0.2);">
+              <span style="font-size: 0.68rem; color: #94a3b8;">Hold-to-Shift Stance:</span>
+              <select class="block-stance-shift-mode dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                <option value="none" ${!b.holdToShiftMode || b.holdToShiftMode === "none" ? "selected" : ""}>None (Toggle / Cycle only)</option>
+                <option value="roll" ${b.holdToShiftMode === "roll" ? "selected" : ""}>Hold button to Roll (Release to Walk)</option>
+                <option value="walk" ${b.holdToShiftMode === "walk" ? "selected" : ""}>Hold button to Walk (Release to Roll)</option>
+                <option value="fly" ${b.holdToShiftMode === "fly" ? "selected" : ""}>Hold button to Fly</option>
+              </select>
+              <div style="flex: 1; max-width: 220px;">
+                ${this.renderInputSlot(b.id, "shiftTrigger", b.shiftTrigger, "Shift Hold Button")}
+              </div>
+            </div>
+          </div>
+        `;
+      }
     }
     return "";
   }
@@ -18611,6 +18766,7 @@ const _ControlsInspector = class _ControlsInspector {
               <option value="" disabled selected>+ Add Control Module...</option>
               <option value="walkSprint">+ Walk & Sprint (Movement & Speed)</option>
               <option value="rollMovement">+ Roll Movement & Brake (Spin & Torque)</option>
+              <option value="locomotionStance">+ Locomotion Stance Switcher (Walk, Roll, Fly)</option>
               <option value="jump">+ Jump (Vertical Leap)</option>
               <option value="itemInteraction">+ Item Interaction (Pickup, Drop, Swap, Eat)</option>
               <option value="throw">+ Throwing & Ballistics</option>
@@ -18632,6 +18788,7 @@ const _ControlsInspector = class _ControlsInspector {
         walkSprint: "🏃",
         locomotion: "🏃",
         rollMovement: "🌀",
+        locomotionStance: "🔄",
         jump: "🦘",
         itemInteraction: "📦",
         throw: "🏹",
@@ -19434,6 +19591,26 @@ const _ControlsInspector = class _ControlsInspector {
               enabled: true,
               mode: "mouseWorldPos"
             });
+          } else if (type === "locomotionStance") {
+            blocks.push(isGamepad ? {
+              type: "locomotionStance",
+              id: newId,
+              name: "Locomotion Stance Switcher",
+              enabled: true,
+              cycleTrigger: { code: "GamepadLB", requireCleanPress: true },
+              walkTrigger: { code: null },
+              rollTrigger: { code: null },
+              flyTrigger: { code: null }
+            } : {
+              type: "locomotionStance",
+              id: newId,
+              name: "Locomotion Stance Switcher",
+              enabled: true,
+              cycleTrigger: { code: "KeyC", requireCleanPress: true },
+              walkTrigger: { code: "Digit1" },
+              rollTrigger: { code: "Digit2" },
+              flyTrigger: { code: "Digit3" }
+            });
           }
           this.renderActiveView();
         });
@@ -19668,6 +19845,16 @@ const _ControlsInspector = class _ControlsInspector {
           if (block) {
             block.arcModulation = block.arcModulation || {};
             block.arcModulation.source = e.target.value;
+            this.renderActiveView();
+          }
+        });
+      });
+      root.querySelectorAll(".block-stance-shift-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = sel.dataset.blockId;
+          const block = blocks.find((b) => b.id === bId);
+          if (block) {
+            block.holdToShiftMode = e.target.value;
             this.renderActiveView();
           }
         });

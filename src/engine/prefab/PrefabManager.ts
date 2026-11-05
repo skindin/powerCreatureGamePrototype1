@@ -3,6 +3,8 @@ import { ConsumableModule } from "../ConsumableModule.js";
 import { RollModule } from "../RollModule.js";
 import { GunModule } from "../GunModule.js";
 import { RollMovementModule } from "../../character/RollMovementModule.js";
+import { WalkingModule } from "../../character/WalkingModule.js";
+import { LocomotionStanceModule } from "../../character/LocomotionStanceModule.js";
 import { Prefab } from "./Prefab.js";
 import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
@@ -192,7 +194,12 @@ export class PrefabManager {
       speedBallArchetype.bounceModule.bounceMod = 0.85;
       speedBallArchetype.bounceModule.verticalBounce = true;
     }
-    speedBallArchetype.walkingModule = null;
+    speedBallArchetype.walkingModule = new WalkingModule({
+      walkConsumesEnergy: false,
+      walkAllowPartialPower: false,
+      sprintConsumesEnergy: true,
+      sprintAllowPartialPower: true,
+    });
     speedBallArchetype.laserModule = null;
     speedBallArchetype.rollModule = new RollModule({
       rollResistance: 0.08,
@@ -209,6 +216,11 @@ export class PrefabManager {
       rollAllowPartialPower: true,
     });
     speedBallArchetype.rollMovementModule.registerProperties(speedBallArchetype.properties);
+    speedBallArchetype.locomotionStanceModule = new LocomotionStanceModule({
+      activeMode: "roll",
+      supportedModes: ["roll", "walk"],
+      enabled: true,
+    });
 
     speedBallArchetype.prefabId = "prefab_speed_ball";
     speedBallArchetype.controlSchema = JSON.parse(JSON.stringify(SpeedBallControlSchema));

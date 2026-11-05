@@ -447,9 +447,24 @@ export interface FacingControlBlock {
   mode: "mouseWorldPos" | "fromMovement";
 }
 
+export interface LocomotionStanceControlBlock {
+  type: "locomotionStance";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  cycleTrigger?: BlockInputSlot; // e.g. "KeyC", "GamepadLB" (press to cycle to next available mode)
+  walkTrigger?: BlockInputSlot;  // direct switch to walk (e.g. "Digit1")
+  rollTrigger?: BlockInputSlot;  // direct switch to roll (e.g. "Digit2")
+  flyTrigger?: BlockInputSlot;   // direct switch to fly (e.g. "Digit3")
+  holdToShiftMode?: "walk" | "roll" | "fly" | "none"; // optional hold trigger: holds button to temporarily enter mode
+  shiftTrigger?: BlockInputSlot;
+  availableModes?: ("walk" | "roll" | "fly")[]; // default ["walk", "roll"]
+}
+
 export type ControlBlock =
   | WalkSprintControlBlock
   | RollMovementControlBlock
+  | LocomotionStanceControlBlock
   | JumpControlBlock
   | MeleeControlBlock
   | LaserControlBlock

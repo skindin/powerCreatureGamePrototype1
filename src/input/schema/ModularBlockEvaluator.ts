@@ -10,6 +10,7 @@ import type {
   ThrowControlBlock,
   ItemInteractionControlBlock,
   FacingControlBlock,
+  LocomotionStanceControlBlock,
 } from "./ControlSchemaTypes.js";
 import type { InputManager } from "../../ui/InputManager.js";
 import { InputPressTokenManager } from "./InputPressTokenManager.js";
@@ -369,6 +370,28 @@ export class ModularBlockEvaluator {
 
     // Scan for nearby grabbable objects for pickup and swap
     const grabTargetObjectId = execCtx.targetInReach ? execCtx.targetInReach.id : null;
+
+    // Helper to query whether a raw input code (keyboard, mouse, gamepad) is physically held down
+    const isButtonCodePhysicallyDown = (code: string | undefined | null): boolean => {
+      if (!code) return false;
+      if (code.startsWith("Gamepad")) {
+        const btn = ControlSchemaArbiter.parseGamepadButtonCode(code);
+        if (btn >= 0) {
+          if (execCtx.gamepadStates?.getValue && execCtx.gamepadStates.getValue(btn) > 0.15) return true;
+          if (execCtx.getGamepadButtonValue && execCtx.getGamepadButtonValue(execCtx.gamepadStates?.slotIndex ?? 0, btn) > 0.15) return true;
+          if (execCtx.gamepadStates?.isDown && execCtx.gamepadStates.isDown(btn)) return true;
+        }
+      } else if (code.startsWith("Mouse")) {
+        const idx = code === "MouseLeft" ? 0 : code === "MouseMiddle" ? 1 : code === "MouseRight" ? 2 : -1;
+        if (idx >= 0) {
+          if (execCtx.isMouseButtonDown(idx)) return true;
+          if (execCtx.mouseStates?.isDown && execCtx.mouseStates.isDown(idx)) return true;
+        }
+      } else {
+        if (tokens.isDown(code) || (execCtx.keyStates?.isDown && execCtx.keyStates.isDown(code))) return true;
+      }
+      return false;
+    };
 
     // Process blocks in order
     for (const block of blocks) {
@@ -1116,9 +1139,11 @@ export class ModularBlockEvaluator {
 
           // Reset toggle if item left hand or was replaced by a different item
           const currentHeldItemId = char.heldObject?.id ?? null;
-          if (!currentHeldItemId || currentHeldItemId !== (char as any)._toggledConsumeItemId || isDrop || isSwap) {
-            (char as any)._isConsumeToggledOn = false;
-            (char as any)._toggledConsumeItemId = null;
+          if ((char as any)._isConsumeToggledOn) {
+            if (!currentHeldItemId || currentHeldItemId !== (char as any)._toggledConsumeItemId || isDrop || isSwap || isThrow) {
+              (char as any)._isConsumeToggledOn = false;
+              (char as any)._toggledConsumeItemId = null;
+            }
           }
 
           // Consume / Eat / Primary Item Ability (Default: "toggle" mode; can be configured to "hold")
@@ -1130,7 +1155,19 @@ export class ModularBlockEvaluator {
           );
 
           if (isToggleMode) {
-            if (isSlotActive(b.consume, "down", true, b.id, "consume.toggle")) {
+            const consumeCode = b.consume?.code;
+            const isConsumePhysDown = isButtonCodePhysicallyDown(consumeCode);
+            const gatesDown = !b.consume?.gateButtons?.length || b.consume.gateButtons.every((g) => tokens.isDown(g));
+            const isConsumeActive = isConsumePhysDown && gatesDown;
+
+            const prevKey = `_prevConsumeActive_${b.id}`;
+            const wasConsumeActive = Boolean((char as any)[prevKey]);
+            (char as any)[prevKey] = isConsumeActive;
+
+            // Leading-edge press: strictly true ONLY on the exact frame the button transitions from not-pressed to pressed!
+            const isConsumeJustPressed = isConsumeActive && !wasConsumeActive;
+
+            if (isConsumeJustPressed) {
               if ((char as any)._isConsumeToggledOn) {
                 // Pressing again while eating toggles eating OFF
                 (char as any)._isConsumeToggledOn = false;
@@ -1140,11 +1177,13 @@ export class ModularBlockEvaluator {
                 (char as any)._isConsumeToggledOn = true;
                 (char as any)._toggledConsumeItemId = currentHeldItemId;
               }
-              claimSlot(b.consume, b.id, "consume.toggle", true);
+              if (consumeCode) {
+                tokens.consume(consumeCode, b.id, "consume.toggle");
+              }
             }
 
-            if ((char as any)._isConsumeToggledOn && currentHeldItemId && currentHeldItemId === (char as any)._toggledConsumeItemId) {
-              if (canConsumeHeld) {
+            if ((char as any)._isConsumeToggledOn) {
+              if (currentHeldItemId && currentHeldItemId === (char as any)._toggledConsumeItemId && canConsumeHeld && !isDrop && !isSwap && !isThrow) {
                 isUsingItem = true;
               } else {
                 (char as any)._isConsumeToggledOn = false;
@@ -1172,26 +1211,6 @@ export class ModularBlockEvaluator {
 
           // If the button pressed to pick up or swap this item is STILL held down,
           // firing is strictly locked out until that button is fully released!
-          const isButtonCodePhysicallyDown = (code: string | undefined | null): boolean => {
-            if (!code) return false;
-            if (code.startsWith("Gamepad")) {
-              const btn = ControlSchemaArbiter.parseGamepadButtonCode(code);
-              if (btn >= 0) {
-                if (execCtx.gamepadStates?.getValue && execCtx.gamepadStates.getValue(btn) > 0.15) return true;
-                if (execCtx.getGamepadButtonValue && execCtx.getGamepadButtonValue(execCtx.gamepadStates?.slotIndex ?? 0, btn) > 0.15) return true;
-                if (execCtx.gamepadStates?.isDown && execCtx.gamepadStates.isDown(btn)) return true;
-              }
-            } else if (code.startsWith("Mouse")) {
-              const idx = code === "MouseLeft" ? 0 : code === "MouseMiddle" ? 1 : code === "MouseRight" ? 2 : -1;
-              if (idx >= 0) {
-                if (execCtx.isMouseButtonDown(idx)) return true;
-                if (execCtx.mouseStates?.isDown && execCtx.mouseStates.isDown(idx)) return true;
-              }
-            } else {
-              if (tokens.isDown(code) || (execCtx.keyStates?.isDown && execCtx.keyStates.isDown(code))) return true;
-            }
-            return false;
-          };
 
           const pickupCode = (char as any)._pickupPressCode;
           const fireCode = b.fireWeapon?.code;
@@ -1311,6 +1330,67 @@ export class ModularBlockEvaluator {
           } else if (b.mode === "fromMovement") {
             if (Math.hypot(moveX, moveY) > 0.05) {
               char.facingAngle = Math.atan2(moveY, moveX);
+            }
+          }
+          break;
+        }
+
+        case "locomotionStance": {
+          const b = block as LocomotionStanceControlBlock;
+          const isButtonDown = (slot?: BlockInputSlot | null) => {
+            if (!slot || !slot.code) return false;
+            const isPhysDown = isButtonCodePhysicallyDown(slot.code);
+            const gatesDown = !slot.gateButtons?.length || slot.gateButtons.every((g) => tokens.isDown(g));
+            return isPhysDown && gatesDown;
+          };
+
+          const isJustPressed = (slot?: BlockInputSlot | null, actionKey: string = "") => {
+            if (!slot || !slot.code) return false;
+            const isDown = isButtonDown(slot);
+            const stateKey = `_prevStanceDown_${b.id}_${actionKey}`;
+            const wasDown = Boolean((char as any)[stateKey]);
+            (char as any)[stateKey] = isDown;
+            return isDown && !wasDown;
+          };
+
+          // 1. Cycle Trigger (e.g. KeyC or GamepadLB)
+          if (isJustPressed(b.cycleTrigger, "cycle")) {
+            char.cycleLocomotionMode();
+            if (b.cycleTrigger?.code) {
+              tokens.consume(b.cycleTrigger.code, b.id, "locomotion.cycleStance");
+            }
+          }
+
+          // 2. Direct Stance Triggers
+          if (isJustPressed(b.walkTrigger, "walk")) {
+            char.locomotionMode = "walk";
+            if (b.walkTrigger?.code) tokens.consume(b.walkTrigger.code, b.id, "locomotion.stanceWalk");
+          }
+          if (isJustPressed(b.rollTrigger, "roll")) {
+            char.locomotionMode = "roll";
+            if (b.rollTrigger?.code) tokens.consume(b.rollTrigger.code, b.id, "locomotion.stanceRoll");
+          }
+          if (isJustPressed(b.flyTrigger, "fly")) {
+            char.locomotionMode = "fly";
+            if (b.flyTrigger?.code) tokens.consume(b.flyTrigger.code, b.id, "locomotion.stanceFly");
+          }
+
+          // 3. Hold-to-shift trigger
+          if (b.shiftTrigger && b.holdToShiftMode && b.holdToShiftMode !== "none") {
+            const isShiftDown = isButtonDown(b.shiftTrigger);
+            const shiftStateKey = `_isHoldingStanceShift_${b.id}`;
+            if (isShiftDown) {
+              if (!(char as any)[shiftStateKey]) {
+                (char as any)[shiftStateKey] = true;
+                (char as any)[`_preShiftStance_${b.id}`] = char.locomotionMode;
+                char.locomotionMode = b.holdToShiftMode;
+              }
+            } else {
+              if ((char as any)[shiftStateKey]) {
+                (char as any)[shiftStateKey] = false;
+                const prev = (char as any)[`_preShiftStance_${b.id}`] ?? "walk";
+                char.locomotionMode = prev;
+              }
             }
           }
           break;

@@ -26,6 +26,7 @@ import type {
   ThrowControlBlock,
   ItemInteractionControlBlock,
   FacingControlBlock,
+  LocomotionStanceControlBlock,
 } from "../../../input/schema/ControlSchemaTypes.js";
 import {
   DefaultControlSchema,
@@ -2154,6 +2155,42 @@ export class ControlsInspector {
           </div>
         `;
       }
+
+      case "locomotionStance": {
+        const b = block as LocomotionStanceControlBlock;
+        return `
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+              <div>
+                ${this.renderInputSlot(b.id, "cycleTrigger", b.cycleTrigger, "Cycle Stance (Next Mode)")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "walkTrigger", b.walkTrigger, "Direct: Walk Mode (Optional)")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "rollTrigger", b.rollTrigger, "Direct: Roll Mode (Optional)")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "flyTrigger", b.flyTrigger, "Direct: Fly Mode (Optional)")}
+              </div>
+            </div>
+
+            <!-- Hold to Shift Mode option -->
+            <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px; padding-top: 6px; border-top: 1px dashed rgba(148,163,184,0.2);">
+              <span style="font-size: 0.68rem; color: #94a3b8;">Hold-to-Shift Stance:</span>
+              <select class="block-stance-shift-mode dev-select" data-block-id="${b.id}" style="font-size: 0.68rem; padding: 2px 6px; background: #0f172a; color: #fff; border: 1px solid rgba(148,163,184,0.3); border-radius: 3px;">
+                <option value="none" ${!b.holdToShiftMode || b.holdToShiftMode === "none" ? "selected" : ""}>None (Toggle / Cycle only)</option>
+                <option value="roll" ${b.holdToShiftMode === "roll" ? "selected" : ""}>Hold button to Roll (Release to Walk)</option>
+                <option value="walk" ${b.holdToShiftMode === "walk" ? "selected" : ""}>Hold button to Walk (Release to Roll)</option>
+                <option value="fly" ${b.holdToShiftMode === "fly" ? "selected" : ""}>Hold button to Fly</option>
+              </select>
+              <div style="flex: 1; max-width: 220px;">
+                ${this.renderInputSlot(b.id, "shiftTrigger", b.shiftTrigger, "Shift Hold Button")}
+              </div>
+            </div>
+          </div>
+        `;
+      }
     }
     return "";
   }
@@ -2175,6 +2212,7 @@ export class ControlsInspector {
               <option value="" disabled selected>+ Add Control Module...</option>
               <option value="walkSprint">+ Walk & Sprint (Movement & Speed)</option>
               <option value="rollMovement">+ Roll Movement & Brake (Spin & Torque)</option>
+              <option value="locomotionStance">+ Locomotion Stance Switcher (Walk, Roll, Fly)</option>
               <option value="jump">+ Jump (Vertical Leap)</option>
               <option value="itemInteraction">+ Item Interaction (Pickup, Drop, Swap, Eat)</option>
               <option value="throw">+ Throwing & Ballistics</option>
@@ -2196,6 +2234,7 @@ export class ControlsInspector {
               walkSprint: "🏃",
               locomotion: "🏃",
               rollMovement: "🌀",
+              locomotionStance: "🔄",
               jump: "🦘",
               itemInteraction: "📦",
               throw: "🏹",
@@ -3102,6 +3141,26 @@ export class ControlsInspector {
               enabled: true,
               mode: "mouseWorldPos",
             });
+          } else if (type === "locomotionStance") {
+            blocks.push(isGamepad ? {
+              type: "locomotionStance",
+              id: newId,
+              name: "Locomotion Stance Switcher",
+              enabled: true,
+              cycleTrigger: { code: "GamepadLB", requireCleanPress: true },
+              walkTrigger: { code: null },
+              rollTrigger: { code: null },
+              flyTrigger: { code: null },
+            } : {
+              type: "locomotionStance",
+              id: newId,
+              name: "Locomotion Stance Switcher",
+              enabled: true,
+              cycleTrigger: { code: "KeyC", requireCleanPress: true },
+              walkTrigger: { code: "Digit1" },
+              rollTrigger: { code: "Digit2" },
+              flyTrigger: { code: "Digit3" },
+            });
           }
           this.renderActiveView();
         });
@@ -3376,6 +3435,18 @@ export class ControlsInspector {
           if (block) {
             block.arcModulation = block.arcModulation || {};
             block.arcModulation.source = (e.target as HTMLSelectElement).value as any;
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Locomotion Stance shift mode
+      root.querySelectorAll(".block-stance-shift-mode").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
+          const bId = (sel as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as LocomotionStanceControlBlock;
+          if (block) {
+            block.holdToShiftMode = (e.target as HTMLSelectElement).value as any;
             this.renderActiveView();
           }
         });

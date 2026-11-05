@@ -24,6 +24,7 @@ import { MeleeModule } from "../../character/MeleeModule.js";
 import { SpawnerModule } from "../../engine/SpawnerModule.js";
 import { GunModule } from "../../engine/GunModule.js";
 import { RollMovementModule } from "../../character/RollMovementModule.js";
+import { LocomotionStanceModule } from "../../character/LocomotionStanceModule.js";
 import type { DevPanel } from "../DevPanel.js";
 import type { GameObject } from "../../engine/GameObject.js";
 
@@ -114,6 +115,9 @@ export class EntityModuleLifecycle {
         break;
       case "melee":
         if (char?.meleeModule) char.meleeModule.enabled = !char.meleeModule.enabled;
+        break;
+      case "locomotionStance":
+        if (char?.locomotionStanceModule) char.locomotionStanceModule.enabled = !char.locomotionStanceModule.enabled;
         break;
     }
 
@@ -239,6 +243,11 @@ export class EntityModuleLifecycle {
       case "melee":
         if (e instanceof Character) {
           (e as Character).meleeModule = null;
+        }
+        break;
+      case "locomotionStance":
+        if (e instanceof Character) {
+          (e as Character).locomotionStanceModule = null;
         }
         break;
     }
@@ -412,6 +421,15 @@ export class EntityModuleLifecycle {
       case "melee":
         if (e instanceof Character) {
           (e as Character).meleeModule = new MeleeModule();
+        }
+        break;
+      case "locomotionStance":
+        if (e instanceof Character) {
+          (e as Character).locomotionStanceModule = new LocomotionStanceModule({
+            activeMode: (e as Character).rollMovementModule ? "roll" : "walk",
+            supportedModes: ["walk", "roll"],
+            enabled: true,
+          });
         }
         break;
     }

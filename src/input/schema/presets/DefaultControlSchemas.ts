@@ -29,6 +29,16 @@ export const DefaultControlBlocks: ControlBlock[] = [
     requireCleanPress: false,
   },
   {
+    type: "locomotionStance",
+    id: "block-stance",
+    name: "Locomotion Stance Switcher",
+    enabled: true,
+    cycleTrigger: { code: "KeyC", requireCleanPress: true },
+    walkTrigger: { code: "Digit1" },
+    rollTrigger: { code: "Digit2" },
+    flyTrigger: { code: "Digit3" },
+  },
+  {
     type: "itemInteraction",
     id: "block-items",
     name: "Item Interaction",
@@ -111,6 +121,13 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
     enabled: true,
     jump: { code: "GamepadA", requireCleanPress: false },
     requireCleanPress: false,
+  },
+  {
+    type: "locomotionStance",
+    id: "block-stance-gp",
+    name: "Locomotion Stance Switcher",
+    enabled: true,
+    cycleTrigger: { code: "GamepadLB", requireCleanPress: true },
   },
   {
     type: "itemInteraction",
@@ -808,6 +825,16 @@ export const SpeedBallControlBlocks: ControlBlock[] = [
     brake: { code: "Space", requireCleanPress: false },
   },
   {
+    type: "locomotionStance",
+    id: "block-stance",
+    name: "Locomotion Stance Switcher",
+    enabled: true,
+    cycleTrigger: { code: "KeyC", requireCleanPress: true },
+    walkTrigger: { code: "Digit1" },
+    rollTrigger: { code: "Digit2" },
+    flyTrigger: { code: "Digit3" },
+  },
+  {
     type: "itemInteraction",
     id: "block-items",
     name: "Item Interaction",
@@ -873,6 +900,13 @@ export const SpeedBallGamepadControlBlocks: ControlBlock[] = [
     cursorSteerTrigger: { code: "GamepadLB" },
     cursorSteerMode: "toggleButton",
     rawDirectionWhileWalking: true,
+  },
+  {
+    type: "locomotionStance",
+    id: "block-stance-gp",
+    name: "Locomotion Stance Switcher",
+    enabled: true,
+    cycleTrigger: { code: "GamepadLB", requireCleanPress: true },
   },
   {
     type: "itemInteraction",

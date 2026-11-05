@@ -47,6 +47,9 @@ export class EntityModuleCardsHtml {
     const hasRollMovementModule = isChar && Boolean(char?.rollMovementModule);
     const rollMovementEnabled = isChar && Boolean(char?.rollMovementModule?.enabled);
 
+    const hasLocomotionStanceModule = isChar && Boolean(char?.locomotionStanceModule);
+    const stanceEnabled = isChar && Boolean(char?.locomotionStanceModule?.enabled);
+
     const hasPickupModule = isChar && Boolean(char?.pickupModule);
     const pickupEnabled = isChar && Boolean(char?.pickupModule?.enabled);
 
@@ -408,6 +411,47 @@ export class EntityModuleCardsHtml {
             ${renderToggleRow("check-roll-brake-energy", "Brake Consumes Energy", Boolean(char.rollMovementModule.brakeConsumesEnergy), "Save Brake Consumes Energy to project")}
             <div id="field-roll-brake-partial-power" style="display: ${char.rollMovementModule.brakeConsumesEnergy ? "block" : "none"}; padding-left: 8px;">
               ${renderToggleRow("check-roll-brake-partial-power", "Allow Partial Power (Brake)", Boolean(char.rollMovementModule.brakeAllowPartialPower), "Save Brake Partial Power to project")}
+            </div>
+            </div>
+          </div>
+        `;
+      }
+
+      if (hasLocomotionStanceModule && char.locomotionStanceModule) {
+        attachedCount++;
+        const activeMode = char.locomotionMode;
+        html += `
+          <div class="module-card ${!stanceEnabled ? "module-disabled" : ""}" data-module-id="locomotionStance">
+            ${panel.renderModuleHeader("locomotionStance", "🔄 Locomotion Stance Manager", renderToggleBtn("locomotionStance", stanceEnabled))}
+            <div id="collapse-body-mod-locomotionStance" style="display: ${isCollapsed("mod-locomotionStance") ? "none" : "block"};">
+            ${!stanceEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Locomotion Stance Manager is disabled</div>` : ""}
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 4px;">
+              <span style="font-size: 0.72rem; color: #94a3b8; font-weight: 600;">Active Stance:</span>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <span id="badge-active-stance" style="font-size: 0.72rem; font-weight: 800; color: #38bdf8; background: rgba(56,189,248,0.15); border: 1px solid #38bdf8; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">
+                  ${activeMode}
+                </span>
+                <button id="btn-dev-cycle-stance" class="btn-secondary-action" type="button" style="font-size: 0.68rem; padding: 2px 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(148,163,184,0.3); color: #fff; border-radius: 3px; cursor: pointer;">
+                  🔄 Switch Stance
+                </button>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.70rem; color: #cbd5e1;">
+              <span style="font-weight: 600; color: #94a3b8;">Supported Stances:</span>
+              <div style="display: flex; gap: 12px;">
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="check-stance-support-walk" ${char.locomotionStanceModule.supportedModes.includes("walk") ? "checked" : ""} />
+                  <span>🏃 Walk</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="check-stance-support-roll" ${char.locomotionStanceModule.supportedModes.includes("roll") ? "checked" : ""} />
+                  <span>🌀 Roll</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="check-stance-support-fly" ${char.locomotionStanceModule.supportedModes.includes("fly") ? "checked" : ""} />
+                  <span>🦅 Fly</span>
+                </label>
+              </div>
             </div>
             </div>
           </div>
@@ -941,6 +985,8 @@ export class EntityModuleCardsHtml {
     if (isChar) {
       allModules.push(
         { id: "walking", name: "Walking Ability", icon: "🚶", description: "Propulsion acceleration, muscle strength, and maximum ground speed", isAttached: hasWalkingModule },
+        { id: "rollMovement", name: "Roll Movement Ability", icon: "🌀", description: "Physics-driven rolling torque locomotion with roll brake and sprint", isAttached: hasRollMovementModule },
+        { id: "locomotionStance", name: "Locomotion Stance Manager", icon: "🔄", description: "Switch between walking, rolling, and flying locomotion modes", isAttached: hasLocomotionStanceModule },
         { id: "pickup", name: "Pickup Ability", icon: "✋", description: "3D sphere reach to pick up and swap freebodies", isAttached: hasPickupModule },
         { id: "throw", name: "Throw Ability", icon: "🎯", description: "Ballistic parabolic trajectory projection & launch", isAttached: hasThrowModule },
         { id: "jump", name: "Jump Ability", icon: "🦘", description: "Vertical leap triggered with Space / Gamepad (A)", isAttached: hasJumpModule },

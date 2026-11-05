@@ -404,6 +404,51 @@ export class LocomotionModulesInspector {
         char.climbingModule.allowPartialPower = checkClimbPartialPower.checked;
       }
     });
+
+    // Locomotion Stance Module controls
+    if (char.locomotionStanceModule) {
+      const cycleBtn = container.querySelector("#btn-dev-cycle-stance");
+      if (cycleBtn) {
+        cycleBtn.addEventListener("click", () => {
+          char.cycleLocomotionMode();
+          const badge = container.querySelector("#badge-active-stance");
+          if (badge) badge.textContent = char.locomotionMode;
+        });
+      }
+
+      const walkChk = container.querySelector("#check-stance-support-walk") as HTMLInputElement | null;
+      if (walkChk) {
+        walkChk.addEventListener("change", () => {
+          const mod = char.locomotionStanceModule;
+          if (mod) {
+            if (walkChk.checked && !mod.supportedModes.includes("walk")) mod.supportedModes.push("walk");
+            if (!walkChk.checked) mod.supportedModes = mod.supportedModes.filter((m) => m !== "walk");
+          }
+        });
+      }
+
+      const rollChk = container.querySelector("#check-stance-support-roll") as HTMLInputElement | null;
+      if (rollChk) {
+        rollChk.addEventListener("change", () => {
+          const mod = char.locomotionStanceModule;
+          if (mod) {
+            if (rollChk.checked && !mod.supportedModes.includes("roll")) mod.supportedModes.push("roll");
+            if (!rollChk.checked) mod.supportedModes = mod.supportedModes.filter((m) => m !== "roll");
+          }
+        });
+      }
+
+      const flyChk = container.querySelector("#check-stance-support-fly") as HTMLInputElement | null;
+      if (flyChk) {
+        flyChk.addEventListener("change", () => {
+          const mod = char.locomotionStanceModule;
+          if (mod) {
+            if (flyChk.checked && !mod.supportedModes.includes("fly")) mod.supportedModes.push("fly");
+            if (!flyChk.checked) mod.supportedModes = mod.supportedModes.filter((m) => m !== "fly");
+          }
+        });
+      }
+    }
   }
 }
 
