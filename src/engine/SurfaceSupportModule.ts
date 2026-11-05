@@ -31,10 +31,16 @@ export class SurfaceSupportModule {
     }
 
     const char = entity.isCharacter ? (entity as any) : null;
+    if (entity.verticalVelocity > 0.1 || entity.position.z > arena.wallHeight + 0.02) {
+      entity.isDismountFreefall = false;
+      if (char?.climbingModule) {
+        char.climbingModule.isDismountFreefall = false;
+      }
+    }
+
     const isDismountFalling = Boolean(
       entity.isDismountFreefall ||
-      char?.climbingModule?.isDismountFreefall ||
-      char?.climbingModule?.climbSuppressedUntilRePress
+      char?.climbingModule?.isDismountFreefall
     );
 
     if (isDismountFalling) {
@@ -42,20 +48,11 @@ export class SurfaceSupportModule {
       return { surfaceHeight: 0, standingWall: null };
     }
 
-    const edgeMod = char?.wallEdgeAssistModule ?? char?.climbingModule;
-    // Top surface support radius: creatures and rolling bodies are supported while their center
-    // is on the wall or within hangDistance / 0.12u of the edge. Moving beyond this dismounts into freefall.
-    const supportRadius = Math.max(0.05, Math.min(entity.colliderRadius, edgeMod ? edgeMod.hangDistance : 0.12));
+    const supportRadius = entity.colliderRadius;
 
     if (!entity.isCharacter) {
-      // Freebody object: supported if and only if its center is within supportRadius of an active wall in arena
-      let supportingWall: Wall | null = null;
-      for (const wall of arena.walls) {
-        if (arena.testWallOverlap(entity.position.x, entity.position.y, supportRadius, wall)) {
-          supportingWall = wall;
-          break;
-        }
-      }
+      // Freebody object: supported if and only if its collider overlaps an active wall in arena
+      const supportingWall = arena.getSupportingWall(entity.position.x, entity.position.y, supportRadius);
       if (supportingWall) {
         return { surfaceHeight: supportingWall.wallHeight, standingWall: supportingWall };
       }
@@ -91,13 +88,8 @@ export class SurfaceSupportModule {
           }
         }
       } else {
-        // The wall the character was on was deleted: find any other active wall overlapping support zone
-        for (const wall of arena.walls) {
-          if (arena.testWallOverlap(entity.position.x, entity.position.y, supportRadius, wall)) {
-            nextSupport = wall;
-            break;
-          }
-        }
+        // The wall the character was on was deleted: find any other active wall overlapping collider
+        nextSupport = arena.getSupportingWall(entity.position.x, entity.position.y, supportRadius);
       }
 
       if (nextSupport) {
@@ -112,20 +104,15 @@ export class SurfaceSupportModule {
       return { surfaceHeight: 0, standingWall: null };
     }
 
-    // standingWall not set yet: acquire if resting/falling at wall height and not climbing
+    // standingWall not set yet: acquire if at/above wall height or resting/falling at wall height and not climbing
     if (
       !isDismountFalling &&
       !entity.isClimbing &&
-      entity.verticalVelocity <= 0.5 &&
-      (entity.position.z >= arena.wallHeight - 0.05 || (entity.supportingSurfaceHeight ?? 0) >= arena.wallHeight - 0.05)
+      (entity.position.z >= arena.wallHeight ||
+        (entity.verticalVelocity <= 0.5 &&
+          (entity.position.z >= arena.wallHeight - 0.05 || (entity.supportingSurfaceHeight ?? 0) >= arena.wallHeight - 0.05)))
     ) {
-      let wall: Wall | null = null;
-      for (const w of arena.walls) {
-        if (arena.testWallOverlap(entity.position.x, entity.position.y, supportRadius, w)) {
-          wall = w;
-          break;
-        }
-      }
+      const wall = arena.getSupportingWall(entity.position.x, entity.position.y, supportRadius);
       if (wall) {
         return { surfaceHeight: wall.wallHeight, standingWall: wall };
       }

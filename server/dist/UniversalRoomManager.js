@@ -647,7 +647,7 @@ class SurfaceSupportModule {
    * and current standing wall for an entity.
    */
   static evaluateSupportingSurface(entity, arena2) {
-    var _a, _b, _c;
+    var _a, _b;
     if (!entity.hasCollider || !entity.hasVerticalPosition || !arena2.walls || arena2.walls.length === 0) {
       return { surfaceHeight: 0, standingWall: null };
     }
@@ -656,22 +656,21 @@ class SurfaceSupportModule {
       return { surfaceHeight: 0, standingWall: null };
     }
     const char = entity.isCharacter ? entity : null;
+    if (entity.verticalVelocity > 0.1 || entity.position.z > arena2.wallHeight + 0.02) {
+      entity.isDismountFreefall = false;
+      if (char == null ? void 0 : char.climbingModule) {
+        char.climbingModule.isDismountFreefall = false;
+      }
+    }
     const isDismountFalling = Boolean(
-      entity.isDismountFreefall || ((_a = char == null ? void 0 : char.climbingModule) == null ? void 0 : _a.isDismountFreefall) || ((_b = char == null ? void 0 : char.climbingModule) == null ? void 0 : _b.climbSuppressedUntilRePress)
+      entity.isDismountFreefall || ((_a = char == null ? void 0 : char.climbingModule) == null ? void 0 : _a.isDismountFreefall)
     );
     if (isDismountFalling) {
       return { surfaceHeight: 0, standingWall: null };
     }
-    const edgeMod = (char == null ? void 0 : char.wallEdgeAssistModule) ?? (char == null ? void 0 : char.climbingModule);
-    const supportRadius = Math.max(0.05, Math.min(entity.colliderRadius, edgeMod ? edgeMod.hangDistance : 0.12));
+    const supportRadius = entity.colliderRadius;
     if (!entity.isCharacter) {
-      let supportingWall = null;
-      for (const wall of arena2.walls) {
-        if (arena2.testWallOverlap(entity.position.x, entity.position.y, supportRadius, wall)) {
-          supportingWall = wall;
-          break;
-        }
-      }
+      const supportingWall = arena2.getSupportingWall(entity.position.x, entity.position.y, supportRadius);
       if (supportingWall) {
         return { surfaceHeight: supportingWall.wallHeight, standingWall: supportingWall };
       }
@@ -683,7 +682,7 @@ class SurfaceSupportModule {
       if (touchesCurrent && wallStillExists) {
         return { surfaceHeight: wallStillExists.wallHeight, standingWall: wallStillExists };
       }
-      if (wallStillExists && ((_c = char == null ? void 0 : char.climbingModule) == null ? void 0 : _c.dismountSuppressedUntilRelease)) {
+      if (wallStillExists && ((_b = char == null ? void 0 : char.climbingModule) == null ? void 0 : _b.dismountSuppressedUntilRelease)) {
         return { surfaceHeight: wallStillExists.wallHeight, standingWall: wallStillExists };
       }
       let nextSupport = null;
@@ -695,12 +694,7 @@ class SurfaceSupportModule {
           }
         }
       } else {
-        for (const wall of arena2.walls) {
-          if (arena2.testWallOverlap(entity.position.x, entity.position.y, supportRadius, wall)) {
-            nextSupport = wall;
-            break;
-          }
-        }
+        nextSupport = arena2.getSupportingWall(entity.position.x, entity.position.y, supportRadius);
       }
       if (nextSupport) {
         return { surfaceHeight: nextSupport.wallHeight, standingWall: nextSupport };
@@ -711,14 +705,8 @@ class SurfaceSupportModule {
       }
       return { surfaceHeight: 0, standingWall: null };
     }
-    if (!isDismountFalling && !entity.isClimbing && entity.verticalVelocity <= 0.5 && (entity.position.z >= arena2.wallHeight - 0.05 || (entity.supportingSurfaceHeight ?? 0) >= arena2.wallHeight - 0.05)) {
-      let wall = null;
-      for (const w of arena2.walls) {
-        if (arena2.testWallOverlap(entity.position.x, entity.position.y, supportRadius, w)) {
-          wall = w;
-          break;
-        }
-      }
+    if (!isDismountFalling && !entity.isClimbing && (entity.position.z >= arena2.wallHeight || entity.verticalVelocity <= 0.5 && (entity.position.z >= arena2.wallHeight - 0.05 || (entity.supportingSurfaceHeight ?? 0) >= arena2.wallHeight - 0.05))) {
+      const wall = arena2.getSupportingWall(entity.position.x, entity.position.y, supportRadius);
       if (wall) {
         return { surfaceHeight: wall.wallHeight, standingWall: wall };
       }
@@ -1361,7 +1349,7 @@ const _GameObject = class _GameObject {
   }
   /** Update physics, gravity, friction, and ground/wall collision */
   updatePosition(dt, arena2) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d;
     if (this.isHeld) {
       return;
     }
@@ -1429,6 +1417,7 @@ const _GameObject = class _GameObject {
       this.verticalVelocity = 0;
     }
     this.supportingSurfaceHeight = effectiveSurfaceHeight;
+    const prevZ = this.position.z;
     MotionIntegrator.integrateVerticalMotion(this, effectiveSurfaceHeight, dt, arena2);
     MotionIntegrator.integrateGroundFrictionAndRoll(this, effectiveSurfaceHeight, dt, arena2);
     const char = this.isCharacter ? this : null;
@@ -1437,7 +1426,7 @@ const _GameObject = class _GameObject {
       char && !this.isClimbing && this.standingWall !== null && Math.abs(this.position.z - this.standingWall.wallHeight) <= 0.01 && Math.abs(this.supportingSurfaceHeight - this.standingWall.wallHeight) <= 0.01 && this.isRestingOnSurface
     );
     const hangDistance = Math.max(0.01, (edgeMod == null ? void 0 : edgeMod.hangDistance) ?? 0.1);
-    const supportRadius = Math.max(0.05, Math.min(this.colliderRadius, edgeMod ? edgeMod.hangDistance : 0.12));
+    const supportRadius = this.colliderRadius;
     if (edgeMod) {
       if (!isStandingOnWallTop) {
         edgeMod.isAssistClampArmed = false;
@@ -1607,7 +1596,7 @@ const _GameObject = class _GameObject {
           }
           this.position.x = candX;
           this.position.y = candY;
-          const isFallingInGap = !this.isClimbing && (hasDismountedIntoGap || !this.standingWall && Boolean(this.isDismountFreefall || ((_b = char == null ? void 0 : char.climbingModule) == null ? void 0 : _b.isDismountFreefall) || ((_c = char == null ? void 0 : char.climbingModule) == null ? void 0 : _c.climbSuppressedUntilRePress)));
+          const isFallingInGap = !this.isClimbing && (hasDismountedIntoGap || !this.standingWall && Boolean(this.isDismountFreefall || ((_b = char == null ? void 0 : char.climbingModule) == null ? void 0 : _b.isDismountFreefall)));
           if (isFallingInGap && this.hasCollider) {
             for (const wall of arena2.walls) {
               if (this.position.z <= wall.wallHeight) {
@@ -1622,6 +1611,19 @@ const _GameObject = class _GameObject {
       }
     }
     if (this.hasCollider) {
+      const isDismountFallingNow = Boolean(this.isDismountFreefall || ((_c = char == null ? void 0 : char.climbingModule) == null ? void 0 : _c.isDismountFreefall));
+      if (!this.isClimbing && !isDismountFallingNow && this.standingWall === null && this.hasVerticalPosition && this.verticalVelocity <= 0.5 && (prevZ >= arena2.wallHeight - 0.05 || this.position.z >= arena2.wallHeight - 0.05)) {
+        const landedWall = arena2.getSupportingWall(this.position.x, this.position.y, supportRadius);
+        if (landedWall && (prevZ >= landedWall.wallHeight - 0.05 || this.position.z >= landedWall.wallHeight - 0.05)) {
+          this.standingWall = landedWall;
+          this.lastDismountedWall = landedWall;
+          this.supportingSurfaceHeight = landedWall.wallHeight;
+          if (this.position.z < landedWall.wallHeight && this.verticalVelocity <= 0) {
+            this.position.z = landedWall.wallHeight;
+            this.verticalVelocity = 0;
+          }
+        }
+      }
       const r = this.colliderRadius;
       const minX = r;
       const maxX = arena2.width - r;
@@ -1658,11 +1660,10 @@ const _GameObject = class _GameObject {
         this.lastCollisionTime = performance.now();
         this.resolveWallImpact(0, -1, bRestitution);
       }
-      const isDismountFallingNow = Boolean(this.isDismountFreefall || ((_d = char == null ? void 0 : char.climbingModule) == null ? void 0 : _d.isDismountFreefall) || ((_e = char == null ? void 0 : char.climbingModule) == null ? void 0 : _e.climbSuppressedUntilRePress));
       for (const wall of arena2.walls) {
         if (this.position.z <= wall.wallHeight) {
           const isAtWallTop = this.position.z >= wall.wallHeight - 0.05 && !isDismountFallingNow;
-          if (isAtWallTop && (((_f = this.standingWall) == null ? void 0 : _f.id) === wall.id || arena2.testWallOverlap(this.position.x, this.position.y, supportRadius, wall))) {
+          if (isAtWallTop && (((_d = this.standingWall) == null ? void 0 : _d.id) === wall.id || arena2.testWallOverlap(this.position.x, this.position.y, supportRadius, wall))) {
             continue;
           }
           if (this.position.z < wall.wallHeight - 0.05 || isDismountFallingNow || this.standingWall === null) {
@@ -5733,6 +5734,10 @@ class JumpCapability {
     const jumped = char.jumpModule.jump(char, arena2, movementInput);
     if (jumped) {
       char._lastJumpTimestamp = performance.now();
+      char.isDismountFreefall = false;
+      if (char.climbingModule) {
+        char.climbingModule.isDismountFreefall = false;
+      }
       const achievableSpeed = targetTakeoffSpeed * Math.sqrt(energyFraction);
       const bounceBonus = isBouncy && origVz > 0 ? Math.min(origVz * 0.35, 4) : 0;
       char.verticalVelocity = achievableSpeed + bounceBonus;

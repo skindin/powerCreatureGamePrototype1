@@ -693,6 +693,7 @@ export class GameObject {
     this.supportingSurfaceHeight = effectiveSurfaceHeight;
 
     // 1. Vertical Motion & Gravity (delegated to MotionIntegrator)
+    const prevZ = this.position.z;
     MotionIntegrator.integrateVerticalMotion(this, effectiveSurfaceHeight, dt, arena);
 
     // 2. Surface Friction & Rolling Dynamics (delegated to MotionIntegrator)
@@ -715,7 +716,7 @@ export class GameObject {
       this.isRestingOnSurface
     );
     const hangDistance = Math.max(0.01, edgeMod?.hangDistance ?? 0.10);
-    const supportRadius = Math.max(0.05, Math.min(this.colliderRadius, edgeMod ? edgeMod.hangDistance : 0.12));
+    const supportRadius = this.colliderRadius;
 
     if (edgeMod) {
       if (!isStandingOnWallTop) {
@@ -944,7 +945,7 @@ export class GameObject {
           // Immediately resolve collision with any wall ahead so collider cannot enter another wall across the gap!
           // Note: Exclude the wall just dismounted from so the entity falls naturally without snapping!
           const isFallingInGap = !this.isClimbing && (hasDismountedIntoGap ||
-            (!this.standingWall && Boolean(this.isDismountFreefall || char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress)));
+            (!this.standingWall && Boolean(this.isDismountFreefall || char?.climbingModule?.isDismountFreefall)));
 
           if (isFallingInGap && this.hasCollider) {
             for (const wall of arena.walls) {
@@ -962,6 +963,27 @@ export class GameObject {
 
     // 4 & 5. Boundary & Wall Collisions (Only if ColliderModule is active!)
     if (this.hasCollider) {
+      const isDismountFallingNow = Boolean(this.isDismountFreefall || char?.climbingModule?.isDismountFreefall);
+      if (
+        !this.isClimbing &&
+        !isDismountFallingNow &&
+        this.standingWall === null &&
+        this.hasVerticalPosition &&
+        this.verticalVelocity <= 0.5 &&
+        (prevZ >= arena.wallHeight - 0.05 || this.position.z >= arena.wallHeight - 0.05)
+      ) {
+        const landedWall = arena.getSupportingWall(this.position.x, this.position.y, supportRadius);
+        if (landedWall && (prevZ >= landedWall.wallHeight - 0.05 || this.position.z >= landedWall.wallHeight - 0.05)) {
+          this.standingWall = landedWall;
+          this.lastDismountedWall = landedWall;
+          this.supportingSurfaceHeight = landedWall.wallHeight;
+          if (this.position.z < landedWall.wallHeight && this.verticalVelocity <= 0) {
+            this.position.z = landedWall.wallHeight;
+            this.verticalVelocity = 0;
+          }
+        }
+      }
+
       const r = this.colliderRadius;
       const minX = r;
       const maxX = arena.width - r;
@@ -1007,7 +1029,6 @@ export class GameObject {
       // Internal arena walls collision:
       // A wall only exists physically from z=0 up to wall.wallHeight.
       // If an entity or thrown object is elevated above the wall (z > wall.wallHeight), it flies cleanly over the wall!
-      const isDismountFallingNow = Boolean(this.isDismountFreefall || char?.climbingModule?.isDismountFreefall || char?.climbingModule?.climbSuppressedUntilRePress);
       for (const wall of arena.walls) {
         if (this.position.z <= wall.wallHeight) {
           const isAtWallTop = this.position.z >= wall.wallHeight - 0.05 && !isDismountFallingNow;

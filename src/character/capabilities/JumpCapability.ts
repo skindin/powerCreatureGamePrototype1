@@ -106,6 +106,10 @@ export class JumpCapability {
     const jumped = char.jumpModule.jump(char, arena, movementInput);
     if (jumped) {
       (char as any)._lastJumpTimestamp = performance.now();
+      char.isDismountFreefall = false;
+      if (char.climbingModule) {
+        char.climbingModule.isDismountFreefall = false;
+      }
       const achievableSpeed = targetTakeoffSpeed * Math.sqrt(energyFraction);
       // If bouncy creature already had upward momentum from the ground bounce rebound, stack a spring bonus
       const bounceBonus = isBouncy && origVz > 0 ? Math.min(origVz * 0.35, 4.0) : 0;
