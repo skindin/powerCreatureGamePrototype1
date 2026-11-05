@@ -379,7 +379,7 @@ export class PlayerManager {
 
     const targetPrefab = prefabManager.get(prefabId);
     const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
-    const slotSpawn = HealthModule.RESPAWN_SPAWNS[(playerNum - 1) % HealthModule.RESPAWN_SPAWNS.length];
+    const slotSpawn = HealthModule.getRandomSpawnPosition({ existingEntities: this.allCharacters, fallbackSlotIndex: playerNum - 1 });
 
     const defaultHandle = isKeyboard
       ? (() => {
@@ -492,7 +492,7 @@ export class PlayerManager {
     } else {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
-      const slotSpawn = HealthModule.RESPAWN_SPAWNS[(playerNum - 1) % HealthModule.RESPAWN_SPAWNS.length];
+      const slotSpawn = HealthModule.getRandomSpawnPosition({ existingEntities: this.allCharacters, fallbackSlotIndex: playerNum - 1 });
       const targetPrefabId = this.baseCharacter?.prefabId || "prefab_player";
       const targetPrefab = prefabManager.get(targetPrefabId);
 
@@ -625,7 +625,7 @@ export class PlayerManager {
     } else {
       const playerNum = this.getNextPlayerNumber();
       const color = PLAYER_COLORS[(playerNum - 1) % PLAYER_COLORS.length];
-      const slotSpawn = HealthModule.RESPAWN_SPAWNS[(playerNum - 1) % HealthModule.RESPAWN_SPAWNS.length];
+      const slotSpawn = HealthModule.getRandomSpawnPosition({ existingEntities: this.allCharacters, fallbackSlotIndex: playerNum - 1 });
       const targetPrefabId = this.baseCharacter?.prefabId || "prefab_player";
       const targetPrefab = prefabManager.get(targetPrefabId);
 

@@ -1065,8 +1065,10 @@ export class Character extends GameObject {
     this.velocity = { x: 0, y: 0 };
     this.verticalVelocity = 0;
 
-    const spawns = HealthModule.RESPAWN_SPAWNS;
-    const picked = explicitPos ?? this.spawnPos ?? spawns[Math.floor(Math.random() * spawns.length)];
+    const picked = explicitPos ?? HealthModule.getRandomSpawnPosition({
+      excludeNearPos: { x: this.position.x, y: this.position.y },
+      existingEntities: _arena ? (_arena as any).entities : undefined,
+    });
     const chosenSpawn = { x: picked.x, y: picked.y, z: picked.z ?? 0 };
 
     this.position.x = chosenSpawn.x;

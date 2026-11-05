@@ -442,6 +442,53 @@ export class HealthModule {
   ];
 
   /**
+   * Deterministically or randomly selects an open clearing spawn location.
+   * Can exclude a near position (e.g. death location) and filter out locations currently occupied by other entities.
+   */
+  public static getRandomSpawnPosition(options?: {
+    excludeNearPos?: { x: number; y: number };
+    minDistance?: number;
+    existingEntities?: Array<{ position: { x: number; y: number } }>;
+    fallbackSlotIndex?: number;
+  }): { x: number; y: number; z: number } {
+    const minD = options?.minDistance ?? 5.0;
+    const candidates = HealthModule.RESPAWN_SPAWNS.filter((sp) => {
+      if (options?.excludeNearPos) {
+        const d = Math.hypot(sp.x - options.excludeNearPos.x, sp.y - options.excludeNearPos.y);
+        if (d < minD) return false;
+      }
+      if (options?.existingEntities && options.existingEntities.length > 0) {
+        for (const ent of options.existingEntities) {
+          if (!ent || !ent.position) continue;
+          const distToEntity = Math.hypot(sp.x - ent.position.x, sp.y - ent.position.y);
+          if (distToEntity < 2.5) return false;
+        }
+      }
+      return true;
+    });
+
+    if (candidates.length > 0) {
+      return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+
+    // Fallback: If all open clearings are occupied, exclude just the near position if possible
+    if (options?.excludeNearPos) {
+      const relaxed = HealthModule.RESPAWN_SPAWNS.filter((sp) => {
+        return Math.hypot(sp.x - options.excludeNearPos!.x, sp.y - options.excludeNearPos!.y) >= minD;
+      });
+      if (relaxed.length > 0) {
+        return relaxed[Math.floor(Math.random() * relaxed.length)];
+      }
+    }
+
+    if (options?.fallbackSlotIndex !== undefined) {
+      return HealthModule.RESPAWN_SPAWNS[options.fallbackSlotIndex % HealthModule.RESPAWN_SPAWNS.length];
+    }
+
+    return HealthModule.RESPAWN_SPAWNS[Math.floor(Math.random() * HealthModule.RESPAWN_SPAWNS.length)];
+  }
+
+  /**
    * Resets character state on death:
    * Delegates directly to character.dieAndRespawn to restore HP, energy pool, and energy buses.
    */

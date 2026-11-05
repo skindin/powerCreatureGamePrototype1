@@ -438,16 +438,9 @@ export class UniversalRoomManager {
     // SERVER-AUTHORITATIVE SPAWN POSITIONS:
     // The server assigns starting 2D coordinates (x, y) and vertical elevation (z)
     // based on available open clearing spawn locations, or explicit spawn position if provided:
-    const availableSpawns = HealthModule.RESPAWN_SPAWNS.filter((sp) => {
-      for (const char of this.simulation.characters.values()) {
-        if (Math.hypot(char.position.x - sp.x, char.position.y - sp.y) < 2.0) {
-          return false;
-        }
-      }
-      return true;
+    const defaultSpawn = HealthModule.getRandomSpawnPosition({
+      existingEntities: Array.from(this.simulation.characters.values()),
     });
-    const pool = availableSpawns.length > 0 ? availableSpawns : HealthModule.RESPAWN_SPAWNS;
-    const defaultSpawn = pool[Math.floor(Math.random() * pool.length)];
     const spawnX = defaultSpawn.x;
     const spawnY = defaultSpawn.y;
     const spawnZ = defaultSpawn.z ?? 0;
@@ -735,7 +728,9 @@ export class UniversalRoomManager {
           let sChar = this.simulation.characters.get(serverCharId);
           if (!sChar) {
             // Instantiate physical character using server-authoritative spawn position!
-            const fallbackSpawn = HealthModule.RESPAWN_SPAWNS[Math.floor(Math.random() * HealthModule.RESPAWN_SPAWNS.length)];
+            const fallbackSpawn = HealthModule.getRandomSpawnPosition({
+              existingEntities: Array.from(this.simulation.characters.values()),
+            });
             const spawnX = charEntry.spawnPos?.x ?? fallbackSpawn.x;
             const spawnY = charEntry.spawnPos?.y ?? fallbackSpawn.y;
             const spawnZ = charEntry.spawnPos?.z ?? (fallbackSpawn.z ?? 0);

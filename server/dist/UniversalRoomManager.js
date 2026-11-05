@@ -3644,7 +3644,7 @@ class WallEdgeAssistModule {
     return this.hangDistanceProp.get(registry);
   }
 }
-class HealthModule {
+const _HealthModule = class _HealthModule {
   constructor(options) {
     __publicField(this, "id", "health");
     __publicField(this, "name", "Health & Vitality");
@@ -3971,18 +3971,54 @@ class HealthModule {
     }
   }
   /**
+   * Deterministically or randomly selects an open clearing spawn location.
+   * Can exclude a near position (e.g. death location) and filter out locations currently occupied by other entities.
+   */
+  static getRandomSpawnPosition(options) {
+    const minD = (options == null ? void 0 : options.minDistance) ?? 5;
+    const candidates = _HealthModule.RESPAWN_SPAWNS.filter((sp) => {
+      if (options == null ? void 0 : options.excludeNearPos) {
+        const d = Math.hypot(sp.x - options.excludeNearPos.x, sp.y - options.excludeNearPos.y);
+        if (d < minD) return false;
+      }
+      if ((options == null ? void 0 : options.existingEntities) && options.existingEntities.length > 0) {
+        for (const ent of options.existingEntities) {
+          if (!ent || !ent.position) continue;
+          const distToEntity = Math.hypot(sp.x - ent.position.x, sp.y - ent.position.y);
+          if (distToEntity < 2.5) return false;
+        }
+      }
+      return true;
+    });
+    if (candidates.length > 0) {
+      return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+    if (options == null ? void 0 : options.excludeNearPos) {
+      const relaxed = _HealthModule.RESPAWN_SPAWNS.filter((sp) => {
+        return Math.hypot(sp.x - options.excludeNearPos.x, sp.y - options.excludeNearPos.y) >= minD;
+      });
+      if (relaxed.length > 0) {
+        return relaxed[Math.floor(Math.random() * relaxed.length)];
+      }
+    }
+    if ((options == null ? void 0 : options.fallbackSlotIndex) !== void 0) {
+      return _HealthModule.RESPAWN_SPAWNS[options.fallbackSlotIndex % _HealthModule.RESPAWN_SPAWNS.length];
+    }
+    return _HealthModule.RESPAWN_SPAWNS[Math.floor(Math.random() * _HealthModule.RESPAWN_SPAWNS.length)];
+  }
+  /**
    * Resets character state on death:
    * Delegates directly to character.dieAndRespawn to restore HP, energy pool, and energy buses.
    */
   dieAndRespawn(character, arena2, explicitPos) {
     character.dieAndRespawn(arena2, explicitPos);
   }
-}
+};
 /**
  * Authoritative clearing spawn points (West, East, Southwest, Southeast).
  * Open clearings safely away from arena cover walls.
  */
-__publicField(HealthModule, "RESPAWN_SPAWNS", [
+__publicField(_HealthModule, "RESPAWN_SPAWNS", [
   { x: 7.5, y: 7.5, z: 0 },
   // Slot 1 (Northwest quadrant)
   { x: 22.5, y: 7.5, z: 0 },
@@ -4000,6 +4036,7 @@ __publicField(HealthModule, "RESPAWN_SPAWNS", [
   { x: 23, y: 15, z: 0 }
   // Slot 8 (East midfield clearing)
 ]);
+let HealthModule = _HealthModule;
 class DamageSolverModule {
   // 60ms ~ 3-4 frames
   constructor(options) {
@@ -9762,8 +9799,10 @@ class Character extends GameObject {
     }
     this.velocity = { x: 0, y: 0 };
     this.verticalVelocity = 0;
-    const spawns = HealthModule.RESPAWN_SPAWNS;
-    const picked = explicitPos ?? this.spawnPos ?? spawns[Math.floor(Math.random() * spawns.length)];
+    const picked = explicitPos ?? HealthModule.getRandomSpawnPosition({
+      excludeNearPos: { x: this.position.x, y: this.position.y },
+      existingEntities: _arena ? _arena.entities : void 0
+    });
     const chosenSpawn = { x: picked.x, y: picked.y, z: picked.z ?? 0 };
     this.position.x = chosenSpawn.x;
     this.position.y = chosenSpawn.y;
@@ -25965,16 +26004,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
       name && name.trim().length > 0 && !/^Player(\s+\d+)?$/i.test(name.trim()) && !/^Controller\s+#\d+$/i.test(name.trim()) && !/Xbox|XInput|DualShock|DualSense|PlayStation|Wireless Controller|Gamepad|Joystick|STANDARD GAMEPAD|Vendor:|Product:/i.test(name)
     );
     const charName = isExplicitCustom ? name.trim() : `Player ${playerNumber}`;
-    const availableSpawns = HealthModule.RESPAWN_SPAWNS.filter((sp) => {
-      for (const char of this.simulation.characters.values()) {
-        if (Math.hypot(char.position.x - sp.x, char.position.y - sp.y) < 2) {
-          return false;
-        }
-      }
-      return true;
+    const defaultSpawn = HealthModule.getRandomSpawnPosition({
+      existingEntities: Array.from(this.simulation.characters.values())
     });
-    const pool = availableSpawns.length > 0 ? availableSpawns : HealthModule.RESPAWN_SPAWNS;
-    const defaultSpawn = pool[Math.floor(Math.random() * pool.length)];
     const spawnX = defaultSpawn.x;
     const spawnY = defaultSpawn.y;
     const spawnZ = defaultSpawn.z ?? 0;
@@ -26219,7 +26251,9 @@ const _UniversalRoomManager = class _UniversalRoomManager {
           }
           let sChar = this.simulation.characters.get(serverCharId);
           if (!sChar) {
-            const fallbackSpawn = HealthModule.RESPAWN_SPAWNS[Math.floor(Math.random() * HealthModule.RESPAWN_SPAWNS.length)];
+            const fallbackSpawn = HealthModule.getRandomSpawnPosition({
+              existingEntities: Array.from(this.simulation.characters.values())
+            });
             const spawnX = ((_b = charEntry.spawnPos) == null ? void 0 : _b.x) ?? fallbackSpawn.x;
             const spawnY = ((_c = charEntry.spawnPos) == null ? void 0 : _c.y) ?? fallbackSpawn.y;
             const spawnZ = ((_d = charEntry.spawnPos) == null ? void 0 : _d.z) ?? (fallbackSpawn.z ?? 0);
