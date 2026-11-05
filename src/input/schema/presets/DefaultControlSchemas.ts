@@ -76,6 +76,13 @@ export const DefaultControlBlocks: ControlBlock[] = [
     punch: { code: "KeyF", requireCleanPress: true },
   },
   {
+    type: "vomit",
+    id: "block-vomit",
+    name: "Projectile Vomit",
+    enabled: true,
+    vomit: { code: "KeyV", requireCleanPress: false },
+  },
+  {
     type: "laser",
     id: "block-laser",
     name: "Laser Beam",
@@ -166,6 +173,13 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
     name: "Melee Combat",
     enabled: true,
     punch: { code: "GamepadB", requireCleanPress: true },
+  },
+  {
+    type: "vomit",
+    id: "block-vomit-gp",
+    name: "Projectile Vomit",
+    enabled: true,
+    vomit: { code: "GamepadLB", requireCleanPress: false },
   },
   {
     type: "laser",
@@ -872,6 +886,13 @@ export const SpeedBallControlBlocks: ControlBlock[] = [
     punch: { code: "KeyF", requireCleanPress: true },
   },
   {
+    type: "vomit",
+    id: "block-vomit",
+    name: "Projectile Vomit",
+    enabled: true,
+    vomit: { code: "KeyV", requireCleanPress: false },
+  },
+  {
     type: "facing",
     id: "block-facing",
     name: "Aim / Heading Facing",
@@ -945,6 +966,13 @@ export const SpeedBallGamepadControlBlocks: ControlBlock[] = [
     name: "Melee Combat",
     enabled: true,
     punch: { code: "GamepadB", requireCleanPress: true },
+  },
+  {
+    type: "vomit",
+    id: "block-vomit-gp",
+    name: "Projectile Vomit",
+    enabled: true,
+    vomit: { code: "GamepadLB", requireCleanPress: false },
   },
   {
     type: "facing",

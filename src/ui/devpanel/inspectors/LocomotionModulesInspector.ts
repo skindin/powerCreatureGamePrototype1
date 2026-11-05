@@ -280,18 +280,6 @@ export class LocomotionModulesInspector {
       }
     });
 
-    // Strength
-    const strSocketEl = container.querySelector("#prop-socket-strength");
-    if (strSocketEl) {
-      const strCtrl = new PropertyControl({
-        property: char.strengthProp,
-        owner: char,
-        label: "Muscle Strength Ratio (×)",
-        step: 0.1,
-      });
-      strSocketEl.appendChild(strCtrl.element);
-    }
-
     // Jump sockets
     const jumpStrSocketEl = container.querySelector("#prop-socket-jump-strength");
     if (jumpStrSocketEl && char.jumpModule) {

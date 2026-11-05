@@ -378,7 +378,13 @@ export class EntityPass {
     const x = (posX - vx) * ppu;
     const y = (posY - vy - posZ * hoverScale) * ppu;
     const altitudeScale = useBigger ? getAltitudeScale(posZ, arena.wallHeight) : 1.0;
-    const r = char.colliderRadius * ppu * altitudeScale;
+    const effectiveSpriteRadius =
+      char.energyGrowthModule && char.energyGrowthModule.enabled
+        ? char.energyGrowthModule.scaleSprite
+          ? (char.visualSpriteRadius ?? char.colliderRadius)
+          : (char.energyGrowthModule.baseValues["colliderRadius"] ?? char.colliderRadius)
+        : char.colliderRadius;
+    const r = effectiveSpriteRadius * ppu * altitudeScale;
 
     const isOtherClientSim = (c: Character): boolean => {
       if (isSplitScreenViewport) {

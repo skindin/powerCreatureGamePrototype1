@@ -96,7 +96,14 @@ export class PlayerDeltaBuilder {
         if (prop === char.rollMovementModule.maxSprintPowerProp) return "rollMovementModule.sprintPowerCapacity";
         if (prop === char.rollMovementModule.maxBrakePowerProp) return "rollMovementModule.brakePowerCapacity";
       }
-      if (char.strengthProp && prop === char.strengthProp) return "strength";
+      if (char.vomitModule) {
+        if (prop === char.vomitModule.energyPerGlobProp) return "vomitModule.energyPerGlob";
+        if (prop === char.vomitModule.minRemainingEnergyFloorProp) return "vomitModule.minRemainingEnergyFloor";
+        if (prop === char.vomitModule.launchSpeedProp) return "vomitModule.launchSpeed";
+        if (prop === char.vomitModule.launchVerticalSpeedProp) return "vomitModule.launchVerticalSpeed";
+        if (prop === char.vomitModule.cooldownSecondsProp) return "vomitModule.cooldownSeconds";
+        if (prop === char.vomitModule.recoilMultiplierProp) return "vomitModule.recoilMultiplier";
+      }
       if (char.colliderModule && prop === char.colliderModule.radiusProp) return "colliderRadius";
       if (char.rigidbodyModule && prop === char.rigidbodyModule.massProp) return "mass";
     }

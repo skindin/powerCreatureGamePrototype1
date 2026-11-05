@@ -25,6 +25,8 @@ import { SpawnerModule } from "../../engine/SpawnerModule.js";
 import { GunModule } from "../../engine/GunModule.js";
 import { RollMovementModule } from "../../character/RollMovementModule.js";
 import { LocomotionStanceModule } from "../../character/LocomotionStanceModule.js";
+import { EnergyGrowthModule } from "../../character/EnergyGrowthModule.js";
+import { VomitModule } from "../../character/VomitModule.js";
 import type { DevPanel } from "../DevPanel.js";
 import type { GameObject } from "../../engine/GameObject.js";
 
@@ -118,6 +120,12 @@ export class EntityModuleLifecycle {
         break;
       case "locomotionStance":
         if (char?.locomotionStanceModule) char.locomotionStanceModule.enabled = !char.locomotionStanceModule.enabled;
+        break;
+      case "energyGrowth":
+        if (char?.energyGrowthModule) char.energyGrowthModule.enabled = !char.energyGrowthModule.enabled;
+        break;
+      case "vomit":
+        if (char?.vomitModule) char.vomitModule.enabled = !char.vomitModule.enabled;
         break;
     }
 
@@ -249,6 +257,16 @@ export class EntityModuleLifecycle {
       case "locomotionStance":
         if (e instanceof Character) {
           (e as Character).locomotionStanceModule = null;
+        }
+        break;
+      case "energyGrowth":
+        if (e instanceof Character) {
+          (e as Character).energyGrowthModule = null;
+        }
+        break;
+      case "vomit":
+        if (e instanceof Character) {
+          (e as Character).vomitModule = null;
         }
         break;
     }
@@ -434,6 +452,16 @@ export class EntityModuleLifecycle {
           });
         }
         break;
+      case "energyGrowth":
+        if (e instanceof Character) {
+          (e as Character).energyGrowthModule = new EnergyGrowthModule();
+        }
+        break;
+      case "vomit":
+        if (e instanceof Character) {
+          (e as Character).vomitModule = new VomitModule();
+        }
+        break;
     }
 
     panel.renderEntityModules();
@@ -472,6 +500,8 @@ export class EntityModuleLifecycle {
     "spawner",
     "character",
     "energyPool",
+    "energyGrowth",
+    "vomit",
     "damageAura",
     "damageSolver",
   ];
@@ -930,6 +960,26 @@ export class EntityModuleLifecycle {
           dest.damageSolverModule.selfImpactWeightProp.set(src.damageSolverModule.selfImpactWeightProp.get(src.properties), dest.properties);
         } else {
           dest.damageSolverModule = null;
+        }
+        break;
+
+      case "energyGrowth":
+        if (destChar) {
+          if (srcChar?.energyGrowthModule) {
+            destChar.energyGrowthModule = new EnergyGrowthModule(srcChar.energyGrowthModule.toConfig());
+          } else {
+            destChar.energyGrowthModule = null;
+          }
+        }
+        break;
+
+      case "vomit":
+        if (destChar) {
+          if (srcChar?.vomitModule) {
+            destChar.vomitModule = new VomitModule(srcChar.vomitModule.toConfig(srcChar.properties));
+          } else {
+            destChar.vomitModule = null;
+          }
         }
         break;
     }

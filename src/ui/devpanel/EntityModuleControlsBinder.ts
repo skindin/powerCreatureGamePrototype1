@@ -8,6 +8,7 @@ import { HealthAndDamageInspector } from "./inspectors/HealthAndDamageInspector.
 import { LaserInspector } from "./inspectors/LaserInspector.js";
 import { MeleeInspector } from "./inspectors/MeleeInspector.js";
 import { EnergyPoolInspector } from "./inspectors/EnergyPoolInspector.js";
+import { EnergyGrowthAndVomitInspector } from "./inspectors/EnergyGrowthAndVomitInspector.js";
 import { ControlsInspector } from "./inspectors/ControlsInspector.js";
 
 /**
@@ -47,6 +48,7 @@ export class EntityModuleControlsBinder {
       LaserInspector.bindControls(panel, char, bindToggleSave);
       MeleeInspector.bindControls(panel, char, bindToggleSave);
       EnergyPoolInspector.bindControls(panel, char);
+      EnergyGrowthAndVomitInspector.bindControls(panel, container, char);
 
       const btnControls = container.querySelector("#btn-open-character-controls") as HTMLButtonElement | null;
       if (btnControls) {

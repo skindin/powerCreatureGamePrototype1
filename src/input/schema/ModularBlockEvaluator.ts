@@ -6,6 +6,7 @@ import type {
   RollMovementControlBlock,
   JumpControlBlock,
   MeleeControlBlock,
+  VomitControlBlock,
   LaserControlBlock,
   ThrowControlBlock,
   ItemInteractionControlBlock,
@@ -235,6 +236,7 @@ export class ModularBlockEvaluator {
     let isLaserAiming = false;
     let isLaserFiring = false;
     let isMeleeRequested = false;
+    let isVomitRequested = false;
     let isAimingTrajectory = false;
     let isGunAimFiring = false;
     let activeRawDragThisFrame = false;
@@ -726,6 +728,19 @@ export class ModularBlockEvaluator {
           break;
         }
 
+        case "vomit": {
+          const b = block as VomitControlBlock;
+          if (isLaserAiming || isLaserFiring) {
+            break;
+          }
+          const requireClean = b.vomit?.requireCleanPress === true;
+          if (isSlotActive(b.vomit, requireClean ? "down" : "hold", requireClean, b.id, "vomit.expel")) {
+            isVomitRequested = true;
+            claimSlot(b.vomit, b.id, "vomit.expel", requireClean);
+          }
+          break;
+        }
+
         case "laser": {
           const b = block as LaserControlBlock;
           if (isLaserAiming) {
@@ -777,8 +792,8 @@ export class ModularBlockEvaluator {
             b.throwOverrideTrigger &&
             b.throwOverrideTrigger.code &&
             (isSlotActive(b.throwOverrideTrigger, "hold", false, b.id, "check") ||
-             isSlotActive(b.throwOverrideTrigger, "down", false, b.id, "check") ||
-             getSlotAnalogValue(b.throwOverrideTrigger) > 0.15)
+              isSlotActive(b.throwOverrideTrigger, "down", false, b.id, "check") ||
+              getSlotAnalogValue(b.throwOverrideTrigger) > 0.15)
           );
 
           if (isHoldingGun && !isThrowOverrideActive) {
@@ -1248,8 +1263,8 @@ export class ModularBlockEvaluator {
             throwBlock?.throwOverrideTrigger &&
             throwBlock.throwOverrideTrigger.code &&
             (isSlotActive(throwBlock.throwOverrideTrigger, "hold", false, throwBlock.id, "check") ||
-             isSlotActive(throwBlock.throwOverrideTrigger, "down", false, throwBlock.id, "check") ||
-             getSlotAnalogValue(throwBlock.throwOverrideTrigger) > 0.15)
+              isSlotActive(throwBlock.throwOverrideTrigger, "down", false, throwBlock.id, "check") ||
+              getSlotAnalogValue(throwBlock.throwOverrideTrigger) > 0.15)
           );
 
           // If the button pressed to pick up or swap this item is STILL held down,
@@ -1452,6 +1467,7 @@ export class ModularBlockEvaluator {
     char.isLaserAiming = isLaserAiming;
     char.isLaserFiring = isLaserFiring;
     char.isMeleeRequested = isMeleeRequested;
+    char.isVomitRequested = isVomitRequested;
 
     // Face toward aim target if aiming trajectory, laser, melee, or gun:
     // In Cursor Mode (or Mouse/Keyboard): character faces towards cursor.
@@ -1552,17 +1568,17 @@ export class ModularBlockEvaluator {
       facingAngle: char.facingAngle ?? 0,
       ...(kLaunchVel
         ? {
-            launchVx: kLaunchVel.vx,
-            launchVy: kLaunchVel.vy,
-            launchVz: kLaunchVel.vz,
-          }
+          launchVx: kLaunchVel.vx,
+          launchVy: kLaunchVel.vy,
+          launchVz: kLaunchVel.vz,
+        }
         : {}),
       ...(kLaunchPos
         ? {
-            launchStartX: kLaunchPos.x,
-            launchStartY: kLaunchPos.y,
-            launchStartZ: kLaunchPos.z,
-          }
+          launchStartX: kLaunchPos.x,
+          launchStartY: kLaunchPos.y,
+          launchStartZ: kLaunchPos.z,
+        }
         : {}),
     } as any;
   }

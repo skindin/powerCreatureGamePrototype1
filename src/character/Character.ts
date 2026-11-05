@@ -25,6 +25,10 @@ import { MeleeCapability } from "./capabilities/MeleeCapability.js";
 import { RollMovementModule } from "./RollMovementModule.js";
 import { RollMovementCapability } from "./capabilities/RollMovementCapability.js";
 import { LocomotionStanceModule, type LocomotionMode } from "./LocomotionStanceModule.js";
+import { EnergyGrowthModule } from "./EnergyGrowthModule.js";
+import { EnergyGrowthCapability } from "./capabilities/EnergyGrowthCapability.js";
+import { VomitModule } from "./VomitModule.js";
+import { VomitCapability } from "./capabilities/VomitCapability.js";
 import type { ControlSchema } from "../input/schema/ControlSchemaTypes.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
@@ -227,6 +231,13 @@ export class Character extends GameObject {
   public rollMovementModule: RollMovementModule | null = null;
   public isBraking: boolean = false;
   public isDying: boolean = false;
+
+  // Scale With Energy & Projectile Vomit modules
+  public energyGrowthModule: EnergyGrowthModule | null = null;
+  public vomitModule: VomitModule | null = null;
+  public isVomitRequested: boolean = false;
+  public visualSpriteRadius?: number = 0.4;
+  public onSpawnWorldObject?: (obj: GameObject) => void;
 
   /**
    * Currently active modal or stage state set by custom control schemes (defaults to immutable "none").
@@ -478,9 +489,8 @@ export class Character extends GameObject {
     this.aimTarget = null;
     this.activeTrajectory = null;
 
-    // Native dynamic strength property
-    this.strengthProp = new DynamicProperty(options.strength ?? (determinedRole === "dummy" ? 0 : 1.0));
-    this.properties.add("strength", this.strengthProp.literalValue);
+    // Legacy compatibility socket (not registered in custom properties UI)
+    this.strengthProp = new DynamicProperty(1.0);
 
     // Initialize default modular capabilities
     if (determinedRole === "dummy") {
@@ -577,6 +587,17 @@ export class Character extends GameObject {
    */
   public jump(arena?: Arena, movementInput?: Vector2D): boolean {
     return JumpCapability.executeJump(this, arena, movementInput);
+  }
+
+  /**
+   * Attempts to execute a projectile vomit burst in the specified or current facing direction.
+   */
+  public vomit(objects?: GameObject[], arena?: Arena, aimAngleOverride?: number): GameObject | null {
+    const glob = VomitCapability.executeVomit(this, objects, arena, aimAngleOverride);
+    if (glob) {
+      EnergyGrowthCapability.tick(this);
+    }
+    return glob;
   }
 
   /**
@@ -740,14 +761,20 @@ export class Character extends GameObject {
       this.jump(arena, movementInput);
     }
 
-    // Combat abilities (Laser & Melee)
+    // Combat abilities (Laser, Melee & Vomit)
     LaserCapability.actuate(this, dt, arena);
     MeleeCapability.actuate(this, arena);
+    if (this.isVomitRequested && this.vomitModule && this.vomitModule.enabled) {
+      this.vomit(entities, arena);
+    }
 
     // Energy pool stamina recovery (runs after all physical abilities and buffers in the tick)
     if (this.energyPool && this.energyPool.enabled) {
       this.energyPool.update(dt, this.properties);
     }
+
+    // Scale With Energy (updates mass, collider, sprite, and connected module properties from current energy)
+    EnergyGrowthCapability.tick(this);
 
     // Facing orientation & held object synchronization
     const canAimThrow = Boolean(isAimingInput || this.isAimingTrajectory);
@@ -793,9 +820,9 @@ export class Character extends GameObject {
       this.energyPool.reset(this.properties);
     }
 
-    const origStrength = this.properties.get("strength");
-    if (origStrength !== undefined) {
-      this.strengthProp.set(origStrength, this.properties);
+    if (this.energyGrowthModule && this.energyGrowthModule.enabled) {
+      this.energyGrowthModule.applyStartingScaleToEnergyPool(this);
+      EnergyGrowthCapability.tick(this);
     }
   }
 

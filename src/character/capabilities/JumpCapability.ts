@@ -57,7 +57,6 @@ export class JumpCapability {
     const efficiency = Math.max(0.01, pool ? pool.getMuscleEfficiency(char.properties) : 0.25);
     const rawMetabolicJoules = Math.max(15, mechanicalJoules / efficiency);
     const jumpCap = char.jumpMaxPowerProp ? char.jumpMaxPowerProp.get(char.properties) : 1200;
-    // Demanded burst Joules is budgeted up to the ability's jumpCap:
     const metabolicJoules = Math.min(rawMetabolicJoules, Math.max(0, jumpCap));
 
     let energyFraction = 1.0;
@@ -118,4 +117,3 @@ export class JumpCapability {
     return jumped;
   }
 }
-

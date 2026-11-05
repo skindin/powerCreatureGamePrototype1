@@ -27,6 +27,7 @@ import type {
   ItemInteractionControlBlock,
   FacingControlBlock,
   LocomotionStanceControlBlock,
+  VomitControlBlock,
 } from "../../../input/schema/ControlSchemaTypes.js";
 import {
   DefaultControlSchema,
@@ -1877,6 +1878,21 @@ export class ControlsInspector {
         `;
       }
 
+      case "vomit": {
+        const b = block as VomitControlBlock;
+        b.vomit = b.vomit || { code: "KeyV" };
+        return `
+          <div style="display: flex; gap: 16px; align-items: start;">
+            <div>
+              ${this.renderInputSlot(b.id, "vomit", b.vomit, "Projectile Vomit Button")}
+            </div>
+            <div style="font-size: 0.68rem; color: #64748b; padding-top: 14px;">
+              Expels stored energy as a ballistic consumable glob, shrinking the character and applying recoil.
+            </div>
+          </div>
+        `;
+      }
+
       case "laser": {
         const b = block as LaserControlBlock;
         b.aimTrigger = b.aimTrigger || { code: "MouseRight", gateButtons: ["AltLeft"] };
@@ -2217,6 +2233,7 @@ export class ControlsInspector {
               <option value="itemInteraction">+ Item Interaction (Pickup, Drop, Swap, Eat)</option>
               <option value="throw">+ Throwing & Ballistics</option>
               <option value="melee">+ Melee Combat</option>
+              <option value="vomit">+ Projectile Vomit</option>
               <option value="laser">+ Laser Beam</option>
               <option value="facing">+ Heading / Facing Angle</option>
             </select>
@@ -2239,6 +2256,7 @@ export class ControlsInspector {
               itemInteraction: "📦",
               throw: "🏹",
               melee: "🥊",
+              vomit: "🤮",
               laser: "⚡",
               facing: "🎯",
             };
@@ -3112,6 +3130,20 @@ export class ControlsInspector {
               name: "Melee Combat",
               enabled: true,
               punch: { code: "KeyF" },
+            });
+          } else if (type === "vomit") {
+            blocks.push(isGamepad ? {
+              type: "vomit",
+              id: newId,
+              name: "Projectile Vomit",
+              enabled: true,
+              vomit: { code: "GamepadLB", requireCleanPress: true },
+            } : {
+              type: "vomit",
+              id: newId,
+              name: "Projectile Vomit",
+              enabled: true,
+              vomit: { code: "KeyV", requireCleanPress: true },
             });
           } else if (type === "laser") {
             blocks.push(isGamepad ? {

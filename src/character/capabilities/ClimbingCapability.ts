@@ -5,15 +5,14 @@ import type { Arena } from "../../engine/Arena.js";
 /**
  * Isolated 1-to-1 capability slice for Vertical Wall Climbing.
  * Encapsulates isometric holding power, ascent wattage demand, and delegation
- * to ClimbingModule without touching Tier 2 ClimbingModule.ts.
+ * to ClimbingModule.
  */
 export class ClimbingCapability {
   public static canClimb(char: Character): boolean {
     return Boolean(
       char.climbingModule &&
       char.climbingModule.enabled &&
-      char.hasVerticalPosition &&
-      char.hasStrength
+      char.hasVerticalPosition
     );
   }
 
@@ -51,4 +50,3 @@ export class ClimbingCapability {
     }
   }
 }
-

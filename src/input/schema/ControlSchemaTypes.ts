@@ -197,6 +197,7 @@ export type ModuleTargetSocket =
   | "pickup.drop"
   | "pickup.swap"
   | "melee.punch"
+  | "vomit.expel"
   | "laser.aim"
   | "laser.fire"
   | "laser.power";
@@ -374,6 +375,14 @@ export interface MeleeControlBlock {
   punch?: BlockInputSlot;
 }
 
+export interface VomitControlBlock {
+  type: "vomit";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  vomit?: BlockInputSlot;
+}
+
 export interface LaserControlBlock {
   type: "laser";
   id: string;
@@ -467,6 +476,7 @@ export type ControlBlock =
   | LocomotionStanceControlBlock
   | JumpControlBlock
   | MeleeControlBlock
+  | VomitControlBlock
   | LaserControlBlock
   | ThrowControlBlock
   | ItemInteractionControlBlock

@@ -5,7 +5,7 @@ import type { Arena } from "../../engine/Arena.js";
 /**
  * Isolated 1-to-1 capability slice for Ground Locomotion (Walking & Sprinting).
  * Encapsulates metabolic power demand registration, exhaustion sprint-cancellation,
- * and delegation to WalkingModule without touching Tier 2 WalkingModule.ts.
+ * and delegation to WalkingModule.
  */
 export class LocomotionCapability {
   public static canWalk(char: Character): boolean {
@@ -16,10 +16,10 @@ export class LocomotionCapability {
           const speed = Math.hypot(char.velocity.x, char.velocity.y);
           const spin = char.rollModule
             ? Math.hypot(
-                char.rollModule.angularVelocity.x,
-                char.rollModule.angularVelocity.y,
-                char.rollModule.angularVelocity.z
-              )
+              char.rollModule.angularVelocity.x,
+              char.rollModule.angularVelocity.y,
+              char.rollModule.angularVelocity.z
+            )
             : 0;
           if (speed > 0.25 || spin > 0.25) {
             if (!stance.canWalkWhileRolling) {
@@ -93,7 +93,8 @@ export class LocomotionCapability {
 
     if (canWalk && isMoving && locomotionConsumesEnergy && char.walkingModule && char.energyPool) {
       const carriedMass = char.carriedMass;
-      const loadFactor = carriedMass / (Math.max(0.1, char.strength) * 8.0);
+      const baseMass = Math.max(0.2, char.baseMass || 1.2);
+      const loadFactor = carriedMass / (baseMass * 6.5);
       const targetSpeed = sprintingNow
         ? char.walkingModule.maxSprintSpeedProp.get(char.properties)
         : char.walkingModule.maxWalkSpeedProp.get(char.properties);
@@ -129,4 +130,3 @@ export class LocomotionCapability {
     }
   }
 }
-

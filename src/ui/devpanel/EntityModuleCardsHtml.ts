@@ -95,6 +95,12 @@ export class EntityModuleCardsHtml {
     const hasMeleeModule = isChar && Boolean(char?.meleeModule);
     const meleeEnabled = isChar && Boolean(char?.meleeModule?.enabled);
 
+    const hasEnergyGrowthModule = isChar && Boolean(char?.energyGrowthModule);
+    const energyGrowthEnabled = isChar && Boolean(char?.energyGrowthModule?.enabled);
+
+    const hasVomitModule = isChar && Boolean(char?.vomitModule);
+    const vomitEnabled = isChar && Boolean(char?.vomitModule?.enabled);
+
     const hasSpawnerModule = Boolean(e.spawnerModule);
     const spawnerEnabled = Boolean(e.spawnerModule?.enabled);
 
@@ -347,17 +353,12 @@ export class EntityModuleCardsHtml {
           ? `<div class="module-dep-warning">⚠️ Requires Friction behavior (feet slip without ground traction)</div>`
           : (!fricEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Friction behavior is disabled</div>` : "");
 
-        const walkStrWarning = !char.hasStrength
-          ? `<div class="module-dep-warning">⚠️ Requires Muscle Strength (cannot propel body)</div>`
-          : "";
-
         html += `
           <div class="module-card ${!walkEnabled ? "module-disabled" : ""}" data-module-id="walking">
             ${panel.renderModuleHeader("walking", "🚶 Walking Ability", renderToggleBtn("walking", walkEnabled))}
             <div id="collapse-body-mod-walking" style="display: ${isCollapsed("mod-walking") ? "none" : "block"};">
             ${!walkEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Walking Ability is disabled</div>` : ""}
             ${walkFricWarning}
-            ${walkStrWarning}
             ${renderToggleRow("check-walk-in-air", "Air Control (Walk in Air)", Boolean(char.walkingModule?.walkInAir), "Save Air Control to project")}
             ${renderToggleRow("check-can-sprint", "Can Sprint (Shift / Gamepad)", Boolean(char.walkingModule?.canSprint), "Save Can Sprint to project")}
             <div id="prop-socket-walk-force"></div>
@@ -366,9 +367,6 @@ export class EntityModuleCardsHtml {
             <div id="prop-socket-sprint-speed"></div>
             <div id="prop-socket-sprint-power-cap"></div>
             <div id="prop-socket-air-fric"></div>
-            <div style="margin-top: 8px; border-top: 1px solid rgba(148, 163, 184, 0.15); padding-top: 6px;">
-              <div id="prop-socket-strength"></div>
-            </div>
             ${renderToggleRow("check-walk-energy", "Walk Consumes Energy", Boolean(char.walkingModule?.walkConsumesEnergy), "Save Walk Consumes Energy to project")}
             <div id="field-walk-partial-power" style="display: ${char.walkingModule?.walkConsumesEnergy ? "block" : "none"}; padding-left: 8px;">
               ${renderToggleRow("check-walk-partial-power", "Allow Partial Power", Boolean(char.walkingModule?.walkAllowPartialPower), "Save Walk Partial Power to project")}
@@ -481,16 +479,12 @@ export class EntityModuleCardsHtml {
 
       if (hasThrowModule) {
         attachedCount++;
-        const throwStrWarning = !char.hasStrength
-          ? `<div class="module-dep-warning">⚠️ Requires Muscle Strength (cannot launch objects)</div>`
-          : "";
 
         html += `
           <div class="module-card ${!throwEnabled ? "module-disabled" : ""}" data-module-id="throw">
             ${panel.renderModuleHeader("throw", "🎯 Throw Ability", renderToggleBtn("throw", throwEnabled))}
             <div id="collapse-body-mod-throw" style="display: ${isCollapsed("mod-throw") ? "none" : "block"};">
             ${!throwEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Throw Ability is disabled</div>` : ""}
-            ${throwStrWarning}
             <div id="prop-socket-throw-force"></div>
             <div id="prop-socket-throw-max-height"></div>
             <div id="prop-socket-throw-power-cap"></div>
@@ -549,17 +543,12 @@ export class EntityModuleCardsHtml {
           ? `<div class="module-dep-warning">⚠️ Requires Vertical Position (3D Z-axis)</div>`
           : (!vertPosEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Vertical Position behavior is disabled</div>` : "");
 
-        const climbStrWarning = !char.hasStrength
-          ? `<div class="module-dep-warning">⚠️ Requires Muscle Strength to climb</div>`
-          : "";
-
         html += `
           <div class="module-card ${!climbEnabled ? "module-disabled" : ""}" data-module-id="climbing">
             ${panel.renderModuleHeader("climbing", "🧗 Climbing Ability", renderToggleBtn("climbing", climbEnabled))}
             <div id="collapse-body-mod-climbing" style="display: ${isCollapsed("mod-climbing") ? "none" : "block"};">
             ${!climbEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Climbing Ability is disabled</div>` : ""}
             ${climbVertWarning}
-            ${climbStrWarning}
             <div class="toggle-row" style="margin-bottom: 8px;">
               <label style="font-size: 0.8rem;">Sideways Climb</label>
               <button id="toggle-climb-sideways" class="btn-toggle ${char.climbingModule?.horizontalClimb ? "active" : ""}">
@@ -949,6 +938,47 @@ export class EntityModuleCardsHtml {
       `;
     }
 
+    // Scale With Energy (Energy Growth) Module
+    if (hasEnergyGrowthModule && char?.energyGrowthModule) {
+      attachedCount++;
+      const eg = char.energyGrowthModule;
+      html += `
+        <div class="module-card ${!energyGrowthEnabled ? "module-disabled" : ""}" data-module-id="energyGrowth">
+          ${panel.renderModuleHeader("energyGrowth", "📈 Scale With Energy", renderToggleBtn("energyGrowth", energyGrowthEnabled))}
+          <div id="collapse-body-mod-energyGrowth" style="display: ${isCollapsed("mod-energyGrowth") ? "none" : "block"};">
+            ${!energyGrowthEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Scale With Energy is disabled</div>` : ""}
+            ${!hasEnergyPool ? `<div class="module-dep-warning">⚠️ Requires Energy Pool & Stamina behavior</div>` : ""}
+            <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+              Continuously scales mass, collider size, visual sprite, and connected ability properties between Min and Max multipliers based on stored caloric energy.
+            </div>
+            <div style="margin: 6px 0; padding: 6px 8px; background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.75rem; color: #94a3b8;">Current Scale Multiplier:</span>
+              <span id="label-energy-growth-live" style="font-size: 0.82rem; font-weight: 700; color: #22c55e;">${eg.currentMassScale.toFixed(2)}x Mass / ${eg.currentRadiusScale.toFixed(2)}x Size</span>
+            </div>
+            <div id="energy-growth-inspector-root"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Projectile Vomit Module
+    if (hasVomitModule && char?.vomitModule) {
+      attachedCount++;
+      html += `
+        <div class="module-card ${!vomitEnabled ? "module-disabled" : ""}" data-module-id="vomit">
+          ${panel.renderModuleHeader("vomit", "🤮 Projectile Vomit", renderToggleBtn("vomit", vomitEnabled))}
+          <div id="collapse-body-mod-vomit" style="display: ${isCollapsed("mod-vomit") ? "none" : "block"};">
+            ${!vomitEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Projectile Vomit is disabled</div>` : ""}
+            ${!hasEnergyPool ? `<div class="module-dep-warning">⚠️ Requires Energy Pool & Stamina behavior</div>` : ""}
+            <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+              Expels stored food energy as a ballistic physical consumable glob, shrinking the character immediately and applying recoil. Trigger with <b>V</b> (Keyboard) or <b>LB</b> (Gamepad).
+            </div>
+            <div id="vomit-inspector-root"></div>
+          </div>
+        </div>
+      `;
+    }
+
     if (attachedCount === 0) {
       html = `
         <div class="empty-behaviors-msg">
@@ -998,7 +1028,9 @@ export class EntityModuleCardsHtml {
         { id: "consume", name: "Consume Ability", icon: "🍴", description: "Consumes physical items matching accepted tags", isAttached: hasConsumeModule },
         { id: "laser", name: "Laser Blast", icon: "🔫", description: "Continuous straight-line laser blast ability consuming energy", isAttached: hasLaserModule },
         { id: "melee", name: "Melee Attack", icon: "🥊", description: "Physical punch with knockback, recoil, and force-based shock damage", isAttached: hasMeleeModule },
-        { id: "energyPool", name: "Energy Pool & Stamina", icon: "⚡", description: "Consolidated biochemical energy reservoir (Joules) and burst stamina", isAttached: hasEnergyPool }
+        { id: "energyPool", name: "Energy Pool & Stamina", icon: "⚡", description: "Consolidated biochemical energy reservoir (Joules) and burst stamina", isAttached: hasEnergyPool },
+        { id: "energyGrowth", name: "Scale With Energy", icon: "📈", description: "Scales mass, collider, sprite, and connected ability properties with stored energy", isAttached: hasEnergyGrowthModule },
+        { id: "vomit", name: "Projectile Vomit", icon: "🤮", description: "Expels stored energy as a ballistic consumable glob, shrinking the character", isAttached: hasVomitModule }
       );
     }
 

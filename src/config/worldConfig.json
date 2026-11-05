@@ -1,6 +1,6 @@
 {
-  "version": 360,
-  "lastSaved": "2026-11-05T08:41:27.735Z",
+  "version": 362,
+  "lastSaved": "2026-11-05T09:29:31.310Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -9067,7 +9067,7 @@
         "hasLocomotionStance": true,
         "locomotionStanceModule": {
           "enabled": true,
-          "activeMode": "walk",
+          "activeMode": "roll",
           "supportedModes": [
             "roll",
             "walk"
@@ -10286,6 +10286,193 @@
             "target": "laser.power"
           }
         ]
+      }
+    },
+    {
+      "id": "prefab_grower_character",
+      "name": "Bio-Grower Creature",
+      "icon": "🦖",
+      "archetype": {
+        "id": "grower_archetype",
+        "name": "Bio-Grower Creature",
+        "prefabId": "prefab_grower_character",
+        "color": "#10b981",
+        "mass": 60,
+        "colliderRadius": 0.4,
+        "hasRigidbody": true,
+        "rigidbodyModule": {
+          "enabled": true,
+          "mass": 60,
+          "collisionMode": "dynamic",
+          "hasVerticalVelocity": true
+        },
+        "hasCollider": true,
+        "colliderModule": {
+          "enabled": true,
+          "radius": 0.4
+        },
+        "hasFriction": true,
+        "frictionModule": {
+          "enabled": true,
+          "staticFrictionMod": 1,
+          "dynamicFrictionMod": 1
+        },
+        "hasVerticalPosition": true,
+        "verticalPositionModule": {
+          "enabled": true,
+          "z": 0
+        },
+        "hasGravity": true,
+        "gravityModule": {
+          "enabled": true
+        },
+        "hasRollModule": false,
+        "hasRollMovement": false,
+        "hasLocomotionStance": false,
+        "hasWalking": true,
+        "walkingModule": {
+          "enabled": true,
+          "maxWalkForce": 18,
+          "maxWalkSpeed": 6.5,
+          "sprintSpeed": 10.5,
+          "canSprint": true,
+          "walkInAir": true,
+          "airFriction": 0.25,
+          "walkConsumesEnergy": false,
+          "walkAllowPartialPower": false,
+          "sprintConsumesEnergy": true,
+          "sprintAllowPartialPower": true,
+          "maxWalkPower": 350,
+          "maxSprintPower": 850
+        },
+        "hasJump": true,
+        "jumpModule": {
+          "enabled": true,
+          "jumpImpulse": 10,
+          "maxInitialSpeed": 12,
+          "jumpPowerCapacity": 600,
+          "jumpConsumesEnergy": true,
+          "jumpAllowPartialPower": true
+        },
+        "hasPickup": true,
+        "pickupModule": {
+          "enabled": true,
+          "pickupReach": 1.3,
+          "maxPower": 250,
+          "consumesEnergy": false,
+          "allowPartialPower": false
+        },
+        "hasThrow": true,
+        "throwModule": {
+          "enabled": true,
+          "throwForce": 12,
+          "throwPowerCapacity": 1000,
+          "maxPower": 1000,
+          "maxThrowSpeed": 28,
+          "maxThrowHeight": 8,
+          "consumesEnergy": true
+        },
+        "hasClimbing": true,
+        "climbingModule": {
+          "enabled": true,
+          "climbSpeed": 3.5,
+          "maxAdhesion": 20,
+          "maxPower": 500,
+          "horizontalClimb": true,
+          "consumesEnergy": true,
+          "allowPartialPower": false
+        },
+        "hasHealth": true,
+        "healthModule": {
+          "enabled": true,
+          "maxHp": 100,
+          "currentHp": 100,
+          "naturalHealRate": 5,
+          "joulesPerHp": 40,
+          "maxPower": 200,
+          "consumesEnergy": true,
+          "allowPartialPower": true
+        },
+        "hasConsume": true,
+        "consumeModule": {
+          "enabled": true,
+          "consumptionSpeedMultiplier": 2,
+          "acceptedTags": [
+            "food"
+          ]
+        },
+        "hasLaser": true,
+        "laserModule": {
+          "enabled": true,
+          "maxRange": 15,
+          "damageRate": 25,
+          "thickness": 0.1,
+          "maxPower": 2000,
+          "allowPartialPower": true
+        },
+        "hasMelee": true,
+        "meleeModule": {
+          "enabled": true,
+          "impactForce": 350,
+          "maxPower": 1000,
+          "punchFrequency": 2.5,
+          "reach": 1.2,
+          "width": 0.8,
+          "allowPartialPower": true
+        },
+        "hasEnergyPool": true,
+        "energyPool": {
+          "enabled": true,
+          "staminaCapacity": 5000,
+          "staminaRegenRate": 500,
+          "energyPoolCapacity": 20000,
+          "currentStamina": 5000,
+          "currentEnergy": 6667,
+          "muscleEfficiency": 0.25,
+          "infiniteEnergy": false,
+          "debugAutoRefillOnEmpty": false
+        },
+        "hasEnergyGrowth": true,
+        "energyGrowthModule": {
+          "enabled": true,
+          "minScaleMultiplier": 0.5,
+          "maxScaleMultiplier": 2,
+          "startingScaleMultiplier": 1,
+          "scaleMass": true,
+          "scaleCollider": true,
+          "scaleSprite": true,
+          "autoScaleReachWithCollider": true,
+          "scaledProperties": [
+            { "key": "walk.maxWalkForce", "curve": "cross_section", "rateMultiplier": 1 },
+            { "key": "walk.maxWalkSpeed", "curve": "cbrt", "rateMultiplier": 1 },
+            { "key": "walk.maxSprintSpeed", "curve": "cbrt", "rateMultiplier": 1 },
+            { "key": "walk.maxWalkPower", "curve": "cross_section", "rateMultiplier": 1 },
+            { "key": "walk.maxSprintPower", "curve": "cross_section", "rateMultiplier": 1 },
+            { "key": "jump.jumpStrength", "curve": "cross_section", "rateMultiplier": 1 },
+            { "key": "jump.maxPower", "curve": "cross_section", "rateMultiplier": 1 },
+            { "key": "throw.maxPower", "curve": "cross_section", "rateMultiplier": 1 },
+            { "key": "melee.maxForce", "curve": "cross_section", "rateMultiplier": 1 },
+            { "key": "melee.maxPower", "curve": "cross_section", "rateMultiplier": 1 },
+            { "key": "laser.damageRate", "curve": "cross_section", "rateMultiplier": 1 },
+            { "key": "laser.maxPower", "curve": "cross_section", "rateMultiplier": 1 },
+            { "key": "health.maxHealth", "curve": "linear", "rateMultiplier": 1 },
+            { "key": "stamina.maxStamina", "curve": "linear", "rateMultiplier": 1 },
+            { "key": "stamina.regenRate", "curve": "cross_section", "rateMultiplier": 1 }
+          ]
+        },
+        "hasVomit": true,
+        "vomitModule": {
+          "enabled": true,
+          "energyPerGlob": 1200,
+          "minRemainingEnergyFloor": 500,
+          "launchSpeed": 11,
+          "launchVerticalSpeed": 4.5,
+          "cooldownSeconds": 0.35,
+          "recoilMultiplier": 1,
+          "globColor": "#84cc16",
+          "consumableTag": "food",
+          "consumeRateWatts": 900
+        }
       }
     }
   ],

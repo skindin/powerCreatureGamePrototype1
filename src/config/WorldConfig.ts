@@ -23,6 +23,8 @@ import { EnergyPool } from "../character/EnergyPool.js";
 import { WallEdgeAssistModule } from "../character/WallEdgeAssistModule.js";
 import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { DamageSolverModule } from "../engine/DamageSolverModule.js";
+import { EnergyGrowthModule, type EnergyGrowthConfig } from "../character/EnergyGrowthModule.js";
+import { VomitModule, type VomitModuleConfig } from "../character/VomitModule.js";
 import { quarryPreset, createQuarryStones } from "../engine/maps/QuarryMap.js";
 import { Character } from "../character/Character.js";
 import type { ControlSchema } from "../input/schema/ControlSchemaTypes.js";
@@ -348,38 +350,6 @@ export interface SerializedCharacterConfig {
     verticalBounce?: boolean;
   } | null;
 
-  hasRigidbody?: boolean;
-  rigidbodyModule?: {
-    enabled?: boolean;
-    mass?: number;
-    collisionMode?: CollisionMode;
-    hasVerticalVelocity?: boolean;
-  } | null;
-
-  hasCollider?: boolean;
-  colliderModule?: {
-    enabled?: boolean;
-    radius?: number;
-  } | null;
-
-  hasFriction?: boolean;
-  frictionModule?: {
-    enabled?: boolean;
-    staticFrictionMod?: number;
-    dynamicFrictionMod?: number;
-  } | null;
-
-  hasVerticalPosition?: boolean;
-  verticalPositionModule?: {
-    enabled?: boolean;
-    z?: number;
-  } | null;
-
-  hasGravity?: boolean;
-  gravityModule?: {
-    enabled?: boolean;
-  } | null;
-
   hasRollModule?: boolean;
   rollModule?: {
     enabled?: boolean;
@@ -419,6 +389,12 @@ export interface SerializedCharacterConfig {
     supportedModes?: LocomotionMode[];
     canWalkWhileRolling?: boolean;
   } | null;
+
+  hasEnergyGrowth?: boolean;
+  energyGrowthModule?: EnergyGrowthConfig | null;
+
+  hasVomit?: boolean;
+  vomitModule?: VomitModuleConfig | null;
 
   controlSchema?: ControlSchema;
 }
@@ -497,12 +473,6 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
 
   if (char.controlSchema) {
     result.controlSchema = JSON.parse(JSON.stringify(char.controlSchema));
-  }
-
-  if (char.strengthProp) {
-    result.strength = char.strengthProp.get(char.properties);
-  } else if (char.strength !== undefined) {
-    result.strength = char.strength;
   }
 
   if (char.walkingModule) {
@@ -809,6 +779,20 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
     result.hasLocomotionStance = false;
   }
 
+  if (char.energyGrowthModule) {
+    result.hasEnergyGrowth = true;
+    result.energyGrowthModule = char.energyGrowthModule.toConfig();
+  } else {
+    result.hasEnergyGrowth = false;
+  }
+
+  if (char.vomitModule) {
+    result.hasVomit = true;
+    result.vomitModule = char.vomitModule.toConfig(char.properties);
+  } else {
+    result.hasVomit = false;
+  }
+
   return result;
 }
 
@@ -830,11 +814,6 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     char.colliderRadius = config.colliderRadius;
     if (char.colliderModule) char.colliderModule.radiusProp.set(config.colliderRadius, char.properties);
     char.properties?.set("colliderRadius", config.colliderRadius);
-  }
-  if (config.strength !== undefined) {
-    char.strength = config.strength;
-    if (char.strengthProp) char.strengthProp.set(config.strength, char.properties);
-    char.properties?.set("strength", config.strength);
   }
 
   if (config.hasWalking === false && !config.walkingModule) {
@@ -1436,6 +1415,23 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
       if (config.damageSolverModule.minShockThreshold !== undefined) char.damageSolverModule.damageThresholdHpProp.set(config.damageSolverModule.minShockThreshold, char.properties);
       if (config.damageSolverModule.selfImpactWeight !== undefined) char.damageSolverModule.selfImpactWeightProp.set(config.damageSolverModule.selfImpactWeight, char.properties);
     }
+  }
+
+  if (config.hasEnergyGrowth === false) {
+    char.energyGrowthModule = null;
+  } else if (config.energyGrowthModule || config.hasEnergyGrowth === true) {
+    char.energyGrowthModule = new EnergyGrowthModule(config.energyGrowthModule ?? { enabled: true });
+    if (char.energyPool && config.energyPool?.currentEnergy === undefined) {
+      const startFrac = char.energyGrowthModule.getStartingEnergyFraction();
+      const maxE = char.energyPool.getMaxEnergy(char.properties);
+      char.energyPool.setCurrentEnergy(startFrac * maxE, char.properties);
+    }
+  }
+
+  if (config.hasVomit === false) {
+    char.vomitModule = null;
+  } else if (config.vomitModule || config.hasVomit === true) {
+    char.vomitModule = new VomitModule(config.vomitModule ?? { enabled: true });
   }
 }
 
