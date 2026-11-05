@@ -966,7 +966,13 @@ export class Renderer {
           char.heldObject.gunModule.enabled
         );
         const isThrowOverride = isHoldingGun && Boolean(
-          char.isChargingThrow || char.isAimingWallClear || char.isHoldingThrowRelease || char.isTriggerPullThrowing
+          char.isChargingThrow ||
+          char.isAimingWallClear ||
+          char.isHoldingThrowRelease ||
+          char.isTriggerPullThrowing ||
+          char.isVomitAiming ||
+          (char as any).isChargingVomit ||
+          (char as any).isHoldingVomitRelease
         );
         if (char.activeTrajectory && !isLaserMode && (!isHoldingGun || isThrowOverride)) {
           // Is this character's cursor currently unhidden and visible?
@@ -992,7 +998,13 @@ export class Renderer {
             cChar.heldObject.gunModule.enabled
           );
           const isCursorThrowOverride = isCursorHoldingGun && Boolean(
-            cChar.isChargingThrow || cChar.isAimingWallClear || cChar.isHoldingThrowRelease || cChar.isTriggerPullThrowing
+            cChar.isChargingThrow ||
+            cChar.isAimingWallClear ||
+            cChar.isHoldingThrowRelease ||
+            cChar.isTriggerPullThrowing ||
+            cChar.isVomitAiming ||
+            (cChar as any).isChargingVomit ||
+            (cChar as any).isHoldingVomitRelease
           );
 
           // Draw precision aim reticle if character is not throwing an object (when holding gun, show clean reticle)
@@ -1017,7 +1029,13 @@ export class Renderer {
             character.heldObject.gunModule.enabled
           );
           const isCharThrowOverride = isCharHoldingGun && Boolean(
-            character.isChargingThrow || character.isAimingWallClear || character.isHoldingThrowRelease || character.isTriggerPullThrowing
+            character.isChargingThrow ||
+            character.isAimingWallClear ||
+            character.isHoldingThrowRelease ||
+            character.isTriggerPullThrowing ||
+            character.isVomitAiming ||
+            (character as any).isChargingVomit ||
+            (character as any).isHoldingVomitRelease
           );
           if (character.activeTrajectory && !isCharLaserMode && (!isCharHoldingGun || isCharThrowOverride)) {
             this.trajectoryRenderer.drawTrajectory(character.activeTrajectory, ppu, arena, this.viewSettings, activeAimCursor, character);

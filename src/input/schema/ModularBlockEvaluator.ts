@@ -353,23 +353,6 @@ export class ModularBlockEvaluator {
         vomitBlock.aimTrigger.gateButtons.every((g) => tokens.isDown(g))
       );
 
-      if (isGateButtonsHeld) {
-        if (vomitBlock.chargeTrigger?.gateButtons) {
-          for (const g of vomitBlock.chargeTrigger.gateButtons) {
-            if (tokens.isDown(g)) tokens.claim(g, vomitBlock.id, "vomit.gate");
-          }
-        }
-        if (vomitBlock.fireTrigger?.gateButtons) {
-          for (const g of vomitBlock.fireTrigger.gateButtons) {
-            if (tokens.isDown(g)) tokens.claim(g, vomitBlock.id, "vomit.gate");
-          }
-        }
-        if (vomitBlock.aimTrigger?.gateButtons) {
-          for (const g of vomitBlock.aimTrigger.gateButtons) {
-            if (tokens.isDown(g)) tokens.claim(g, vomitBlock.id, "vomit.gate");
-          }
-        }
-      }
       const isChargeSlotHeld = Boolean(
         (vMode === "chargeAndRelease" || vMode === "holdAndRelease") &&
         isSlotActive(vomitBlock.chargeTrigger, "hold", false, vomitBlock.id, "vomit.charge")
@@ -387,8 +370,7 @@ export class ModularBlockEvaluator {
         Boolean((char as any).isChargingVomit) ||
         Boolean((char as any).isHoldingVomitRelease) ||
         Boolean((char as any).isAimingVomitWallClear) ||
-        Boolean((char as any).isTriggerPullVomiting) ||
-        Boolean(char.isVomitAiming)
+        Boolean((char as any).isTriggerPullVomiting)
       ) {
         isVomitAiming = true;
       }
@@ -839,7 +821,7 @@ export class ModularBlockEvaluator {
           }
 
           if ((char as any)._vomitRequiresFreshPress) {
-            const slotsToCheck = [b.chargeTrigger, b.aimTrigger, b.fireTrigger, b.quickTrigger].filter(Boolean);
+            const slotsToCheck = [b.chargeTrigger, b.fireTrigger, b.quickTrigger].filter(Boolean);
             const anyHeld = slotsToCheck.some((slot) => {
               const triggerVal = getSlotAnalogValue(slot);
               const isDown = isSlotActive(slot, "down", false, b.id, "check");
@@ -898,6 +880,14 @@ export class ModularBlockEvaluator {
 
           switch (mode) {
             case "chargeAndRelease": {
+              const hasAimTrigger = Boolean(b.aimTrigger?.code);
+              const isAimingStaged = hasAimTrigger && isSlotActive(b.aimTrigger, "hold", false, b.id, "vomit.aim");
+              if (isAimingStaged) {
+                isVomitAiming = true;
+                isAimingTrajectory = true;
+                claimSlot(b.aimTrigger, b.id, "vomit.aim", false);
+              }
+
               const chargeSlot = b.chargeTrigger?.code ? b.chargeTrigger : b.aimTrigger;
               const isHoldingCharge = isSlotActive(chargeSlot, "hold", false, b.id, "vomit.chargeBow");
               if (isHoldingCharge) {
@@ -908,7 +898,7 @@ export class ModularBlockEvaluator {
                 if (!(char as any).vomitChargeStartTime) {
                   (char as any).vomitChargeStartTime = now;
                 }
-                claimSlot(chargeSlot, b.id, "vomit.chargeBow", true);
+                claimSlot(chargeSlot, b.id, "vomit.chargeBow", false);
               }
               if (b.chargeTrigger?.gateButtons) {
                 for (const g of b.chargeTrigger.gateButtons) {
@@ -943,6 +933,14 @@ export class ModularBlockEvaluator {
             }
 
             case "holdAndRelease": {
+              const hasAimTrigger = Boolean(b.aimTrigger?.code);
+              const isAimingStaged = hasAimTrigger && isSlotActive(b.aimTrigger, "hold", false, b.id, "vomit.aim");
+              if (isAimingStaged) {
+                isVomitAiming = true;
+                isAimingTrajectory = true;
+                claimSlot(b.aimTrigger, b.id, "vomit.aim", false);
+              }
+
               const holdSlot = b.chargeTrigger?.code ? b.chargeTrigger : b.aimTrigger;
               const isHolding = isSlotActive(holdSlot, "hold", false, b.id, "vomit.holdAndRelease");
               if (isHolding) {
@@ -952,7 +950,7 @@ export class ModularBlockEvaluator {
                 (char as any).isChargingVomit = false;
                 (char as any).vomitChargeStartTime = null;
                 char.hasUserSetArcRatio = false;
-                claimSlot(holdSlot, b.id, "vomit.holdAndRelease", true);
+                claimSlot(holdSlot, b.id, "vomit.holdAndRelease", false);
               }
               if (b.chargeTrigger?.gateButtons) {
                 for (const g of b.chargeTrigger.gateButtons) {
@@ -1189,7 +1187,9 @@ export class ModularBlockEvaluator {
             char.triggerThrowPower = 0;
             char.throwChargeStartTime = null;
             char.throwChargeProgress = 0;
-            char.activeTrajectory = null;
+            if (!isVomitAiming && !isVomitRequested && !(char as any).isChargingVomit && !(char as any).isHoldingVomitRelease) {
+              char.activeTrajectory = null;
+            }
             break;
           }
 
