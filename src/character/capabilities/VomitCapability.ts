@@ -186,13 +186,13 @@ export class VomitCapability {
       char.savedArcRatio = chargedRatio;
 
       char.activeTrajectory = chargeProgress > 0.001
-        ? BallisticTrajectorySolver.calculateTrajectoryForParams(
+        ? BallisticTrajectorySolver.calculateTrajectoryFromParams(
             { ...baseParams, hasUserSetArcRatio: true, savedArcRatio: chargedRatio },
             aimTargetPos.x,
             aimTargetPos.y,
             arena,
             arena.visualAltitudeScale
-          ).trajectory
+          )
         : clearRes.trajectory;
 
       if (char.activeTrajectory) {
@@ -217,13 +217,13 @@ export class VomitCapability {
       char.savedArcRatio = pulledRatio;
 
       char.activeTrajectory = f > 0.001
-        ? BallisticTrajectorySolver.calculateTrajectoryForParams(
+        ? BallisticTrajectorySolver.calculateTrajectoryFromParams(
             { ...baseParams, hasUserSetArcRatio: true, savedArcRatio: pulledRatio },
             aimTargetPos.x,
             aimTargetPos.y,
             arena,
             arena.visualAltitudeScale
-          ).trajectory
+          )
         : clearRes.trajectory;
 
       if (char.activeTrajectory) {
@@ -244,14 +244,13 @@ export class VomitCapability {
     } else {
       char.throwChargingTowards = undefined;
       if (char.hasUserSetArcRatio) {
-        const res = BallisticTrajectorySolver.calculateTrajectoryForParams(
+        char.activeTrajectory = BallisticTrajectorySolver.calculateTrajectoryFromParams(
           baseParams,
           aimTargetPos.x,
           aimTargetPos.y,
           arena,
           arena.visualAltitudeScale
         );
-        char.activeTrajectory = res.trajectory;
       } else {
         const res = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
           baseParams,
