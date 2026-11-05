@@ -278,20 +278,21 @@ export class PrefabManager {
     });
     this.prefabs.set(fighterPrefab.id, fighterPrefab);
 
-    // 🧬 Default "Bio-Grower" character prefab (Scale With Energy + Projectile Vomit)
+    // 🧬 Default "Bio-Grower" character prefab (Scale With Energy + Projectile Vomit, Goat base stats, no climbing)
     const growerArchetype = new Character({
       id: "archetype_grower_character",
       name: "Bio-Grower",
       color: "#10b981",
-      colliderRadius: 0.40,
+      colliderRadius: 0.44,
       mass: 1.2,
     });
-    growerArchetype.bounceMod = 0.15;
-    growerArchetype.laserModule = null;
+    growerArchetype.bounceMod = 0.4;
+    growerArchetype.climbingModule = null;
     if (growerArchetype.energyPool) {
       growerArchetype.energyPool.maxEnergyJoules = 20000;
-      growerArchetype.energyPool.currentEnergyJoules = 6666.67;
-      growerArchetype.energyPool.staminaCapacityJoules = 5000;
+      growerArchetype.energyPool.currentEnergyJoules = 6667;
+      growerArchetype.energyPool.staminaCapacityJoules = 10000;
+      growerArchetype.energyPool.staminaRegenRateWatts = 1000;
       growerArchetype.energyPool.currentStaminaJoules = 5000;
     }
     growerArchetype.energyGrowthModule = new EnergyGrowthModule({
@@ -303,6 +304,26 @@ export class PrefabManager {
       scaleCollider: true,
       scaleSprite: true,
       autoScaleReachWithCollider: true,
+      baseValues: {
+        mass: 1.2,
+        colliderRadius: 0.44,
+        pickupReach: 1.3,
+        "walk.maxWalkForce": 35,
+        "walk.maxWalkSpeed": 5.2,
+        "walk.maxSprintSpeed": 8.06,
+        "walk.maxWalkPower": 300,
+        "walk.maxSprintPower": 500,
+        "jump.jumpStrength": 18.5,
+        "jump.maxPower": 1200,
+        "throw.maxPower": 1200,
+        "melee.maxForce": 350,
+        "melee.maxPower": 500,
+        "laser.damageRate": 25,
+        "laser.maxPower": 2000,
+        "health.maxHealth": 100,
+        "stamina.maxStamina": 10000,
+        "stamina.regenRate": 1000,
+      },
     });
     growerArchetype.vomitModule = new VomitModule({
       enabled: true,
