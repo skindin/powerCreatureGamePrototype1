@@ -407,19 +407,31 @@ export class ModularBlockEvaluator {
       return false;
     };
 
+    // Order blocks deterministically so stance switching runs first and facing runs after movement vectors are computed
+    const orderedBlocks = [
+      ...blocks.filter((b) => b.type === "locomotionStance"),
+      ...blocks.filter((b) => b.type !== "locomotionStance" && b.type !== "facing"),
+      ...blocks.filter((b) => b.type === "facing"),
+    ];
+
     // Process blocks in order
-    for (const block of blocks) {
+    for (const block of orderedBlocks) {
       if (!block.enabled) continue;
+
+      const isLockedInWalkStanceNow = Boolean(
+        char.locomotionMode === "walk" &&
+        (!char.locomotionStanceModule || !char.locomotionStanceModule.enabled || char.locomotionStanceModule.isRollDisabledByWalkStance)
+      );
 
       switch (block.type) {
         case "walkSprint":
         case "locomotion":
         case "rollMovement": {
           if (hasBothRollAndWalkBlocks) {
-            if (block.type === "rollMovement" && isLockedInWalkStance) {
+            if (block.type === "rollMovement" && isLockedInWalkStanceNow) {
               break;
             }
-            if ((block.type === "walkSprint" || block.type === "locomotion") && !isLockedInWalkStance) {
+            if ((block.type === "walkSprint" || block.type === "locomotion") && !isLockedInWalkStanceNow) {
               break;
             }
           }
