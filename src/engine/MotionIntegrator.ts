@@ -133,6 +133,7 @@ export class MotionIntegrator {
     if (isResting && entity.hasFriction) {
       const isActivelyWalking =
         entity.isCharacter &&
+        (entity as any).locomotionMode === "walk" &&
         (entity as any).walkingModule?.enabled &&
         (entity as any).isActivelyWalking;
 

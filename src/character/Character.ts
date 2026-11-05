@@ -275,6 +275,7 @@ export class Character extends GameObject {
       this.locomotionStanceModule.setMode(val);
     }
     if (val !== "walk") {
+      this.isActivelyWalking = false;
       if (this.locomotionStanceModule) {
         this.locomotionStanceModule.isRollDisabledByWalkStance = false;
       }
@@ -292,6 +293,7 @@ export class Character extends GameObject {
       const mode = this.locomotionStanceModule.cycleMode();
       this._internalLocomotionMode = mode;
       if (mode !== "walk") {
+        this.isActivelyWalking = false;
         this.locomotionStanceModule.isRollDisabledByWalkStance = false;
         if (this.rollModule) {
           this.rollModule.enabled = true;
@@ -691,6 +693,7 @@ export class Character extends GameObject {
     if (mode === "walk") {
       canWalk = LocomotionCapability.registerDemand(this, movementInput);
     } else if (mode === "roll") {
+      this.isActivelyWalking = false;
       if (this.locomotionStanceModule) {
         this.locomotionStanceModule.isRollDisabledByWalkStance = false;
       }
@@ -700,6 +703,8 @@ export class Character extends GameObject {
       if (this.rollMovementModule) {
         RollMovementCapability.registerDemand(this, movementInput, this.isBraking, this.isSprinting);
       }
+    } else {
+      this.isActivelyWalking = false;
     }
     HealthRegenCapability.registerDemand(this);
     const canClimb = ClimbingCapability.registerDemand(this, isClimbInput, arena);
@@ -718,6 +723,7 @@ export class Character extends GameObject {
         RollMovementCapability.actuate(this, { x: 0, y: 0 }, this.isBraking, false, dt, arena);
       }
     } else if (mode === "roll") {
+      this.isActivelyWalking = false;
       if (this.rollMovementModule) {
         RollMovementCapability.actuate(this, movementInput, this.isBraking, this.isSprinting, dt, arena);
       }

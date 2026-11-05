@@ -13,28 +13,31 @@ export class LocomotionCapability {
     if (stance && stance.enabled) {
       if (stance.activeMode === "walk") {
         if (!stance.isRollDisabledByWalkStance) {
-          if (!stance.canWalkWhileRolling && char.rollModule && char.isRestingOnSurface) {
-            const speed = Math.hypot(char.velocity.x, char.velocity.y);
-            const spin = Math.hypot(
-              char.rollModule.angularVelocity.x,
-              char.rollModule.angularVelocity.y,
-              char.rollModule.angularVelocity.z
-            );
-            if (speed > 0.25 || spin > 0.25) {
+          const speed = Math.hypot(char.velocity.x, char.velocity.y);
+          const spin = char.rollModule
+            ? Math.hypot(
+                char.rollModule.angularVelocity.x,
+                char.rollModule.angularVelocity.y,
+                char.rollModule.angularVelocity.z
+              )
+            : 0;
+          if (speed > 0.25 || spin > 0.25) {
+            if (!stance.canWalkWhileRolling) {
               return false;
             }
-          }
-          // Fully stopped rolling and in walk mode: disable roll entirely until switching back out of walk mode
-          stance.isRollDisabledByWalkStance = true;
-          if (char.rollModule) {
-            char.rollModule.enabled = false;
-            char.rollModule.angularVelocity.x = 0;
-            char.rollModule.angularVelocity.y = 0;
-            char.rollModule.angularVelocity.z = 0;
-          }
-          if (char.rollMovementModule) {
-            char.rollMovementModule.isRolling = false;
-            char.rollMovementModule.isBraking = false;
+          } else {
+            // Fully stopped rolling and in walk mode: disable roll entirely until switching back out of walk mode
+            stance.isRollDisabledByWalkStance = true;
+            if (char.rollModule) {
+              char.rollModule.enabled = false;
+              char.rollModule.angularVelocity.x = 0;
+              char.rollModule.angularVelocity.y = 0;
+              char.rollModule.angularVelocity.z = 0;
+            }
+            if (char.rollMovementModule) {
+              char.rollMovementModule.isRolling = false;
+              char.rollMovementModule.isBraking = false;
+            }
           }
         } else {
           if (char.rollModule && char.rollModule.enabled) {

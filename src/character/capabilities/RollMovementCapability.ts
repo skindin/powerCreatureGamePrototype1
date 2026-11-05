@@ -90,6 +90,7 @@ export class RollMovementCapability {
   ): void {
     if (!RollMovementCapability.canRoll(char) || !char.rollMovementModule || !char.rollModule) return;
 
+    char.isActivelyWalking = false;
     const mod = char.rollMovementModule;
     const roll = char.rollModule;
     const R = Math.max(0.1, char.colliderRadius);
@@ -111,7 +112,6 @@ export class RollMovementCapability {
         char.velocity.y = 0;
         roll.angularVelocity.x = 0;
         roll.angularVelocity.y = 0;
-        roll.updateOrientation(dt);
         return;
       }
 
@@ -123,7 +123,6 @@ export class RollMovementCapability {
         roll.angularVelocity.y = 0;
       }
 
-      roll.updateOrientation(dt);
       return;
     }
 
@@ -222,7 +221,5 @@ export class RollMovementCapability {
         roll.angularVelocity.x = -char.velocity.y / R;
       }
     }
-
-    roll.updateOrientation(dt);
   }
 }

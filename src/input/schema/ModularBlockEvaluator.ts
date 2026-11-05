@@ -418,24 +418,36 @@ export class ModularBlockEvaluator {
     for (const block of orderedBlocks) {
       if (!block.enabled) continue;
 
-      const isLockedInWalkStanceNow = Boolean(
+      const canUseWalkBlockNow = Boolean(
         char.locomotionMode === "walk" &&
-        (!char.locomotionStanceModule || !char.locomotionStanceModule.enabled || char.locomotionStanceModule.isRollDisabledByWalkStance)
+        (!char.locomotionStanceModule ||
+          !char.locomotionStanceModule.enabled ||
+          char.locomotionStanceModule.isRollDisabledByWalkStance ||
+          char.locomotionStanceModule.canWalkWhileRolling)
       );
 
       switch (block.type) {
         case "walkSprint":
         case "locomotion":
         case "rollMovement": {
+          const b = block as WalkSprintControlBlock | RollMovementControlBlock;
           if (hasBothRollAndWalkBlocks) {
-            if (block.type === "rollMovement" && isLockedInWalkStanceNow) {
-              break;
+            if (block.type === "rollMovement") {
+              if (!char.locomotionStanceModule?.isRollDisabledByWalkStance && b.brake && b.brake.code) {
+                if (isSlotActive(b.brake, "hold", false, b.id, "locomotion.brake")) {
+                  isBraking = true;
+                  claimSlot(b.brake, b.id, "locomotion.brake", false);
+                }
+                char.isBraking = isBraking;
+              }
+              if (char.locomotionMode !== "roll") {
+                break;
+              }
             }
-            if ((block.type === "walkSprint" || block.type === "locomotion") && !isLockedInWalkStanceNow) {
+            if ((block.type === "walkSprint" || block.type === "locomotion") && !canUseWalkBlockNow) {
               break;
             }
           }
-          const b = block as WalkSprintControlBlock | RollMovementControlBlock;
           const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
           const fwdActive = isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forwardDrive");
 
