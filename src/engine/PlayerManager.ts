@@ -757,7 +757,7 @@ export class PlayerManager {
     if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
       const kSchema = ControlsInspector.getActiveSchema(kChar);
-      const isHolding = kChar.heldObject !== null;
+      const isHolding = kChar.heldObject !== null || Boolean(kChar.grappledTarget);
       const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject ? kChar.canConsumeHeldObject() : false);
 
       // Target discovery in reach for pickup or swap
@@ -1078,7 +1078,7 @@ export class PlayerManager {
 
       const cChar = entry.character;
       const gpSchema = ControlsInspector.getActiveSchema(cChar);
-      const isCharHolding = cChar.heldObject !== null;
+      const isCharHolding = cChar.heldObject !== null || Boolean(cChar.grappledTarget);
       const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject ? cChar.canConsumeHeldObject() : false);
 
       let aimX = slot.aimPos.x;

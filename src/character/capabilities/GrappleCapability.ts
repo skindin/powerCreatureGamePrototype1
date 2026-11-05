@@ -80,7 +80,7 @@ export class GrappleCapability {
     const maxPower = character.grappleModule ? character.grappleModule.maxPowerProp.get(character.properties) : 350;
     const metabolicJoules = Math.min(rawMetabolicJoules, Math.max(10, maxPower));
 
-    const consumesEnergy = character.grappleModule ? character.grappleModule.consumesEnergy : true;
+    const consumesEnergy = true; // Shove impulse always consumes explosive burst energy from EnergyPool
     const allowPartial = character.grappleModule ? character.grappleModule.allowPartialPower : false;
 
     let energyFraction = 1.0;

@@ -569,7 +569,7 @@ export class Character extends GameObject {
       });
 
       this.pickupModule = new PickupModule({ consumesEnergy: false, allowPartialPower: false });
-      this.grappleModule = new GrappleModule({ consumesEnergy: false, allowPartialPower: false });
+      this.grappleModule = new GrappleModule({ consumesEnergy: true, allowPartialPower: false });
       this.throwModule = new ThrowModule({ consumesEnergy: true });
 
       this.jumpModule = new JumpModule();

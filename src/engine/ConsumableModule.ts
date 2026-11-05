@@ -55,6 +55,9 @@ export class ConsumableModule {
   /** Track initial unscaled radius of the parent object */
   public initialColliderRadius: number = 0.26;
 
+  /** Track initial unscaled mass of the parent object */
+  public initialMass: number = 0;
+
   /** Flag indicating whether the item has been completely consumed */
   public isConsumed: boolean = false;
 
@@ -256,15 +259,23 @@ export class ConsumableModule {
       });
     }
 
-    // 4. Dynamically shrink physical collider radius (with scale floor)
+    // 4. Dynamically shrink physical collider radius and mass (with scale floor)
     if (!this.initialColliderRadius || this.initialColliderRadius <= 0) {
       this.initialColliderRadius = consumableObj.colliderRadius > 0 ? consumableObj.colliderRadius : 0.26;
+    }
+    if (!this.initialMass || this.initialMass <= 0) {
+      this.initialMass = consumableObj.mass > 0 ? consumableObj.mass : 1.0;
     }
     const currentScale = this.getScale(registry);
     const targetRadius = Math.max(this.minRadiusFloor, this.initialColliderRadius * currentScale);
     consumableObj.colliderRadius = targetRadius;
     if (consumableObj.colliderModule) {
       consumableObj.colliderModule.radius = targetRadius;
+    }
+    const targetMass = Math.max(0.05, this.initialMass * (currentScale ** 3));
+    consumableObj.mass = targetMass;
+    if (consumableObj.rigidbodyModule) {
+      consumableObj.rigidbodyModule.mass = targetMass;
     }
 
     // 5. Check for complete consumption
@@ -319,9 +330,12 @@ export class ConsumableModule {
       try { (consumableObj as any)._onConsumed(consumableObj.id); } catch (_) {}
     }
 
-    // Detach from character's hands
+    // Detach from character's hands or grapple leash
     if (consumer.heldObject === consumableObj) {
       consumer.heldObject = null;
+    }
+    if (consumer.grappledTarget === consumableObj) {
+      consumer.releaseGrapple();
     }
     consumableObj.isHeld = false;
     consumableObj.heldBy = null;

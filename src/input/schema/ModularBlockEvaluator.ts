@@ -1160,8 +1160,15 @@ export class ModularBlockEvaluator {
             if (char.grappledTarget) {
               const shoveTrigger = b.chargeTrigger ?? b.quickTrigger ?? b.aimTrigger ?? b.fireTrigger;
               const pickupCode = (char as any)._pickupPressCode;
-              const isPickupCodeActive = pickupCode && (tokens.isDown(pickupCode) || isButtonCodePhysicallyDown(pickupCode));
-              if (!isPickupCodeActive && shoveTrigger && isSlotActive(shoveTrigger, "down", true, b.id, "throw.shove")) {
+              if (pickupCode && !tokens.isDown(pickupCode) && !isButtonCodePhysicallyDown(pickupCode)) {
+                (char as any)._pickupPressCode = null;
+                (char as any)._throwRequiresFreshPress = false;
+              }
+              const isStillHoldingInitialPickup = Boolean(
+                (char as any)._pickupPressCode &&
+                (tokens.isDown((char as any)._pickupPressCode) || isButtonCodePhysicallyDown((char as any)._pickupPressCode))
+              );
+              if (!isStillHoldingInitialPickup && shoveTrigger && isSlotActive(shoveTrigger, "down", true, b.id, "throw.shove")) {
                 const aimAngle = (targetAimPos.x !== char.position.x || targetAimPos.y !== char.position.y)
                   ? Math.atan2(targetAimPos.y - char.position.y, targetAimPos.x - char.position.x)
                   : char.facingAngle;
@@ -1555,6 +1562,11 @@ export class ModularBlockEvaluator {
           if ((execCtx.isHoldingItem || char.grappledTarget) && isSlotActive(b.drop, "down", true, b.id, "pickup.drop")) {
             if (char.grappledTarget) {
               GrappleCapability.releaseGrapple(char);
+              (char as any)._pickupPressCode = null;
+              (char as any)._throwRequiresFreshPress = false;
+              (char as any)._fireRequiresFreshPress = false;
+              (char as any)._isConsumeToggledOn = false;
+              (char as any)._toggledConsumeItemId = null;
               claimSlot(b.drop, b.id, "pickup.drop", true);
             } else {
               isDrop = true;
@@ -1924,7 +1936,7 @@ export class ModularBlockEvaluator {
       meleeAimDirY = meleeDy / meleeDist;
     }
 
-    if (isDrop || isThrow || isSwap || !char.heldObject) {
+    if (isDrop || isThrow || isSwap || (!char.heldObject && !char.grappledTarget)) {
       (char as any)._isConsumeToggledOn = false;
       (char as any)._toggledConsumeItemId = null;
       isUsingItem = false;
