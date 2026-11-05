@@ -299,10 +299,10 @@ export class PrefabManager {
       minScaleMultiplier: 0.5,
       maxScaleMultiplier: 2.0,
       startingScaleMultiplier: 1.0,
-      baseMass: 1.2,
-      baseColliderRadius: 0.40,
-      baseSpriteRadius: 0.40,
-      connectedProperties: EnergyGrowthModule.createDefaultConnectedProperties(),
+      scaleMass: true,
+      scaleCollider: true,
+      scaleSprite: true,
+      autoScaleReachWithCollider: true,
     });
     growerArchetype.vomitModule = new VomitModule({
       enabled: true,
