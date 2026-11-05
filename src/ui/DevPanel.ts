@@ -1238,18 +1238,23 @@ export class DevPanel {
     }
 
     if (!prefab) {
+      if (!(e instanceof Character)) {
+        await DevConfigPersistence.saveStandaloneEntity(this, e);
+        this.renderEntityModules();
+        return;
+      }
       this.showSaveToast("⚠️ No linked prefab found for this entity. Select or create a prefab first.", true);
       return;
     }
 
-    // 1. Sync module existence and properties from selected entity to prefab archetype
-    EntityModuleLifecycle.syncModule(e, prefab.archetype, moduleType);
+    // 1. Sync ALL module existences and properties from selected entity to prefab archetype
+    EntityModuleLifecycle.syncAllModules(e, prefab.archetype);
 
     // 2. Cascade module sync to other live instances of this prefab
     const allObjects = (this.objects as GameObject[] || []).concat(this.getAllCharacters ? this.getAllCharacters() : []);
     for (const liveObj of allObjects) {
       if (liveObj !== e && liveObj.prefabId === prefab.id) {
-        EntityModuleLifecycle.syncModule(e, liveObj, moduleType);
+        EntityModuleLifecycle.syncAllModules(e, liveObj);
       }
     }
 

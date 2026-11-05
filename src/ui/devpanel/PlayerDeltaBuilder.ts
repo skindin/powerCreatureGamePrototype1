@@ -90,6 +90,8 @@ export class PlayerDeltaBuilder {
         if (prop === char.rollMovementModule.maxRollSpeedProp) return "rollMovementModule.maxRollSpeed";
         if (prop === char.rollMovementModule.maxSprintSpeedProp) return "rollMovementModule.maxSprintSpeed";
         if (prop === char.rollMovementModule.brakeDecelerationProp) return "rollMovementModule.brakeDeceleration";
+        if (prop === char.rollMovementModule.freeRollResistanceProp) return "rollMovementModule.freeRollResistance";
+        if (prop === char.rollMovementModule.brakeRollResistanceProp) return "rollMovementModule.brakeRollResistance";
         if (prop === char.rollMovementModule.maxRollPowerProp) return "rollMovementModule.rollPowerCapacity";
         if (prop === char.rollMovementModule.maxSprintPowerProp) return "rollMovementModule.sprintPowerCapacity";
         if (prop === char.rollMovementModule.maxBrakePowerProp) return "rollMovementModule.brakePowerCapacity";

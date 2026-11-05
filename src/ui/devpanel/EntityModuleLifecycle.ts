@@ -129,6 +129,7 @@ export class EntityModuleLifecycle {
     } else {
       panel.markDirty("player", e);
     }
+    void panel.saveModuleToPrefab(modId);
   }
 
   public static removeModuleFromSelectedEntity(panel: DevPanel, modId: string): void {
@@ -260,6 +261,7 @@ export class EntityModuleLifecycle {
     } else {
       panel.markDirty("player", e);
     }
+    void panel.saveModuleToPrefab(modId);
   }
 
   public static addModuleToSelectedEntity(panel: DevPanel, modId: string): void {
@@ -442,6 +444,47 @@ export class EntityModuleLifecycle {
     } else {
       panel.markDirty("player", e);
     }
+    void panel.saveModuleToPrefab(modId);
+  }
+
+  public static readonly ALL_MODULE_IDS: readonly string[] = [
+    "rigidbody",
+    "collider",
+    "friction",
+    "bounce",
+    "verticalPosition",
+    "gravity",
+    "roll",
+    "walking",
+    "jump",
+    "rollMovement",
+    "locomotionStance",
+    "pickup",
+    "throw",
+    "wallEdgeAssist",
+    "climbing",
+    "health",
+    "laser",
+    "melee",
+    "consume",
+    "consumable",
+    "gun",
+    "spawner",
+    "character",
+    "energyPool",
+    "damageAura",
+    "damageSolver",
+  ];
+
+  /**
+   * Synchronizes ALL module existences, enabled states, and configurations from src to dest.
+   * Ensures that adding, removing, or saving any module on an entity deterministically syncs
+   * the entire module set to its prefab archetype and live instances.
+   */
+  public static syncAllModules(src: GameObject, dest: GameObject): void {
+    for (const modId of this.ALL_MODULE_IDS) {
+      this.syncModule(src, dest, modId);
+    }
   }
 
   /**
@@ -587,6 +630,8 @@ export class EntityModuleLifecycle {
             destChar.rollMovementModule.maxRollSpeedProp.set(srcChar.rollMovementModule.maxRollSpeedProp.get(src.properties), dest.properties);
             destChar.rollMovementModule.maxSprintSpeedProp.set(srcChar.rollMovementModule.maxSprintSpeedProp.get(src.properties), dest.properties);
             destChar.rollMovementModule.brakeDecelerationProp.set(srcChar.rollMovementModule.brakeDecelerationProp.get(src.properties), dest.properties);
+            destChar.rollMovementModule.freeRollResistanceProp.set(srcChar.rollMovementModule.freeRollResistanceProp.get(src.properties), dest.properties);
+            destChar.rollMovementModule.brakeRollResistanceProp.set(srcChar.rollMovementModule.brakeRollResistanceProp.get(src.properties), dest.properties);
             destChar.rollMovementModule.maxRollPowerProp.set(srcChar.rollMovementModule.maxRollPowerProp.get(src.properties), dest.properties);
             destChar.rollMovementModule.maxSprintPowerProp.set(srcChar.rollMovementModule.maxSprintPowerProp.get(src.properties), dest.properties);
             destChar.rollMovementModule.maxBrakePowerProp.set(srcChar.rollMovementModule.maxBrakePowerProp.get(src.properties), dest.properties);
@@ -600,6 +645,28 @@ export class EntityModuleLifecycle {
             destChar.rollMovementModule.enforceMaxSprintSpeed = srcChar.rollMovementModule.enforceMaxSprintSpeed;
           } else {
             destChar.rollMovementModule = null;
+          }
+        }
+        break;
+
+      case "locomotionStance":
+        if (destChar) {
+          if (srcChar?.locomotionStanceModule) {
+            if (!destChar.locomotionStanceModule) {
+              destChar.locomotionStanceModule = new LocomotionStanceModule({
+                enabled: srcChar.locomotionStanceModule.enabled,
+                activeMode: srcChar.locomotionStanceModule.activeMode,
+                supportedModes: [...srcChar.locomotionStanceModule.supportedModes],
+                canWalkWhileRolling: srcChar.locomotionStanceModule.canWalkWhileRolling,
+              });
+            } else {
+              destChar.locomotionStanceModule.enabled = srcChar.locomotionStanceModule.enabled;
+              destChar.locomotionStanceModule.activeMode = srcChar.locomotionStanceModule.activeMode;
+              destChar.locomotionStanceModule.supportedModes = [...srcChar.locomotionStanceModule.supportedModes];
+              destChar.locomotionStanceModule.canWalkWhileRolling = srcChar.locomotionStanceModule.canWalkWhileRolling;
+            }
+          } else {
+            destChar.locomotionStanceModule = null;
           }
         }
         break;
@@ -643,6 +710,7 @@ export class EntityModuleLifecycle {
         if (destChar) {
           if (srcChar?.wallEdgeAssistModule) {
             if (!destChar.wallEdgeAssistModule) destChar.wallEdgeAssistModule = new WallEdgeAssistModule();
+            destChar.wallEdgeAssistModule.enabled = srcChar.wallEdgeAssistModule.enabled;
             if (srcChar.wallEdgeAssistModule.hangDistanceProp && destChar.wallEdgeAssistModule.hangDistanceProp) {
               destChar.wallEdgeAssistModule.hangDistanceProp.set(srcChar.wallEdgeAssistModule.hangDistanceProp.get(src.properties), dest.properties);
             }

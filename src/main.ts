@@ -275,12 +275,21 @@ async function bootstrap(): Promise<void> {
   });
   character.position.z = initialSpawn.z ?? 0;
   character.prefabId = "prefab_player";
-  if (worldConfig.player) {
-    applyCharacterConfig(character, worldConfig.player);
-  }
   const playerPrefab = prefabManager.get("prefab_player");
-  if (playerPrefab && playerPrefab.archetype instanceof Character) {
-    applyCharacterConfig(playerPrefab.archetype, serializeCharacter(character));
+  const hasSavedPlayerPrefab = Boolean(
+    worldConfig.prefabs && Array.isArray(worldConfig.prefabs) && worldConfig.prefabs.some((p: any) => p.id === "prefab_player")
+  );
+  if (hasSavedPlayerPrefab && playerPrefab && playerPrefab.archetype instanceof Character) {
+    applyCharacterConfig(character, serializeCharacter(playerPrefab.archetype));
+    character.name = initialPlayerHandle;
+    character.prefabId = "prefab_player";
+  } else if (worldConfig.player) {
+    applyCharacterConfig(character, worldConfig.player);
+    character.name = initialPlayerHandle;
+    character.prefabId = "prefab_player";
+    if (playerPrefab && playerPrefab.archetype instanceof Character) {
+      applyCharacterConfig(playerPrefab.archetype, serializeCharacter(character));
+    }
   }
 
   // 2b. Initialize Sparring Dummy Character (inert, untied to player input, with HP & Damage Solver)

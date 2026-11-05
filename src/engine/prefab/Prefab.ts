@@ -7,6 +7,7 @@ import { Character } from "../../character/Character.js";
 import { ControlSchema } from "../../input/schema/ControlSchemaTypes.js";
 import { applyCharacterConfig, serializeCharacter } from "../../config/WorldConfig.js";
 import { PlayerDeltaBuilder } from "../../ui/devpanel/PlayerDeltaBuilder.js";
+import { EntityModuleLifecycle } from "../../ui/devpanel/EntityModuleLifecycle.js";
 
 export interface PrefabOptions {
   id: string;
@@ -117,6 +118,7 @@ export class Prefab {
 
     instance.prefabId = this.id;
     instance.overriddenProperties = new Set<string>();
+    EntityModuleLifecycle.syncAllModules(this.archetype, instance);
 
     if (this.archetype instanceof Character && instance instanceof Character) {
       const srcChar = this.archetype as Character;

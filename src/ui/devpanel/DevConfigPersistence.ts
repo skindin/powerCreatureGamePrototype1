@@ -12,8 +12,10 @@ import {
   deserializeGameObject,
   serializePrefab,
   serializeCharacter,
+  applyCharacterConfig,
 } from "../../config/WorldConfig.js";
 import { PlayerDeltaBuilder } from "./PlayerDeltaBuilder.js";
+import { EntityModuleLifecycle } from "./EntityModuleLifecycle.js";
 import type { DevPanel } from "../DevPanel.js";
 import type { ControlSchema } from "../../input/schema/ControlSchemaTypes.js";
 
@@ -22,6 +24,37 @@ import type { ControlSchema } from "../../input/schema/ControlSchemaTypes.js";
  * toggles, prefabs, arena/spawner configs, and git data sync.
  */
 export class DevConfigPersistence {
+  public static async saveStandaloneEntity(
+    panel: DevPanel,
+    entity: GameObject
+  ): Promise<void> {
+    if ((panel as any).isOnlineLocked) {
+      panel.showSaveToast("🔒 DevTools save disabled in online mode", true);
+      return;
+    }
+    const dirtyState = (panel as any).dirtyState;
+    const delta: WorldConfigDelta = {
+      clientVersion: (panel as any).currentConfigVersion,
+      sections: ["objects"],
+      objectsDelta: {
+        upsert: [serializeGameObject(entity)],
+      },
+    };
+    const resp = await fetch("/api/dev/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(delta),
+    });
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const res = await resp.json();
+    (panel as any).currentConfigVersion = res.version ?? ((panel as any).currentConfigVersion + 1);
+    dirtyState?.modifiedObjects?.delete(entity.id);
+    panel.updateDirtyBadge();
+    panel.showSaveToast(`💾 Saved modules for ${entity.name} to Scene Config`);
+  }
+
   public static async saveIndividualProperty(
     panel: DevPanel,
     owner: GameObject,
@@ -45,14 +78,21 @@ export class DevConfigPersistence {
       const targetPrefabId = char.prefabId || "prefab_player";
       const playerPrefab = prefabManager.get(targetPrefabId);
       if (playerPrefab) {
+        EntityModuleLifecycle.syncAllModules(char, playerPrefab.archetype);
         playerPrefab.setProperty(canonicalPath, value, getAllCharacters ? getAllCharacters() : [char]);
       }
 
-      const playerDelta = PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(canonicalPath, value);
+      const isDefaultPlayer = targetPrefabId === "prefab_player";
+      const sections: ("player" | "prefabs")[] = isDefaultPlayer ? ["player", "prefabs"] : ["prefabs"];
+      const playerDelta = isDefaultPlayer
+        ? (playerPrefab && playerPrefab.archetype instanceof Character
+            ? serializeCharacter(playerPrefab.archetype as Character)
+            : PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(canonicalPath, value))
+        : undefined;
       const delta: WorldConfigDelta = {
         clientVersion: (panel as any).currentConfigVersion,
-        sections: ["player", "prefabs"],
-        player: playerDelta,
+        sections,
+        ...(playerDelta ? { player: playerDelta } : {}),
         prefabsDelta: {
           replaceAll: prefabManager.getAll().map(serializePrefab),
         },
@@ -81,6 +121,7 @@ export class DevConfigPersistence {
       if (owner.prefabId) {
         const prefab = prefabManager.get(owner.prefabId);
         if (prefab) {
+          EntityModuleLifecycle.syncAllModules(owner, prefab.archetype);
           owner.overriddenProperties.delete(canonicalPath);
           prefab.setProperty(canonicalPath, value, objects);
           prefabsUpsert = [serializePrefab(prefab)];
@@ -148,14 +189,21 @@ export class DevConfigPersistence {
         const targetPrefabId = char.prefabId || "prefab_player";
         const playerPrefab = prefabManager.get(targetPrefabId);
         if (playerPrefab) {
+          EntityModuleLifecycle.syncAllModules(char, playerPrefab.archetype);
           playerPrefab.setProperty(keyPath, value, getAllCharacters ? getAllCharacters() : [char]);
         }
 
-        const playerDelta = PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(keyPath, value);
+        const isDefaultPlayer = targetPrefabId === "prefab_player";
+        const sections: ("player" | "prefabs")[] = isDefaultPlayer ? ["player", "prefabs"] : ["prefabs"];
+        const playerDelta = isDefaultPlayer
+          ? (playerPrefab && playerPrefab.archetype instanceof Character
+              ? serializeCharacter(playerPrefab.archetype as Character)
+              : PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(keyPath, value))
+          : undefined;
         const delta: WorldConfigDelta = {
           clientVersion: (panel as any).currentConfigVersion,
-          sections: ["player", "prefabs"],
-          player: playerDelta,
+          sections,
+          ...(playerDelta ? { player: playerDelta } : {}),
           prefabsDelta: {
             replaceAll: prefabManager.getAll().map(serializePrefab),
           },
@@ -182,6 +230,7 @@ export class DevConfigPersistence {
         if (owner.prefabId) {
           const prefab = prefabManager.get(owner.prefabId);
           if (prefab) {
+            EntityModuleLifecycle.syncAllModules(owner, prefab.archetype);
             prefab.setProperty(keyPath, value, objects);
             prefabsUpsert = [serializePrefab(prefab)];
             sections.push("prefabs");
@@ -240,6 +289,11 @@ export class DevConfigPersistence {
     const getAllCharacters = (panel as any).getAllCharacters as (() => Character[]) | undefined;
     const isChar = prefab.archetype instanceof Character;
 
+    const selected = panel.selectedEntity;
+    if (selected && (selected.prefabId === prefab.id || selected === prefab.archetype)) {
+      EntityModuleLifecycle.syncAllModules(selected, prefab.archetype);
+    }
+
     if (isChar) {
       prefab.setProperty(propKey, value, getAllCharacters ? getAllCharacters() : objects);
     } else {
@@ -247,8 +301,9 @@ export class DevConfigPersistence {
     }
     const affectedObjects = objects.filter((o) => o.prefabId === prefab.id && !o.overriddenProperties.has(propKey));
 
+    const isDefaultPlayer = isChar && prefab.id === "prefab_player";
     const sections: ("prefabs" | "objects" | "player")[] = ["prefabs", "objects"];
-    if (isChar) sections.push("player");
+    if (isDefaultPlayer) sections.push("player");
 
     const delta: WorldConfigDelta = {
       clientVersion: (panel as any).currentConfigVersion,
@@ -261,7 +316,7 @@ export class DevConfigPersistence {
       objectsDelta: {
         upsert: affectedObjects.map(serializeGameObject),
       },
-      player: isChar ? PlayerDeltaBuilder.buildSinglePropertyPlayerDelta(propKey, value) : undefined,
+      player: isDefaultPlayer ? serializeCharacter(prefab.archetype as Character) : undefined,
     };
 
     const resp = await fetch("/api/dev/save-config", {
@@ -292,10 +347,16 @@ export class DevConfigPersistence {
     const objects = (panel as any).objects as GameObject[];
     const dirtyState = (panel as any).dirtyState;
 
+    const selected = panel.selectedEntity;
+    if (selected && (selected.prefabId === prefab.id || selected === prefab.archetype)) {
+      EntityModuleLifecycle.syncAllModules(selected, prefab.archetype);
+    }
+
     const affectedObjects = objects.filter((o) => o.prefabId === prefab.id);
     const isChar = prefab.archetype instanceof Character;
+    const isDefaultPlayer = isChar && prefab.id === "prefab_player";
     const sections: ("prefabs" | "objects" | "player")[] = ["prefabs", "objects"];
-    if (isChar) sections.push("player");
+    if (isDefaultPlayer) sections.push("player");
 
     const delta: WorldConfigDelta = {
       clientVersion: (panel as any).currentConfigVersion,
@@ -308,7 +369,7 @@ export class DevConfigPersistence {
       objectsDelta: {
         upsert: affectedObjects.map(serializeGameObject),
       },
-      player: isChar ? serializeCharacter(prefab.archetype as Character) : undefined,
+      player: isDefaultPlayer ? serializeCharacter(prefab.archetype as Character) : undefined,
     };
 
     const resp = await fetch("/api/dev/save-config", {
@@ -656,6 +717,15 @@ export class DevConfigPersistence {
 
       if (config.prefabs && Array.isArray(config.prefabs)) {
         prefabManager.loadFromConfig(config.prefabs);
+        const chars = getAllCharacters ? getAllCharacters() : (character ? [character] : []);
+        for (const char of chars) {
+          const targetPrefabId = char.prefabId || "prefab_player";
+          const prefab = prefabManager.get(targetPrefabId);
+          if (prefab && prefab.archetype instanceof Character) {
+            EntityModuleLifecycle.syncAllModules(prefab.archetype, char);
+            applyCharacterConfig(char, serializeCharacter(prefab.archetype));
+          }
+        }
         panel.renderScenePrefabs();
       }
 
