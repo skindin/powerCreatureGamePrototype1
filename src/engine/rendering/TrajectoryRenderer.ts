@@ -365,8 +365,8 @@ export class TrajectoryRenderer {
 
       // Trajectory Modulation Guide Rail:
       // Dotted vertical rail at the 2D average position with optimal detent notch (green dot) and clamped slider pip (white dot).
-      // Strictly hidden when using analog trigger pull or aiming wall clear
-      const rail = (character && !isWallClearAim && !isTriggerPull)
+      // Strictly hidden when using analog trigger pull, charging over time, or aiming wall clear
+      const rail = (character && !isWallClearAim && !isTriggerPull && !isCharging)
         ? TrajectoryRenderer.calculateMidpointRail(character, arena, traj, ppu, hoverScale)
         : null;
       if (rail) {
