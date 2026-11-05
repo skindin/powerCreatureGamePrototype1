@@ -737,6 +737,36 @@ export class Character extends GameObject {
       this.velocity.x = 0;
       this.velocity.y = 0;
       this.verticalVelocity = 0;
+
+      // Allow aiming / directional facing while being carried
+      if (aimTargetPos && isAimingInput) {
+        const dx = aimTargetPos.x - this.position.x;
+        const dy = aimTargetPos.y - this.position.y;
+        if (Math.hypot(dx, dy) > 0.05) {
+          this.facingAngle = Math.atan2(dy, dx);
+        }
+      } else if (movementInput && Math.hypot(movementInput.x, movementInput.y) > 0.05) {
+        this.facingAngle = Math.atan2(movementInput.y, movementInput.x);
+      }
+
+      // Start of tick: Reset demand registrations and live power draw on EnergyPool
+      if (this.energyPool && this.energyPool.enabled) {
+        this.energyPool.beginTick();
+      }
+
+      // Combat abilities (Laser & Melee punch) while held
+      LaserCapability.actuate(this, dt, arena);
+      MeleeCapability.actuate(this, arena);
+
+      // End of tick: resolve energy pool
+      if (this.energyPool && this.energyPool.enabled) {
+        this.energyPool.update(dt, this.properties);
+      }
+
+      // If hold was broken by a punch/ability during this frame, integrate recoil movement immediately
+      if (!this.isHeld) {
+        this.updatePosition(dt, arena);
+      }
       return;
     }
 
@@ -926,6 +956,7 @@ export class Character extends GameObject {
     // For active local players, delay 1.2s and open the Character Selection Window
     if (!this.isDummy && this.controllerType !== "none" && typeof window !== "undefined") {
       this.isDying = true;
+      const persistentColor = this.playerColor || this.color;
       setTimeout(async () => {
         try {
           const { CharacterSelectModal } = await import("../ui/CharacterSelectModal.js");
@@ -945,11 +976,19 @@ export class Character extends GameObject {
                   this.controlSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
                 }
               }
+              if (persistentColor) {
+                this.color = persistentColor;
+                this.playerColor = persistentColor;
+              }
               this.isDying = false;
               this.performRespawn(_arena, explicitPos);
             },
           });
         } catch {
+          if (persistentColor) {
+            this.color = persistentColor;
+            this.playerColor = persistentColor;
+          }
           this.isDying = false;
           this.performRespawn(_arena, explicitPos);
         }
@@ -961,6 +1000,11 @@ export class Character extends GameObject {
   }
 
   private performRespawn(_arena?: Arena, explicitPos?: { x: number; y: number; z?: number }): void {
+    if (this.playerColor) {
+      this.color = this.playerColor;
+    } else if (this.color) {
+      this.playerColor = this.color;
+    }
     this.isClimbing = false;
     this.standingWall = null;
     if (this.wallEdgeAssistModule) {

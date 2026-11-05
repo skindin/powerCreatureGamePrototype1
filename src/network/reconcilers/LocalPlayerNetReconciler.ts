@@ -59,11 +59,16 @@ export class LocalPlayerNetReconciler {
 
       if (targetChar) {
         console.log(`💀 [OnlineSession] Processing authoritative death & respawn for ${targetChar.id || targetChar.name} to (${ev.respawnX}, ${ev.respawnY}, ${ev.respawnZ})`);
+        const savedColor = targetChar.playerColor || targetChar.color;
         targetChar.dieAndRespawn(gameLoop.arena, {
           x: ev.respawnX,
           y: ev.respawnY,
           z: ev.respawnZ
         });
+        if (savedColor) {
+          targetChar.playerColor = savedColor;
+          targetChar.color = savedColor;
+        }
         if (gameLoop.primaryCharacter && gameLoop.primaryCharacter !== targetChar) {
           gameLoop.primaryCharacter.resetDynamicValues();
         }

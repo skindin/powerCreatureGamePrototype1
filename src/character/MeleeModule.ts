@@ -277,6 +277,21 @@ export class MeleeModule {
       for (const target of hitTargets) {
         const targetMass = Math.max(0.2, target.mass);
 
+        // If attacker is punching the character carrying them, break the hold immediately
+        if (attacker.heldBy === target || (target as any).heldObject === attacker) {
+          (target as Character).unhold?.();
+          attacker.isHeld = false;
+          attacker.heldBy = null;
+          attacker.wakeUp();
+          attacker.applyKnockbackWindow(350);
+        }
+        if ((target as any).grappledTarget === attacker || (attacker as any).grappledBy === target) {
+          if (typeof (target as any).releaseGrapple === "function") (target as any).releaseGrapple();
+          if (typeof (attacker as any).releaseGrapple === "function") (attacker as any).releaseGrapple();
+          attacker.wakeUp();
+          attacker.applyKnockbackWindow(350);
+        }
+
         // Target knockback: Delta v = J / mass
         const targetDv = impulsePerTarget / targetMass;
 

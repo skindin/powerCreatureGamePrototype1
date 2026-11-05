@@ -831,7 +831,14 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     char.controlSchema = JSON.parse(JSON.stringify(config.controlSchema));
   }
   if (config.name) char.name = config.name;
-  if (config.color) char.color = config.color;
+  if (config.color) {
+    if (!char.playerColor) {
+      char.color = config.color;
+      char.playerColor = config.color;
+    } else {
+      char.color = char.playerColor;
+    }
+  }
   if (config.mass !== undefined) {
     char.mass = config.mass;
     if (char.rigidbodyModule) char.rigidbodyModule.massProp.set(config.mass, char.properties);

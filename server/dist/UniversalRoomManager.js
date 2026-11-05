@@ -5397,6 +5397,7 @@ class MeleeModule {
    * Executes a melee strike from the attacker along the given normalized direction vector.
    */
   executePunch(attacker, dirX, dirY, potentialTargets, _arena, now = performance.now()) {
+    var _a;
     if (!this.enabled) return null;
     if (!this.canPunchNow(now, attacker.properties)) return null;
     const registry = attacker.properties;
@@ -5487,6 +5488,19 @@ class MeleeModule {
       const attackerMass = Math.max(0.2, attacker.mass);
       for (const target of hitTargets) {
         const targetMass = Math.max(0.2, target.mass);
+        if (attacker.heldBy === target || target.heldObject === attacker) {
+          (_a = target.unhold) == null ? void 0 : _a.call(target);
+          attacker.isHeld = false;
+          attacker.heldBy = null;
+          attacker.wakeUp();
+          attacker.applyKnockbackWindow(350);
+        }
+        if (target.grappledTarget === attacker || attacker.grappledBy === target) {
+          if (typeof target.releaseGrapple === "function") target.releaseGrapple();
+          if (typeof attacker.releaseGrapple === "function") attacker.releaseGrapple();
+          attacker.wakeUp();
+          attacker.applyKnockbackWindow(350);
+        }
         const targetDv = impulsePerTarget / targetMass;
         const currentInwardVel = target.velocity.x * uX + target.velocity.y * uY;
         if (currentInwardVel < 0) {
@@ -9462,6 +9476,26 @@ class Character extends GameObject {
       this.velocity.x = 0;
       this.velocity.y = 0;
       this.verticalVelocity = 0;
+      if (aimTargetPos && isAimingInput) {
+        const dx = aimTargetPos.x - this.position.x;
+        const dy = aimTargetPos.y - this.position.y;
+        if (Math.hypot(dx, dy) > 0.05) {
+          this.facingAngle = Math.atan2(dy, dx);
+        }
+      } else if (movementInput && Math.hypot(movementInput.x, movementInput.y) > 0.05) {
+        this.facingAngle = Math.atan2(movementInput.y, movementInput.x);
+      }
+      if (this.energyPool && this.energyPool.enabled) {
+        this.energyPool.beginTick();
+      }
+      LaserCapability.actuate(this, dt, arena2);
+      MeleeCapability.actuate(this, arena2);
+      if (this.energyPool && this.energyPool.enabled) {
+        this.energyPool.update(dt, this.properties);
+      }
+      if (!this.isHeld) {
+        this.updatePosition(dt, arena2);
+      }
       return;
     }
     this.movementInput.x = movementInput.x;
@@ -9610,6 +9644,7 @@ class Character extends GameObject {
     this.verticalVelocity = 0;
     if (!this.isDummy && this.controllerType !== "none" && typeof window !== "undefined") {
       this.isDying = true;
+      const persistentColor = this.playerColor || this.color;
       setTimeout(async () => {
         try {
           const { CharacterSelectModal } = await import("./assets/CharacterSelectModal-CfI4XNtY.js");
@@ -9628,11 +9663,19 @@ class Character extends GameObject {
                   this.controlSchema = JSON.parse(JSON.stringify(prefab.controlSchema));
                 }
               }
+              if (persistentColor) {
+                this.color = persistentColor;
+                this.playerColor = persistentColor;
+              }
               this.isDying = false;
               this.performRespawn(_arena, explicitPos);
             }
           });
         } catch {
+          if (persistentColor) {
+            this.color = persistentColor;
+            this.playerColor = persistentColor;
+          }
           this.isDying = false;
           this.performRespawn(_arena, explicitPos);
         }
@@ -9643,6 +9686,11 @@ class Character extends GameObject {
   }
   performRespawn(_arena, explicitPos) {
     var _a;
+    if (this.playerColor) {
+      this.color = this.playerColor;
+    } else if (this.color) {
+      this.playerColor = this.color;
+    }
     this.isClimbing = false;
     this.standingWall = null;
     if (this.wallEdgeAssistModule) {
@@ -12305,7 +12353,14 @@ function applyCharacterConfig(char, config) {
     char.controlSchema = JSON.parse(JSON.stringify(config.controlSchema));
   }
   if (config.name) char.name = config.name;
-  if (config.color) char.color = config.color;
+  if (config.color) {
+    if (!char.playerColor) {
+      char.color = config.color;
+      char.playerColor = config.color;
+    } else {
+      char.color = char.playerColor;
+    }
+  }
   if (config.mass !== void 0) {
     char.mass = config.mass;
     if (char.rigidbodyModule) char.rigidbodyModule.massProp.set(config.mass, char.properties);
