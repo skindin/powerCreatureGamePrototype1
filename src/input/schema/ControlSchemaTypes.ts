@@ -34,6 +34,8 @@ export type ConditionType =
   | "tagReleased"
   | "grounded"
   | "climbing"
+  | "grappling"
+  | "grappledByOther"
   | "isAiming"
   | "isAimingTrajectory"
   | "isLaserAiming"

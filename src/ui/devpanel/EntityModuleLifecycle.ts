@@ -1,6 +1,7 @@
 import { Character } from "../../character/Character.js";
 import { WalkingModule } from "../../character/WalkingModule.js";
 import { PickupModule } from "../../character/PickupModule.js";
+import { GrappleModule } from "../../character/GrappleModule.js";
 import { ThrowModule } from "../../character/ThrowModule.js";
 import { ClimbingModule } from "../../character/ClimbingModule.js";
 import { JumpModule } from "../../character/JumpModule.js";
@@ -71,6 +72,9 @@ export class EntityModuleLifecycle {
         break;
       case "pickup":
         if (char?.pickupModule) char.pickupModule.enabled = !char.pickupModule.enabled;
+        break;
+      case "grapple":
+        if (char?.grappleModule) char.grappleModule.enabled = !char.grappleModule.enabled;
         break;
       case "throw":
         if (char?.throwModule) char.throwModule.enabled = !char.throwModule.enabled;
@@ -187,6 +191,15 @@ export class EntityModuleLifecycle {
             char.pickupModule?.drop(char);
           }
           char.pickupModule = null;
+        }
+        break;
+      case "grapple":
+        if (e instanceof Character) {
+          const char = e as Character;
+          if (char.grappledTarget) {
+            char.grappleModule?.release(char);
+          }
+          char.grappleModule = null;
         }
         break;
       case "throw":
@@ -342,6 +355,11 @@ export class EntityModuleLifecycle {
           (e as Character).pickupModule = new PickupModule({ consumesEnergy: false, allowPartialPower: false });
         }
         break;
+      case "grapple":
+        if (e instanceof Character) {
+          (e as Character).grappleModule = new GrappleModule({ consumesEnergy: false, allowPartialPower: false });
+        }
+        break;
       case "throw":
         if (e instanceof Character) {
           (e as Character).throwModule = new ThrowModule({ consumesEnergy: true });
@@ -485,6 +503,7 @@ export class EntityModuleLifecycle {
     "rollMovement",
     "locomotionStance",
     "pickup",
+    "grapple",
     "throw",
     "wallEdgeAssist",
     "climbing",
@@ -713,6 +732,31 @@ export class EntityModuleLifecycle {
             destChar.pickupModule.allowPartialPower = srcChar.pickupModule.allowPartialPower;
           } else {
             destChar.pickupModule = null;
+          }
+        }
+        break;
+
+      case "grapple":
+        if (destChar) {
+          if (srcChar?.grappleModule) {
+            if (!destChar.grappleModule) destChar.grappleModule = new GrappleModule();
+            destChar.grappleModule.enabled = srcChar.grappleModule.enabled;
+            if (srcChar.grappleModule.grappleReachProp && destChar.grappleModule.grappleReachProp) {
+              destChar.grappleModule.grappleReachProp.set(srcChar.grappleModule.grappleReachProp.get(src.properties), dest.properties);
+            }
+            if (srcChar.grappleModule.shoveImpulseProp && destChar.grappleModule.shoveImpulseProp) {
+              destChar.grappleModule.shoveImpulseProp.set(srcChar.grappleModule.shoveImpulseProp.get(src.properties), dest.properties);
+            }
+            if (srcChar.grappleModule.breakoutDistanceRatioProp && destChar.grappleModule.breakoutDistanceRatioProp) {
+              destChar.grappleModule.breakoutDistanceRatioProp.set(srcChar.grappleModule.breakoutDistanceRatioProp.get(src.properties), dest.properties);
+            }
+            if (srcChar.grappleModule.maxPowerProp && destChar.grappleModule.maxPowerProp) {
+              destChar.grappleModule.maxPowerProp.set(srcChar.grappleModule.maxPowerProp.get(src.properties), dest.properties);
+            }
+            destChar.grappleModule.consumesEnergy = srcChar.grappleModule.consumesEnergy;
+            destChar.grappleModule.allowPartialPower = srcChar.grappleModule.allowPartialPower;
+          } else {
+            destChar.grappleModule = null;
           }
         }
         break;

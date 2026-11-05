@@ -15,6 +15,7 @@ import type { ControlExecutionContext, ControlRule } from "../input/schema/Contr
 import { prefabManager } from "./prefab/PrefabManager.js";
 import { applyCharacterConfig, serializeCharacter } from "../config/WorldConfig.js";
 import { CharacterSelectModal } from "../ui/CharacterSelectModal.js";
+import { GrabIntentArbiter } from "../character/capabilities/GrabIntentArbiter.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -762,9 +763,11 @@ export class PlayerManager {
       // Target discovery in reach for pickup or swap
       let grabTargetObjectId: string | null = null;
       let grabTargetObject: GameObject | null = null;
-      if (kChar.pickupModule) {
-        const candidateEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects].filter((c) => c !== kChar.heldObject);
-        const target = kChar.pickupModule.findTargetObject(
+      if (kChar.pickupModule || kChar.grappleModule) {
+        const candidateEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects].filter(
+          (c) => c !== kChar.heldObject && c !== (kChar as any).grappledTarget
+        );
+        const target = GrabIntentArbiter.findTarget(
           kChar,
           input.actualMousePos.x,
           input.actualMousePos.y,
@@ -1083,9 +1086,11 @@ export class PlayerManager {
       let aimY = slot.aimPos.y;
 
       let grabTargetObject: GameObject | null = null;
-      if (cChar.pickupModule) {
-        const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects].filter((c) => c !== cChar.heldObject);
-        const target = cChar.pickupModule.findTargetObject(
+      if (cChar.pickupModule || cChar.grappleModule) {
+        const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects].filter(
+          (c) => c !== cChar.heldObject && c !== (cChar as any).grappledTarget
+        );
+        const target = GrabIntentArbiter.findTarget(
           cChar,
           aimX,
           aimY,
@@ -1634,7 +1639,7 @@ export class PlayerManager {
             }
           }
         } else if (aimTarget) {
-          const pickedUp = char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
+          const pickedUp = char.pickupModule ? char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y) : false;
           const held = char.heldObject as GameObject | null;
           if (pickedUp && held) {
             grabState.grabSuppressed = true;
@@ -1667,12 +1672,12 @@ export class PlayerManager {
         }
       }
       const isSeeking = !justDepletedConsumable && pkt.isGrabHeld && !isDeviceSuppressed;
-      if (!isEditMode && isSeeking && !char.heldObject && char.pickupModule) {
+      if (!isEditMode && isSeeking && !char.heldObject && !char.grappledTarget && (char.pickupModule || char.grappleModule)) {
         if (pkt.grabTargetObjectId !== undefined) {
           if (pkt.grabTargetObjectId !== null) {
             const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
             const targetObj = otherEntities.find((e) => e.id === pkt.grabTargetObjectId);
-            if (targetObj && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) {
+            if (targetObj) {
               if (this.isOnlineMode) {
                 // Online Mode: Do NOT assume pickup was successful! Send priority message to server.
                 const gState = this.getGrabSuppressionState(char.id);
@@ -1703,12 +1708,12 @@ export class PlayerManager {
                     itemToHold = clone;
                   }
                 }
-                const pickedUp = char.pickupModule.pickup(char, itemToHold);
-                if (!pickedUp && itemToHold !== targetObj) {
+                const result = GrabIntentArbiter.executeGrab(char, itemToHold);
+                if (!result.success && itemToHold !== targetObj) {
                   // Insufficient lift energy or failed pickup: clean up orphaned clone
                   const idx = objects.indexOf(itemToHold);
                   if (idx !== -1) objects.splice(idx, 1);
-                } else if (pickedUp) {
+                } else if (result.success) {
                   const gState = this.getGrabSuppressionState(char.id);
                   const isButtonHeld = this.inputManager.isMouseDown ||
                     this.inputManager.isRightMouseDown ||
@@ -1735,7 +1740,7 @@ export class PlayerManager {
         } else if (aimTarget) {
           // Fallback for legacy calls without grabTargetObjectId
           const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
-          const target = char.pickupModule.findTargetObject(char, aimTarget.x, aimTarget.y, otherEntities, this.arena.wallHeight);
+          const target = GrabIntentArbiter.findTarget(char, aimTarget.x, aimTarget.y, otherEntities, this.arena.wallHeight);
           if (target) {
             if (this.isOnlineMode) {
               const gState = this.getGrabSuppressionState(char.id);
@@ -1759,7 +1764,7 @@ export class PlayerManager {
             } else if (target.spawnerModule && target.spawnerModule.enabled) {
               const clone = target.spawnerModule.triggerClone(target, this.arena, objects);
               if (clone) {
-                const pickedUp = char.pickupModule.pickup(char, clone);
+                const pickedUp = char.pickupModule ? char.pickupModule.pickup(char, clone) : false;
                 if (!pickedUp) {
                   const idx = objects.indexOf(clone);
                   if (idx !== -1) objects.splice(idx, 1);
@@ -1786,7 +1791,7 @@ export class PlayerManager {
                 }
               }
             } else {
-              const pickedUp = char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y);
+              const pickedUp = char.pickupModule ? char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y) : false;
               const held = char.heldObject as GameObject | null;
               if (pickedUp && held) {
                 const gState = this.getGrabSuppressionState(char.id);

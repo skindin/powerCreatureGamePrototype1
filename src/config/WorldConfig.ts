@@ -19,6 +19,7 @@ import { WalkingModule } from "../character/WalkingModule.js";
 import { JumpModule } from "../character/JumpModule.js";
 import { ThrowModule } from "../character/ThrowModule.js";
 import { PickupModule } from "../character/PickupModule.js";
+import { GrappleModule } from "../character/GrappleModule.js";
 import { EnergyPool } from "../character/EnergyPool.js";
 import { WallEdgeAssistModule } from "../character/WallEdgeAssistModule.js";
 import { DamageAuraModule } from "../engine/DamageAuraModule.js";
@@ -246,6 +247,17 @@ export interface SerializedCharacterConfig {
   pickupModule?: {
     enabled?: boolean;
     pickupReach?: number;
+    maxPower?: number;
+    consumesEnergy?: boolean;
+    allowPartialPower?: boolean;
+  };
+
+  hasGrapple?: boolean;
+  grappleModule?: {
+    enabled?: boolean;
+    grappleReach?: number;
+    shoveImpulse?: number;
+    breakoutDistanceRatio?: number;
     maxPower?: number;
     consumesEnergy?: boolean;
     allowPartialPower?: boolean;
@@ -536,6 +548,21 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
     };
   } else {
     result.hasPickup = false;
+  }
+
+  if (char.grappleModule) {
+    result.hasGrapple = true;
+    result.grappleModule = {
+      enabled: char.grappleModule.enabled,
+      grappleReach: char.grappleModule.grappleReachProp ? char.grappleModule.grappleReachProp.get(char.properties) : 1.3,
+      shoveImpulse: char.grappleModule.shoveImpulseProp ? char.grappleModule.shoveImpulseProp.get(char.properties) : 16.0,
+      breakoutDistanceRatio: char.grappleModule.breakoutDistanceRatioProp ? char.grappleModule.breakoutDistanceRatioProp.get(char.properties) : 1.4,
+      maxPower: char.grappleModule.maxPowerProp ? char.grappleModule.maxPowerProp.get(char.properties) : 250.0,
+      consumesEnergy: char.grappleModule.consumesEnergy,
+      allowPartialPower: char.grappleModule.allowPartialPower,
+    };
+  } else {
+    result.hasGrapple = false;
   }
 
   if (char.climbingModule) {
@@ -950,6 +977,39 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
         }
         if (config.pickupModule.consumesEnergy !== undefined) pm.consumesEnergy = config.pickupModule.consumesEnergy;
         if (config.pickupModule.allowPartialPower !== undefined) pm.allowPartialPower = config.pickupModule.allowPartialPower;
+      }
+    }
+  }
+
+  if (config.hasGrapple === false) {
+    char.grappleModule = null;
+  } else if (config.grappleModule || config.hasGrapple === true) {
+    if (!char.grappleModule) {
+      char.grappleModule = new GrappleModule();
+    }
+    const gm = char.grappleModule;
+    if (gm) {
+      gm.enabled = config.grappleModule?.enabled ?? true;
+      if (config.grappleModule) {
+        if (config.grappleModule.grappleReach !== undefined && gm.grappleReachProp) {
+          gm.grappleReachProp.set(config.grappleModule.grappleReach, char.properties);
+          char.properties?.set("grappleReach", config.grappleModule.grappleReach);
+        }
+        if (config.grappleModule.shoveImpulse !== undefined && gm.shoveImpulseProp) {
+          gm.shoveImpulseProp.set(config.grappleModule.shoveImpulse, char.properties);
+          char.properties?.set("shoveImpulse", config.grappleModule.shoveImpulse);
+        }
+        if (config.grappleModule.breakoutDistanceRatio !== undefined && gm.breakoutDistanceRatioProp) {
+          gm.breakoutDistanceRatioProp.set(config.grappleModule.breakoutDistanceRatio, char.properties);
+          char.properties?.set("grappleBreakoutRatio", config.grappleModule.breakoutDistanceRatio);
+        }
+        const grapplePower = config.grappleModule.maxPower;
+        if (grapplePower !== undefined && gm.maxPowerProp) {
+          gm.maxPowerProp.set(grapplePower, char.properties);
+          char.properties?.set("grappleMaxPower", grapplePower);
+        }
+        if (config.grappleModule.consumesEnergy !== undefined) gm.consumesEnergy = config.grappleModule.consumesEnergy;
+        if (config.grappleModule.allowPartialPower !== undefined) gm.allowPartialPower = config.grappleModule.allowPartialPower;
       }
     }
   }

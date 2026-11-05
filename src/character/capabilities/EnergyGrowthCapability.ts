@@ -105,6 +105,29 @@ export class EnergyGrowthCapability {
           mod.lastAppliedValues["pickupReach"] = targetReach;
         }
       }
+
+      if (mod.autoScaleReachWithCollider && char.grappleModule) {
+        const hasManualGrappleReachRule = mod.scaledProperties.some(
+          (r) => r.enabled && (r.propertyKey === "grapple.grappleReach" || r.key === "grapple.grappleReach")
+        );
+        if (!hasManualGrappleReachRule) {
+          const curReach = char.grappleModule.grappleReachProp.get(char.properties);
+          const radiusDelta = scaledRadius - baseRadius;
+          if (mod.baseValues["grappleReach"] === undefined) {
+            mod.baseValues["grappleReach"] = Math.max(0.15, curReach);
+          } else if (
+            mod.lastAppliedValues["grappleReach"] !== undefined &&
+            Math.abs(curReach - mod.lastAppliedValues["grappleReach"]) > 0.01
+          ) {
+            mod.baseValues["grappleReach"] = Math.max(0.15, curReach);
+          }
+          const targetReach = Math.max(0.15, mod.baseValues["grappleReach"] + radiusDelta);
+          if (Math.abs(curReach - targetReach) > 0.002) {
+            char.grappleModule.grappleReachProp.set(targetReach, char.properties);
+          }
+          mod.lastAppliedValues["grappleReach"] = targetReach;
+        }
+      }
     }
 
     if (mod.scaleSprite) {

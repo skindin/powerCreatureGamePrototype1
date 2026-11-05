@@ -172,6 +172,12 @@ export class ControlSchemaArbiter {
       case "climbing":
         result = ctx.isClimbing;
         break;
+      case "grappling":
+        result = Boolean(ctx.character.grappledTarget);
+        break;
+      case "grappledByOther":
+        result = Boolean(ctx.character.grappledBy);
+        break;
       case "tagHeld":
       case "tagPressed":
       case "tagReleased":

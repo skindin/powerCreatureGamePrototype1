@@ -29,6 +29,8 @@ import { EnergyGrowthModule } from "./EnergyGrowthModule.js";
 import { EnergyGrowthCapability } from "./capabilities/EnergyGrowthCapability.js";
 import { VomitModule } from "./VomitModule.js";
 import { VomitCapability } from "./capabilities/VomitCapability.js";
+import { GrappleModule } from "./GrappleModule.js";
+import { GrappleCapability } from "./capabilities/GrappleCapability.js";
 import type { ControlSchema } from "../input/schema/ControlSchemaTypes.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
@@ -147,6 +149,9 @@ export class Character extends GameObject {
   // Removable Modules
   public walkingModule: WalkingModule | null;
   public pickupModule: PickupModule | null;
+  public grappleModule: GrappleModule | null = null;
+  public grappledTarget: GameObject | null = null;
+  public grappledBy: Character | null = null;
   public throwModule: ThrowModule | null;
   public jumpModule: JumpModule | null;
   public wallEdgeAssistModule: WallEdgeAssistModule | null;
@@ -500,6 +505,7 @@ export class Character extends GameObject {
     if (determinedRole === "dummy") {
       this.walkingModule = null;
       this.pickupModule = null;
+      this.grappleModule = null;
       this.throwModule = null;
       this.jumpModule = null;
       this.wallEdgeAssistModule = null;
@@ -512,6 +518,7 @@ export class Character extends GameObject {
       });
 
       this.pickupModule = new PickupModule({ consumesEnergy: false, allowPartialPower: false });
+      this.grappleModule = new GrappleModule({ consumesEnergy: false, allowPartialPower: false });
       this.throwModule = new ThrowModule({ consumesEnergy: true });
 
       this.jumpModule = new JumpModule();
@@ -545,6 +552,13 @@ export class Character extends GameObject {
     this.properties.add("meleeReach", this.meleeModule.reach);
     this.properties.add("meleeWidth", this.meleeModule.width);
     this.properties.add("meleeMaxPower", this.meleeModule.maxPower);
+
+    if (this.grappleModule) {
+      this.properties.add("grappleReach", this.grappleModule.grappleReach);
+      this.properties.add("shoveImpulse", this.grappleModule.shoveImpulse);
+      this.properties.add("grappleBreakoutRatio", this.grappleModule.breakoutDistanceRatio);
+      this.properties.add("grappleMaxPower", this.grappleModule.maxPower);
+    }
 
     if (determinedRole !== "dummy") {
       this.laserModule = new LaserModule({
@@ -626,6 +640,12 @@ export class Character extends GameObject {
       this.heldObject.heldBy = null;
       this.heldObject = null;
     }
+    if (this.grappledTarget) {
+      GrappleCapability.releaseGrapple(this);
+    }
+    if (this.grappledBy) {
+      GrappleCapability.releaseGrapple(this.grappledBy);
+    }
     if (this.isHeld && this.heldBy) {
       if (this.heldBy instanceof Character && this.heldBy.heldObject === this) {
         this.heldBy.heldObject = null;
@@ -697,6 +717,15 @@ export class Character extends GameObject {
     hasAuthoredFacingAngle = false
   ): void {
     if (this.isDying) {
+      this.velocity.x = 0;
+      this.velocity.y = 0;
+      this.verticalVelocity = 0;
+      return;
+    }
+
+    if (this.isHeld && this.heldBy) {
+      this.isActivelyWalking = false;
+      this.isSprinting = false;
       this.velocity.x = 0;
       this.velocity.y = 0;
       this.verticalVelocity = 0;
@@ -790,6 +819,9 @@ export class Character extends GameObject {
     // Combat abilities (Laser & Melee)
     LaserCapability.actuate(this, dt, arena);
     MeleeCapability.actuate(this, arena);
+
+    // Grapple tether & leash physics
+    GrappleCapability.updateGrapple(this, dt, arena);
 
     // Energy pool stamina recovery (runs after all physical abilities and buffers in the tick)
     if (this.energyPool && this.energyPool.enabled) {

@@ -1,6 +1,8 @@
 import type { Character } from "../../character/Character.js";
 import type { Vector2D } from "../../engine/GameObject.js";
 import type { ControlExecutionContext } from "./ControlSchemaTypes.js";
+import { GrabIntentArbiter } from "../../character/capabilities/GrabIntentArbiter.js";
+import { GrappleCapability } from "../../character/capabilities/GrappleCapability.js";
 
 export interface ActionDefinition {
   id: string; // e.g. "releaseThrow"
@@ -128,12 +130,52 @@ export class ControlActionCatalog {
         {
           id: "releaseThrow",
           label: "Release Throw",
-          description: "Throws held item along trajectory to aim position",
+          description: "Throws held item along trajectory, or shoves grappled target",
           recommendedMode: "release",
           execute: (ctx) => {
             if (ctx.character.heldObject && ctx.character.throwModule && ctx.arena) {
               const aim = ctx.mouseAimPos || ctx.reticleAimPos;
               ctx.character.throwModule.throwHeldObject(ctx.character, aim.x, aim.y, ctx.arena);
+            } else if (ctx.character.grappledTarget) {
+              const aim = ctx.mouseAimPos || ctx.reticleAimPos;
+              const angle = aim ? Math.atan2(aim.y - ctx.character.position.y, aim.x - ctx.character.position.x) : ctx.character.facingAngle;
+              GrappleCapability.executeShove(ctx.character, angle);
+            }
+          },
+        },
+      ],
+    },
+
+
+    // 5. Grapple & Shove
+    {
+      id: "grapple",
+      label: "Grapple & Shove",
+      icon: "🪢",
+      requiredModule: "grappleModule",
+      isAttached: (char: Character) => Boolean(char.grappleModule && char.grappleModule.enabled),
+      actions: [
+        {
+          id: "shoveGrappled",
+          label: "Shove Grappled Target",
+          description: "Pushes the grappled object/character away with momentum recoil",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            if (ctx.character.grappledTarget) {
+              const aim = ctx.mouseAimPos || ctx.reticleAimPos;
+              const angle = aim ? Math.atan2(aim.y - ctx.character.position.y, aim.x - ctx.character.position.x) : ctx.character.facingAngle;
+              GrappleCapability.executeShove(ctx.character, angle);
+            }
+          },
+        },
+        {
+          id: "releaseGrapple",
+          label: "Release Grapple Tether",
+          description: "Disconnects the active grapple tether",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            if (ctx.character.grappledTarget && ctx.character.grappleModule) {
+              ctx.character.grappleModule.release(ctx.character);
             }
           },
         },
@@ -151,22 +193,24 @@ export class ControlActionCatalog {
         {
           id: "pickupReach",
           label: "Pick Up / Grab Object",
-          description: "Picks up the target object currently within reach",
+          description: "Picks up or grapples the target object/character currently within reach",
           recommendedMode: "press",
           execute: (ctx) => {
-            if (!ctx.character.heldObject && ctx.targetInReach && ctx.character.pickupModule) {
-              ctx.character.pickupModule.pickup(ctx.character, ctx.targetInReach);
+            if (!ctx.character.heldObject && !ctx.character.grappledTarget && ctx.targetInReach) {
+              GrabIntentArbiter.executeGrab(ctx.character, ctx.targetInReach);
             }
           },
         },
         {
           id: "dropItem",
           label: "Drop Held Object",
-          description: "Gently drops the held object onto the ground",
+          description: "Gently drops the held object, or disconnects active grapple tether",
           recommendedMode: "press",
           execute: (ctx) => {
             if (ctx.character.heldObject) {
               ctx.character.unhold();
+            } else if (ctx.character.grappledTarget && ctx.character.grappleModule) {
+              ctx.character.grappleModule.release(ctx.character);
             }
           },
         },

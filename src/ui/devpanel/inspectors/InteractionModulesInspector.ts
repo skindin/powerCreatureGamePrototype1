@@ -60,6 +60,68 @@ export class InteractionModulesInspector {
         }
       });
 
+      // Grapple sockets
+      const grappleReachSocketEl = container.querySelector("#prop-socket-grapple-reach");
+      if (grappleReachSocketEl && char.grappleModule) {
+        const grCtrl = new PropertyControl({
+          property: char.grappleModule.grappleReachProp,
+          owner: char,
+          label: "Grapple Reach (3D) (u)",
+          step: 0.1,
+        });
+        grappleReachSocketEl.appendChild(grCtrl.element);
+      }
+      const shoveImpulseSocketEl = container.querySelector("#prop-socket-grapple-shove-impulse");
+      if (shoveImpulseSocketEl && char.grappleModule) {
+        const siCtrl = new PropertyControl({
+          property: char.grappleModule.shoveImpulseProp,
+          owner: char,
+          label: "Shove Impulse (N·s)",
+          step: 1.0,
+        });
+        shoveImpulseSocketEl.appendChild(siCtrl.element);
+      }
+      const breakoutRatioSocketEl = container.querySelector("#prop-socket-grapple-breakout-ratio");
+      if (breakoutRatioSocketEl && char.grappleModule) {
+        const brCtrl = new PropertyControl({
+          property: char.grappleModule.breakoutDistanceRatioProp,
+          owner: char,
+          label: "Breakout Distance Ratio (x Reach)",
+          step: 0.05,
+        });
+        breakoutRatioSocketEl.appendChild(brCtrl.element);
+      }
+      const grapplePowerCapSocketEl = container.querySelector("#prop-socket-grapple-power-cap");
+      if (grapplePowerCapSocketEl && char.grappleModule) {
+        const gpCtrl = new PropertyControl({
+          property: char.grappleModule.maxPowerProp,
+          owner: char,
+          label: "Max Grapple Power (Watts)",
+          step: 25.0,
+        });
+        grapplePowerCapSocketEl.appendChild(gpCtrl.element);
+      }
+      const checkGrappleEnergy = container.querySelector("#check-grapple-energy") as HTMLInputElement;
+      const fieldGrapplePartialPower = container.querySelector("#field-grapple-partial-power") as HTMLElement;
+      const checkGrapplePartialPower = container.querySelector("#check-grapple-partial-power") as HTMLInputElement;
+      checkGrappleEnergy?.addEventListener("change", () => {
+        if (char.grappleModule) {
+          char.grappleModule.consumesEnergy = checkGrappleEnergy.checked;
+          if (fieldGrapplePartialPower) fieldGrapplePartialPower.style.display = checkGrappleEnergy.checked ? "block" : "none";
+        }
+      });
+      bindToggleSave("check-grapple-energy", char, "grappleModule.consumesEnergy", "Grapple Consumes Energy", (v) => {
+        if (char.grappleModule) char.grappleModule.consumesEnergy = v;
+      });
+      bindToggleSave("check-grapple-partial-power", char, "grappleModule.allowPartialPower", "Grapple Partial Power", (v) => {
+        if (char.grappleModule) char.grappleModule.allowPartialPower = v;
+      });
+      checkGrapplePartialPower?.addEventListener("change", () => {
+        if (char.grappleModule) {
+          char.grappleModule.allowPartialPower = checkGrapplePartialPower.checked;
+        }
+      });
+
       // Throw sockets
       const throwForceSocketEl = container.querySelector("#prop-socket-throw-force");
       if (throwForceSocketEl && char.throwModule) {

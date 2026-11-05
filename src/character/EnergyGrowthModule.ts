@@ -547,6 +547,39 @@ export class EnergyGrowthModule {
       );
     }
 
+    // Grapple
+    if (char.grappleModule) {
+      list.push(
+        bindProp(
+          "grapple.grappleReach",
+          "Grapple Reach",
+          "Interaction",
+          "m",
+          "cbrt",
+          (c) => c.grappleModule?.grappleReachProp,
+          0.15
+        ),
+        bindProp(
+          "grapple.shoveImpulse",
+          "Shove Impulse",
+          "Interaction",
+          "N·s",
+          "cross_section",
+          (c) => c.grappleModule?.shoveImpulseProp,
+          1
+        ),
+        bindProp(
+          "grapple.maxPower",
+          "Grapple Max Power",
+          "Interaction",
+          "W",
+          "cross_section",
+          (c) => c.grappleModule?.maxPowerProp,
+          5
+        )
+      );
+    }
+
     // Throw
     if (char.throwModule) {
       list.push(

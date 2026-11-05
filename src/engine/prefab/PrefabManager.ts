@@ -289,11 +289,11 @@ export class PrefabManager {
     growerArchetype.bounceMod = 0.15;
     growerArchetype.climbingModule = null;
     if (growerArchetype.energyPool) {
-      growerArchetype.energyPool.maxEnergyJoules = 20000;
-      growerArchetype.energyPool.currentEnergyJoules = 6667;
-      growerArchetype.energyPool.staminaCapacityJoules = 10000;
-      growerArchetype.energyPool.staminaRegenRateWatts = 1000;
-      growerArchetype.energyPool.currentStaminaJoules = 5000;
+      growerArchetype.energyPool.maxEnergyProp.set(20000, growerArchetype.properties);
+      growerArchetype.energyPool.currentEnergyProp.set(6667, growerArchetype.properties);
+      growerArchetype.energyPool.maxStaminaProp.set(10000, growerArchetype.properties);
+      growerArchetype.energyPool.staminaRegenRateProp.set(1000, growerArchetype.properties);
+      growerArchetype.energyPool.currentStaminaProp.set(5000, growerArchetype.properties);
     }
     growerArchetype.energyGrowthModule = new EnergyGrowthModule({
       enabled: true,
@@ -308,6 +308,8 @@ export class PrefabManager {
         mass: 1.2,
         colliderRadius: 0.44,
         pickupReach: 1.3,
+        grappleReach: 1.3,
+        shoveImpulse: 16.0,
         "walk.maxWalkForce": 35,
         "walk.maxWalkSpeed": 5.2,
         "walk.maxSprintSpeed": 8.06,
@@ -330,7 +332,7 @@ export class PrefabManager {
     });
     growerArchetype.vomitModule = new VomitModule({
       enabled: true,
-      globEnergyJoules: 2000,
+      energyPerGlob: 2000,
       launchSpeed: 11.0,
       cooldownSeconds: 0.35,
       globColor: "#84cc16",

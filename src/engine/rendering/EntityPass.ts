@@ -51,10 +51,10 @@ export class EntityPass {
       (c) =>
         !c.isHeld &&
         c.heldObject !== obj &&
-        c.pickupModule !== null &&
-        c.pickupModule.enabled &&
+        c !== (obj as any).grappledBy &&
         !obj.isHeld &&
-        (c.pickupModule?.isObjectInReach(c, obj, arena.wallHeight) ?? false)
+        ((c.pickupModule?.enabled && (c.pickupModule?.isObjectInReach(c, obj, arena.wallHeight) ?? false)) ||
+         (c.grappleModule?.enabled && (c.grappleModule?.isTargetInReach(c, obj, arena.wallHeight) ?? false)))
     );
 
     const targetingChars: Character[] = [];
@@ -400,10 +400,10 @@ export class EntityPass {
         c !== char &&
         !c.isHeld &&
         c.heldObject !== char &&
-        c.pickupModule !== null &&
-        c.pickupModule.enabled &&
+        c !== (char as any).grappledBy &&
         !char.isHeld &&
-        (c.pickupModule?.isObjectInReach(c, char, arena.wallHeight) ?? false)
+        ((c.pickupModule?.enabled && (c.pickupModule?.isObjectInReach(c, char, arena.wallHeight) ?? false)) ||
+         (c.grappleModule?.enabled && (c.grappleModule?.isTargetInReach(c, char, arena.wallHeight) ?? false)))
     );
 
     const targetingChars: Character[] = [];
@@ -493,6 +493,34 @@ export class EntityPass {
         ctx.setLineDash([4, 4]);
         ctx.stroke();
       }
+      ctx.restore();
+    }
+
+    // Render active grapple tether leash
+    if (char.grappledTarget) {
+      const target = char.grappledTarget;
+      const targetVx = target.visualOffset ? target.visualOffset.x : 0;
+      const targetVy = target.visualOffset ? target.visualOffset.y : 0;
+      const targetHoverScale = useHover ? viewSettings.visualAltitudeScale : 0;
+      const tx = (target.position.x - targetVx) * ppu;
+      const ty = (target.position.y - targetVy - target.position.z * targetHoverScale) * ppu;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(tx, ty);
+      ctx.strokeStyle = char.playerColor || "#f59e0b";
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = "round";
+      ctx.setLineDash([8, 5]);
+      ctx.stroke();
+
+      // Anchor dots
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.arc(tx, ty, 4, 0, Math.PI * 2);
+      ctx.fillStyle = char.playerColor || "#f59e0b";
+      ctx.fill();
       ctx.restore();
     }
   }

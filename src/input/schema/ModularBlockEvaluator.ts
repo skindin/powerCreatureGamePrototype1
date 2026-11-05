@@ -18,6 +18,7 @@ import { InputPressTokenManager } from "./InputPressTokenManager.js";
 import type { PlayerInputPacket } from "../../engine/physics/StateHistoryBuffer.js";
 import { ThrowCapability } from "../../character/capabilities/ThrowCapability.js";
 import { VomitCapability } from "../../character/capabilities/VomitCapability.js";
+import { GrappleCapability } from "../../character/capabilities/GrappleCapability.js";
 import { ControlSchemaArbiter } from "./ControlSchemaArbiter.js";
 import { BulletManager } from "../../engine/bullet/BulletManager.js";
 
@@ -1156,6 +1157,17 @@ export class ModularBlockEvaluator {
             break;
           }
           if (!execCtx.isHoldingItem) {
+            if (char.grappledTarget) {
+              const shoveTrigger = b.chargeTrigger ?? b.quickTrigger ?? b.aimTrigger ?? b.fireTrigger;
+              if (isSlotActive(shoveTrigger, "down", true, b.id, "throw.shove")) {
+                const aimAngle = (targetAimPos.x !== char.position.x || targetAimPos.y !== char.position.y)
+                  ? Math.atan2(targetAimPos.y - char.position.y, targetAimPos.x - char.position.x)
+                  : char.facingAngle;
+                GrappleCapability.executeShove(char, aimAngle);
+                claimSlot(shoveTrigger, b.id, "throw.shove", true);
+                isThrow = true;
+              }
+            }
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
             char.isHoldingThrowRelease = false;
@@ -1512,7 +1524,7 @@ export class ModularBlockEvaluator {
 
           // Pickup
           if (isSlotActive(b.pickup, "down", true, b.id, "pickup.grab")) {
-            if (!execCtx.isHoldingItem && grabTargetObjectId) {
+            if (!execCtx.isHoldingItem && !char.grappledTarget && grabTargetObjectId) {
               isGrabHeld = true;
               if (b.pickup?.code) {
                 (char as any)._pickupPressCode = b.pickup.code;
@@ -1525,7 +1537,7 @@ export class ModularBlockEvaluator {
 
           // Additional Pickup
           if (b.additionalPickup && isSlotActive(b.additionalPickup, "down", true, b.id, "pickup.grab")) {
-            if (!execCtx.isHoldingItem && grabTargetObjectId) {
+            if (!execCtx.isHoldingItem && !char.grappledTarget && grabTargetObjectId) {
               isGrabHeld = true;
               if (b.additionalPickup?.code) {
                 (char as any)._pickupPressCode = b.additionalPickup.code;
@@ -1537,14 +1549,19 @@ export class ModularBlockEvaluator {
           }
 
           // Drop
-          if (execCtx.isHoldingItem && isSlotActive(b.drop, "down", true, b.id, "pickup.drop")) {
-            isDrop = true;
-            (char as any)._pickupPressCode = null;
-            (char as any)._throwRequiresFreshPress = false;
-            (char as any)._fireRequiresFreshPress = false;
-            (char as any)._isConsumeToggledOn = false;
-            (char as any)._toggledConsumeItemId = null;
-            claimSlot(b.drop, b.id, "pickup.drop", true);
+          if ((execCtx.isHoldingItem || char.grappledTarget) && isSlotActive(b.drop, "down", true, b.id, "pickup.drop")) {
+            if (char.grappledTarget) {
+              GrappleCapability.releaseGrapple(char);
+              claimSlot(b.drop, b.id, "pickup.drop", true);
+            } else {
+              isDrop = true;
+              (char as any)._pickupPressCode = null;
+              (char as any)._throwRequiresFreshPress = false;
+              (char as any)._fireRequiresFreshPress = false;
+              (char as any)._isConsumeToggledOn = false;
+              (char as any)._toggledConsumeItemId = null;
+              claimSlot(b.drop, b.id, "pickup.drop", true);
+            }
           }
 
           // Swap

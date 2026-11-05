@@ -49,6 +49,12 @@ export class PlayerDeltaBuilder {
         if (prop === char.pickupModule.pickupReachProp) return "pickupModule.pickupReach";
         if (prop === char.pickupModule.maxPowerProp) return "pickupModule.maxPower";
       }
+      if (char.grappleModule) {
+        if (prop === char.grappleModule.grappleReachProp) return "grappleModule.grappleReach";
+        if (prop === char.grappleModule.shoveImpulseProp) return "grappleModule.shoveImpulse";
+        if (prop === char.grappleModule.breakoutDistanceRatioProp) return "grappleModule.breakoutDistanceRatio";
+        if (prop === char.grappleModule.maxPowerProp) return "grappleModule.maxPower";
+      }
       if (char.climbingModule) {
         if (prop === char.climbingModule.maxClimbSpeedProp) return "climbingModule.climbSpeed";
         if (prop === char.climbingModule.maxPowerProp) return "climbingModule.maxPower";

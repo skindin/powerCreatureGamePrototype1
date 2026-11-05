@@ -53,6 +53,9 @@ export class EntityModuleCardsHtml {
     const hasPickupModule = isChar && Boolean(char?.pickupModule);
     const pickupEnabled = isChar && Boolean(char?.pickupModule?.enabled);
 
+    const hasGrappleModule = isChar && Boolean(char?.grappleModule);
+    const grappleEnabled = isChar && Boolean(char?.grappleModule?.enabled);
+
     const hasThrowModule = isChar && Boolean(char?.throwModule);
     const throwEnabled = isChar && Boolean(char?.throwModule?.enabled);
 
@@ -471,6 +474,29 @@ export class EntityModuleCardsHtml {
             ${renderToggleRow("check-pickup-energy", "Consumes Energy", Boolean(char.pickupModule?.consumesEnergy), "Save Pickup Consumes Energy to project")}
             <div id="field-pickup-partial-power" style="display: ${char.pickupModule?.consumesEnergy ? "block" : "none"}; padding-left: 8px;">
               ${renderToggleRow("check-pickup-partial-power", "Allow Partial Power", Boolean(char.pickupModule?.allowPartialPower), "Save Pickup Partial Power to project")}
+            </div>
+            </div>
+          </div>
+        `;
+      }
+
+      if (hasGrappleModule) {
+        attachedCount++;
+        html += `
+          <div class="module-card ${!grappleEnabled ? "module-disabled" : ""}" data-module-id="grapple">
+            ${panel.renderModuleHeader("grapple", "🪢 Grapple & Shove Ability", renderToggleBtn("grapple", grappleEnabled))}
+            <div id="collapse-body-mod-grapple" style="display: ${isCollapsed("mod-grapple") ? "none" : "block"};">
+            ${!grappleEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Grapple & Shove Ability is disabled</div>` : ""}
+            <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+              Grapples heavy objects and other characters with grounded physics. Pressing Throw during a grapple shoves the target with momentum recoil.
+            </div>
+            <div id="prop-socket-grapple-reach"></div>
+            <div id="prop-socket-grapple-shove-impulse"></div>
+            <div id="prop-socket-grapple-breakout-ratio"></div>
+            <div id="prop-socket-grapple-power-cap"></div>
+            ${renderToggleRow("check-grapple-energy", "Consumes Energy", Boolean(char.grappleModule?.consumesEnergy), "Save Grapple Consumes Energy to project")}
+            <div id="field-grapple-partial-power" style="display: ${char.grappleModule?.consumesEnergy ? "block" : "none"}; padding-left: 8px;">
+              ${renderToggleRow("check-grapple-partial-power", "Allow Partial Power", Boolean(char.grappleModule?.allowPartialPower), "Save Grapple Partial Power to project")}
             </div>
             </div>
           </div>
@@ -1021,6 +1047,7 @@ export class EntityModuleCardsHtml {
         { id: "rollMovement", name: "Roll Movement Ability", icon: "🌀", description: "Physics-driven rolling torque locomotion with roll brake and sprint", isAttached: hasRollMovementModule },
         { id: "locomotionStance", name: "Locomotion Stance Manager", icon: "🔄", description: "Switch between walking, rolling, and flying locomotion modes", isAttached: hasLocomotionStanceModule },
         { id: "pickup", name: "Pickup Ability", icon: "✋", description: "3D sphere reach to pick up and swap freebodies", isAttached: hasPickupModule },
+        { id: "grapple", name: "Grapple & Shove Ability", icon: "🪢", description: "Grapples heavy objects and other characters with grounded physics", isAttached: hasGrappleModule },
         { id: "throw", name: "Throw Ability", icon: "🎯", description: "Ballistic parabolic trajectory projection & launch", isAttached: hasThrowModule },
         { id: "jump", name: "Jump Ability", icon: "🦘", description: "Vertical leap triggered with Space / Gamepad (A)", isAttached: hasJumpModule },
         { id: "wallEdgeAssist", name: "Wall Edge Assist", icon: "🛡️", description: "Ledge guardrail preventing accidental walk-off on wall tops", isAttached: hasEdgeAssistModule },

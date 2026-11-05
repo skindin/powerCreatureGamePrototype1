@@ -3534,7 +3534,17 @@
     },
     "hasLocomotionStance": false,
     "hasEnergyGrowth": false,
-    "hasVomit": false
+    "hasVomit": false,
+    "hasGrapple": true,
+    "grappleModule": {
+      "enabled": true,
+      "grappleReach": 1.3,
+      "shoveImpulse": 16,
+      "breakoutDistanceRatio": 1.4,
+      "maxPower": 250,
+      "consumesEnergy": false,
+      "allowPartialPower": false
+    }
   },
   "objects": [
     {
@@ -7745,7 +7755,17 @@
         "hasRollMovement": false,
         "hasLocomotionStance": false,
         "hasEnergyGrowth": false,
-        "hasVomit": false
+        "hasVomit": false,
+        "hasGrapple": true,
+        "grappleModule": {
+          "enabled": true,
+          "grappleReach": 1.3,
+          "shoveImpulse": 16,
+          "breakoutDistanceRatio": 1.4,
+          "maxPower": 250,
+          "consumesEnergy": false,
+          "allowPartialPower": false
+        }
       },
       "controlSchema": {
         "id": "default",
@@ -11511,7 +11531,17 @@
           "canWalkWhileRolling": false
         },
         "hasEnergyGrowth": false,
-        "hasVomit": false
+        "hasVomit": false,
+        "hasGrapple": true,
+        "grappleModule": {
+          "enabled": true,
+          "grappleReach": 1.3,
+          "shoveImpulse": 16,
+          "breakoutDistanceRatio": 1.4,
+          "maxPower": 250,
+          "consumesEnergy": false,
+          "allowPartialPower": false
+        }
       },
       "controlSchema": {
         "id": "speed-ball",
@@ -13526,7 +13556,17 @@
         "hasRollMovement": false,
         "hasLocomotionStance": false,
         "hasEnergyGrowth": false,
-        "hasVomit": false
+        "hasVomit": false,
+        "hasGrapple": true,
+        "grappleModule": {
+          "enabled": true,
+          "grappleReach": 1.3,
+          "shoveImpulse": 16,
+          "breakoutDistanceRatio": 1.4,
+          "maxPower": 250,
+          "consumesEnergy": false,
+          "allowPartialPower": false
+        }
       },
       "controlSchema": {
         "id": "hunter-mouse-drive",
@@ -15341,7 +15381,17 @@
         "hasRollMovement": false,
         "hasLocomotionStance": false,
         "hasEnergyGrowth": false,
-        "hasVomit": false
+        "hasVomit": false,
+        "hasGrapple": true,
+        "grappleModule": {
+          "enabled": true,
+          "grappleReach": 1.3,
+          "shoveImpulse": 16,
+          "breakoutDistanceRatio": 1.4,
+          "maxPower": 250,
+          "consumesEnergy": false,
+          "allowPartialPower": false
+        }
       },
       "controlSchema": {
         "id": "gamepad-hybrid-cursor",
@@ -19105,6 +19155,16 @@
           "globColor": "#84cc16",
           "consumableTag": "food",
           "consumeRateWatts": 900
+        },
+        "hasGrapple": true,
+        "grappleModule": {
+          "enabled": true,
+          "grappleReach": 1.3,
+          "shoveImpulse": 16,
+          "breakoutDistanceRatio": 1.4,
+          "maxPower": 250,
+          "consumesEnergy": false,
+          "allowPartialPower": false
         }
       },
       "controlSchema": {

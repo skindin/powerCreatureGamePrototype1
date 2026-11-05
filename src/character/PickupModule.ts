@@ -62,9 +62,20 @@ export class PickupModule {
     obj: GameObject,
     wallHeight: number = 1.0
   ): boolean {
-    if (!this.enabled || obj === character || obj.isHeld || obj.isCharacter) return false;
+    if (!this.enabled || obj === character || obj.isHeld) return false;
     // Cannot grab an object you just threw while it is departing your reach
     if (obj.lastThrower === character) return false;
+
+    // Characters can only be hoisted overhead if the carrier meets the lift strength/mass ratio
+    if (obj.isCharacter) {
+      const targetMass = obj.hasMass ? obj.mass : 0.5;
+      const carrierMass = character.hasMass ? (character.baseMass ?? character.mass) : 1.2;
+      const carrierStrength = character.hasStrength ? character.strength : 1.0;
+      const liftRatio = 2.0;
+      if ((carrierMass * carrierStrength) < targetMass * liftRatio) {
+        return false;
+      }
+    }
 
     // Real 3D z-positions (accounting for elevation on wall tops)
     const charZ = Math.max(
@@ -106,7 +117,7 @@ export class PickupModule {
     let shortestDist = Infinity;
 
     for (const obj of objects) {
-      if (obj === character.heldObject || obj.isHeld) continue;
+      if (obj === character || obj === character.heldObject || obj.isHeld) continue;
       if (!this.isObjectInReach(character, obj, wallHeight)) continue;
 
       // Distance from object to mouse/aim position: pick the one closest to the cursor within maxSelectDistance
@@ -243,7 +254,7 @@ export class PickupModule {
         character.standingWall ? wallHeight : 0
       );
       for (const obj of objects) {
-        if (obj === character.heldObject || obj.isHeld) continue;
+        if (obj === character || obj === character.heldObject || obj.isHeld) continue;
         if (this.isObjectInReach(character, obj, wallHeight)) {
           const objZ = Math.max(
             obj.position.z,
