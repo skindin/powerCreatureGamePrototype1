@@ -1392,8 +1392,9 @@ export class PlayerManager {
         pkt.facingAngle !== undefined
       );
 
-      // Detect newly acquired or released held object to reliably dispatch action
-      const currentHeldId = char.heldObject ? char.heldObject.id : null;
+      // Detect newly acquired or released held/grappled object to reliably dispatch action
+      const activeHeldOrGrappled = char.heldObject || char.grappledTarget;
+      const currentHeldId = activeHeldOrGrappled ? activeHeldOrGrappled.id : null;
       const prevHeldId = this.lastHeldObjectIds.get(char.id) ?? null;
       if (currentHeldId !== prevHeldId) {
         this.lastHeldObjectIds.set(char.id, currentHeldId);
@@ -1412,8 +1413,6 @@ export class PlayerManager {
         if (currentHeldId) {
           if (prevHeldId === null) {
             char.isUsingItem = false;
-            (char as any)._isConsumeToggledOn = false;
-            (char as any)._toggledConsumeItemId = null;
             char.eatRateWatts = 0;
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
@@ -1642,8 +1641,6 @@ export class PlayerManager {
             }
             this.lastHeldObjectIds.set(char.id, held.id);
             char.isUsingItem = false;
-            (char as any)._isConsumeToggledOn = false;
-            (char as any)._toggledConsumeItemId = null;
             char.eatRateWatts = 0;
             char.isChargingThrow = false;
             char.isAimingWallClear = false;

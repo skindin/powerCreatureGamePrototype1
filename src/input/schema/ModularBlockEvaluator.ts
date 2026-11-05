@@ -1610,13 +1610,23 @@ export class ModularBlockEvaluator {
             }
           }
 
-          // Reset toggle if item left hand or was replaced by a different item
+          // Unify held (lifting/grabbing) and grappled (dragging) targets for consume toggle state:
+          // Transitioning between dragging and grabbing the same item keeps the eating toggle active;
+          // only reset if the item is completely released or replaced by a different item.
           const activeConsumableTarget = char.heldObject || char.grappledTarget;
           const currentHeldItemId = activeConsumableTarget?.id ?? null;
           if ((char as any)._isConsumeToggledOn) {
-            if (!currentHeldItemId || currentHeldItemId !== (char as any)._toggledConsumeItemId || isDrop || isSwap || isThrow) {
+            if (
+              !currentHeldItemId ||
+              ((char as any)._toggledConsumeItemId && currentHeldItemId !== (char as any)._toggledConsumeItemId) ||
+              isDrop ||
+              isSwap ||
+              isThrow
+            ) {
               (char as any)._isConsumeToggledOn = false;
               (char as any)._toggledConsumeItemId = null;
+            } else {
+              (char as any)._toggledConsumeItemId = currentHeldItemId;
             }
           }
 
