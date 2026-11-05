@@ -11,17 +11,24 @@ export interface LocomotionStanceModuleOptions {
   activeMode?: LocomotionMode;
   supportedModes?: LocomotionMode[];
   enabled?: boolean;
+  canWalkWhileRolling?: boolean;
 }
 
 export class LocomotionStanceModule {
   public enabled: boolean = true;
   public activeMode: LocomotionMode = "walk";
   public supportedModes: LocomotionMode[] = ["walk", "roll"];
+  /**
+   * Whether the character is permitted to walk while actively rolling.
+   * Off by default: when off, walking cannot engage while the creature is rolling/gliding with momentum.
+   */
+  public canWalkWhileRolling: boolean = false;
 
   constructor(options?: LocomotionStanceModuleOptions) {
     if (options?.enabled !== undefined) this.enabled = options.enabled;
     if (options?.activeMode) this.activeMode = options.activeMode;
     if (options?.supportedModes) this.supportedModes = [...options.supportedModes];
+    if (options?.canWalkWhileRolling !== undefined) this.canWalkWhileRolling = options.canWalkWhileRolling;
   }
 
   /**
@@ -46,3 +53,4 @@ export class LocomotionStanceModule {
     return this.activeMode;
   }
 }
+

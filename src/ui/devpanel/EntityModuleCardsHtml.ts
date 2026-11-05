@@ -396,10 +396,10 @@ export class EntityModuleCardsHtml {
             ${renderToggleRow("check-roll-enforce-max-speed", "Enforce Max Roll Speed", Boolean(char.rollMovementModule.enforceMaxRollSpeed), "Save Enforce Max Roll Speed to project")}
             <div id="prop-socket-roll-sprint-speed"></div>
             ${renderToggleRow("check-roll-enforce-max-sprint-speed", "Enforce Max Sprint Speed", Boolean(char.rollMovementModule.enforceMaxSprintSpeed), "Save Enforce Max Sprint Speed to project")}
-            <div id="prop-socket-roll-brake-decel"></div>
+            <div id="prop-socket-roll-free-resistance"></div>
+            <div id="prop-socket-roll-brake-resistance"></div>
             <div id="prop-socket-roll-power-cap"></div>
             <div id="prop-socket-roll-sprint-power-cap"></div>
-            <div id="prop-socket-roll-brake-power-cap"></div>
             ${renderToggleRow("check-roll-energy", "Roll Consumes Energy", Boolean(char.rollMovementModule.rollConsumesEnergy), "Save Roll Consumes Energy to project")}
             <div id="field-roll-partial-power" style="display: ${char.rollMovementModule.rollConsumesEnergy ? "block" : "none"}; padding-left: 8px;">
               ${renderToggleRow("check-roll-partial-power", "Allow Partial Power", Boolean(char.rollMovementModule.rollAllowPartialPower), "Save Roll Partial Power to project")}
@@ -452,6 +452,9 @@ export class EntityModuleCardsHtml {
                   <span>🦅 Fly</span>
                 </label>
               </div>
+            </div>
+            <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(148,163,184,0.2);">
+              ${renderToggleRow("check-stance-walk-while-rolling", "Allow Walking While Rolling", Boolean(char.locomotionStanceModule.canWalkWhileRolling), "Allow character to engage walking locomotion while actively rolling")}
             </div>
             </div>
           </div>

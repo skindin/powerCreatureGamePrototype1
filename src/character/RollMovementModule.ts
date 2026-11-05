@@ -9,6 +9,8 @@ export interface RollMovementModuleOptions {
   enforceMaxRollSpeed?: boolean;
   enforceMaxSprintSpeed?: boolean;
   brakeDeceleration?: number;
+  freeRollResistance?: number;
+  brakeRollResistance?: number;
   maxRollPower?: number;
   maxSprintPower?: number;
   maxBrakePower?: number;
@@ -45,6 +47,12 @@ export class RollMovementModule {
   // Active braking deceleration rate (u/s²) opposing current velocity
   public brakeDecelerationProp: DynamicProperty;
 
+  // Free roll resistance when rolling without braking (u/s²)
+  public freeRollResistanceProp: DynamicProperty;
+
+  // Braking roll resistance applied to RollModule while holding brake (u/s²)
+  public brakeRollResistanceProp: DynamicProperty;
+
   // Maximum continuous power capacity sockets (Watts)
   public maxRollPowerProp: DynamicProperty;
   public maxSprintPowerProp: DynamicProperty;
@@ -76,6 +84,8 @@ export class RollMovementModule {
     this.enforceMaxSprintSpeed = options?.enforceMaxSprintSpeed ?? false;
 
     this.brakeDecelerationProp = new DynamicProperty(options?.brakeDeceleration ?? 55.0);
+    this.freeRollResistanceProp = new DynamicProperty(options?.freeRollResistance ?? 0.08);
+    this.brakeRollResistanceProp = new DynamicProperty(options?.brakeRollResistance ?? 2.5);
 
     this.maxRollPowerProp = new DynamicProperty(options?.maxRollPower ?? 800.0);
     this.maxSprintPowerProp = new DynamicProperty(options?.maxSprintPower ?? 1800.0);
@@ -95,9 +105,25 @@ export class RollMovementModule {
     registry.add("maxRollSpeed", this.maxRollSpeedProp.literalValue);
     registry.add("maxSprintRollSpeed", this.maxSprintSpeedProp.literalValue);
     registry.add("rollBrakeDeceleration", this.brakeDecelerationProp.literalValue);
+    registry.add("freeRollResistance", this.freeRollResistanceProp.literalValue);
+    registry.add("brakeRollResistance", this.brakeRollResistanceProp.literalValue);
     registry.add("maxRollPower", this.maxRollPowerProp.literalValue);
     registry.add("maxSprintRollPower", this.maxSprintPowerProp.literalValue);
     registry.add("maxBrakePower", this.maxBrakePowerProp.literalValue);
+  }
+
+  public get freeRollResistance(): number {
+    return this.freeRollResistanceProp.literalValue;
+  }
+  public set freeRollResistance(val: number) {
+    this.freeRollResistanceProp.literalValue = val;
+  }
+
+  public get brakeRollResistance(): number {
+    return this.brakeRollResistanceProp.literalValue;
+  }
+  public set brakeRollResistance(val: number) {
+    this.brakeRollResistanceProp.literalValue = val;
   }
 
   // Getters and Setters

@@ -211,7 +211,8 @@ export class PrefabManager {
       sprintAcceleration: 45.0,
       maxRollSpeed: 18.0,
       maxSprintSpeed: 32.0,
-      brakeDeceleration: 55.0,
+      freeRollResistance: 0.08,
+      brakeRollResistance: 2.5,
       rollConsumesEnergy: true,
       rollAllowPartialPower: true,
     });
@@ -219,6 +220,7 @@ export class PrefabManager {
     speedBallArchetype.locomotionStanceModule = new LocomotionStanceModule({
       activeMode: "roll",
       supportedModes: ["roll", "walk"],
+      canWalkWhileRolling: false,
       enabled: true,
     });
 

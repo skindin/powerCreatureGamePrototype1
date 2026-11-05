@@ -9,6 +9,20 @@ import type { Arena } from "../../engine/Arena.js";
  */
 export class LocomotionCapability {
   public static canWalk(char: Character): boolean {
+    if (char.locomotionStanceModule && !char.locomotionStanceModule.canWalkWhileRolling) {
+      if (char.rollModule && char.isRestingOnSurface) {
+        const speed = Math.hypot(char.velocity.x, char.velocity.y);
+        const spin = Math.hypot(
+          char.rollModule.angularVelocity.x,
+          char.rollModule.angularVelocity.y,
+          char.rollModule.angularVelocity.z
+        );
+        if (speed > 0.25 || spin > 0.25) {
+          return false;
+        }
+      }
+    }
+
     return Boolean(
       char.walkingModule &&
       char.walkingModule.enabled &&

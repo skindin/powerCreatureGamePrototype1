@@ -37,27 +37,8 @@ export class RollMovementCapability {
       }
     }
 
-    if (isBraking && mod.brakeConsumesEnergy && char.energyPool) {
-      const curSpeed = Math.hypot(char.velocity.x, char.velocity.y);
-      const spinSpeed = Math.hypot(char.rollModule?.angularVelocity.x ?? 0, char.rollModule?.angularVelocity.y ?? 0);
-      const R = Math.max(0.1, char.colliderRadius);
-      const effSpeed = Math.max(curSpeed, spinSpeed * R);
-      if (effSpeed > 0.05) {
-        const brakeDecel = mod.brakeDecelerationProp.get(char.properties);
-        const totalMass = Math.max(0.2, char.mass);
-        // Rate of mechanical negative work: P = (m * a_brake * v) / 0.25 Watts
-        const rawBrakeWatts = (totalMass * brakeDecel * Math.max(0.5, effSpeed)) / 0.25;
-        const cap = mod.maxBrakePowerProp.get(char.properties);
-        const allowPartial = mod.brakeAllowPartialPower;
-        let brakeWatts = rawBrakeWatts;
-        if (brakeWatts > cap) {
-          brakeWatts = allowPartial ? cap : 0;
-        }
-        char.energyPool.registerDemand("brake", brakeWatts, allowPartial);
-        char.energyPool.activeLocomotionId = "brake";
-      } else {
-        char.energyPool.registerDemand("brake", 0, mod.brakeAllowPartialPower);
-      }
+    if (isBraking) {
+      // Braking temporarily increases roll resistance and does not require energy
       return true;
     }
 
@@ -128,60 +109,16 @@ export class RollMovementCapability {
         return;
       }
 
-      const brakeDecel = mod.brakeDecelerationProp.get(char.properties);
-      let powerScale = 1.0;
+      // Active braking: temporarily increases roll resistance and does not require energy
+      const brakeResistance = mod.brakeRollResistanceProp.get(char.properties);
+      roll.rollResistanceProp.set(brakeResistance, char.properties);
 
-      if (mod.brakeConsumesEnergy && char.energyPool) {
-        const totalMass = Math.max(0.2, char.mass);
-        const effSpeed = Math.max(curSpeed, spinSpeed * R);
-        const rawBrakeWatts = (totalMass * brakeDecel * Math.max(0.5, effSpeed)) / 0.25;
-        const cap = mod.maxBrakePowerProp.get(char.properties);
-        const allowPartial = mod.brakeAllowPartialPower;
-        let requestedWatts = rawBrakeWatts;
-        if (requestedWatts > cap) {
-          requestedWatts = allowPartial ? cap : 0;
-        }
-
-        const grantedWatts = char.energyPool.requestPower(
-          requestedWatts,
-          dt,
-          char.properties,
-          false,
-          "brake",
-          allowPartial
-        );
-        powerScale = requestedWatts > 0 ? Math.min(1.0, grantedWatts / requestedWatts) : 0;
-      }
-
-      // Pure physical counter-torque braking:
-      // Applies braking counter-torque strictly to the ball's angular roll velocity (dω/dt = -α_brake).
-      // Does NOT directly touch linear velocity; ground friction (in MotionIntegrator) naturally
-      // converts the resulting tire/surface slip into physical deceleration and stopping traction.
-      if (powerScale > 0.001) {
-        const angularBrakeDecel = (brakeDecel / R) * powerScale;
-        if (spinSpeed <= 0.01) {
-          roll.angularVelocity.x = 0;
-          roll.angularVelocity.y = 0;
-        } else {
-          const deltaOmega = angularBrakeDecel * dt;
-          const newSpin = Math.max(0, spinSpeed - deltaOmega);
-          if (newSpin < 0.01) {
-            roll.angularVelocity.x = 0;
-            roll.angularVelocity.y = 0;
-          } else {
-            const ratio = newSpin / spinSpeed;
-            roll.angularVelocity.x *= ratio;
-            roll.angularVelocity.y *= ratio;
-          }
-        }
-
-        // When resting on ground and nearly stopped, clamp residual drift to prevent endless sliding
-        if (char.isRestingOnSurface && curSpeed < 0.05 && spinSpeed < 0.05) {
-          char.velocity.x = 0;
-          char.velocity.y = 0;
-          roll.angularVelocity.x = 0;
-          roll.angularVelocity.y = 0;
-        }
+      // When resting on ground and nearly stopped, clamp residual drift to prevent endless micro-sliding
+      if (char.isRestingOnSurface && curSpeed < 0.05 && spinSpeed < 0.05) {
+        char.velocity.x = 0;
+        char.velocity.y = 0;
+        roll.angularVelocity.x = 0;
+        roll.angularVelocity.y = 0;
       }
 
       roll.updateOrientation(dt);
@@ -189,6 +126,9 @@ export class RollMovementCapability {
     }
 
     mod.isBraking = false;
+    // When not braking, restore free roll resistance
+    const freeResistance = mod.freeRollResistanceProp.get(char.properties);
+    roll.rollResistanceProp.set(freeResistance, char.properties);
     const inputMag = Math.hypot(movementInput.x, movementInput.y);
 
     if (inputMag > 0.05) {

@@ -55,15 +55,30 @@ export class LocomotionModulesInspector {
         });
         sprintSpeedEl.appendChild(c.element);
       }
-      const brakeDecelEl = container.querySelector("#prop-socket-roll-brake-decel");
-      if (brakeDecelEl) {
+      const freeResEl = container.querySelector("#prop-socket-roll-free-resistance");
+      if (freeResEl) {
         const c = new PropertyControl({
-          property: char.rollMovementModule.brakeDecelerationProp,
+          property: char.rollMovementModule.freeRollResistanceProp,
           owner: char,
-          label: "Brake Deceleration (u/s²)",
-          step: 1.0,
+          label: "Free Roll Resistance (u/s²)",
+          step: 0.01,
+          onUserChange: (val: number) => {
+            if (char.rollModule) {
+              char.rollModule.rollResistanceProp.set(val, char.properties);
+            }
+          },
         });
-        brakeDecelEl.appendChild(c.element);
+        freeResEl.appendChild(c.element);
+      }
+      const brakeResEl = container.querySelector("#prop-socket-roll-brake-resistance");
+      if (brakeResEl) {
+        const c = new PropertyControl({
+          property: char.rollMovementModule.brakeRollResistanceProp,
+          owner: char,
+          label: "Braking Roll Resistance (u/s²)",
+          step: 0.1,
+        });
+        brakeResEl.appendChild(c.element);
       }
       const rollPowerEl = container.querySelector("#prop-socket-roll-power-cap");
       if (rollPowerEl) {
@@ -448,6 +463,18 @@ export class LocomotionModulesInspector {
           }
         });
       }
+
+      const walkWhileRollingChk = container.querySelector("#check-stance-walk-while-rolling") as HTMLInputElement | null;
+      if (walkWhileRollingChk) {
+        walkWhileRollingChk.addEventListener("change", () => {
+          if (char.locomotionStanceModule) {
+            char.locomotionStanceModule.canWalkWhileRolling = walkWhileRollingChk.checked;
+          }
+        });
+      }
+      bindToggleSave("check-stance-walk-while-rolling", char, "locomotionStanceModule.canWalkWhileRolling", "Allow Walking While Rolling", (v) => {
+        if (char.locomotionStanceModule) char.locomotionStanceModule.canWalkWhileRolling = v;
+      });
     }
   }
 }
