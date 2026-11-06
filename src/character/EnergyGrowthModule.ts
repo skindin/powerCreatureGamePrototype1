@@ -299,15 +299,26 @@ export class EnergyGrowthModule {
     // Energy Pool & Stamina
     if (char.energyPool) {
       list.push(
-        bindProp(
-          "stamina.maxStamina",
-          "Max Stamina",
-          "Stamina",
-          "J",
-          "cross_section",
-          (c) => c.energyPool?.maxStaminaProp,
-          50
-        ),
+        {
+          key: "stamina.maxStamina",
+          label: "Stamina (Max & Current)",
+          category: "Stamina",
+          moduleLabel: "Stamina",
+          unit: "J",
+          defaultCurve: "cross_section",
+          getCurrentValue: (c) => (c.energyPool ? c.energyPool.maxStaminaProp.get(c.properties) : 5000),
+          applyValue: (c, val) => {
+            if (!c.energyPool) return;
+            const oldMax = Math.max(1, c.energyPool.maxStaminaProp.get(c.properties));
+            const oldCur = c.energyPool.currentStaminaProp.get(c.properties);
+            const ratio = Math.max(0, Math.min(1, oldCur / oldMax));
+            const newMax = Math.max(50, val);
+            if (Math.abs(newMax - oldMax) > 0.05) {
+              c.energyPool.maxStaminaProp.set(newMax, c.properties);
+              c.energyPool.currentStaminaProp.set(newMax * ratio, c.properties);
+            }
+          },
+        },
         bindProp(
           "stamina.regenRate",
           "Stamina Regen Rate",
