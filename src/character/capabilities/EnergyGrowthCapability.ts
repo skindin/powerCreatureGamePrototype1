@@ -43,33 +43,34 @@ export class EnergyGrowthCapability {
     const resolveBaseValue = (
       key: string,
       currentLiveVal: number,
-      minFallback = 0.05
+      minFallback = 0.05,
+      currentMult = 1.0
     ): number => {
       if (mod.baseValues[key] === undefined || !Number.isFinite(mod.baseValues[key])) {
         // Property was not yet scaled: capture its current unscaled 1.0x value directly
         mod.baseValues[key] = Math.max(minFallback, currentLiveVal);
       } else if (
         mod.lastAppliedValues[key] !== undefined &&
-        Math.abs(currentLiveVal - mod.lastAppliedValues[key]) > 0.01
+        Math.abs(currentLiveVal - mod.lastAppliedValues[key]) > 0.05
       ) {
-        // User edited this property directly in the inspector: treat the user's entered number as the new 1.0x base value
-        mod.baseValues[key] = Math.max(minFallback, currentLiveVal);
+        // User edited this property directly in the inspector: convert back to 1.0x base value
+        mod.baseValues[key] = Math.max(minFallback, currentLiveVal / Math.max(0.05, currentMult));
       }
       return mod.baseValues[key];
     };
 
     // 2. Apply Mass Scaling (linear with volume multiplier M)
-    const baseMass = resolveBaseValue("mass", char.baseMass, 0.1);
+    const baseMass = resolveBaseValue("mass", char.baseMass, 0.1, volumeMult);
     if (mod.scaleMass) {
       const targetMass = Math.max(0.1, baseMass * volumeMult);
       if (Math.abs(char.baseMass - targetMass) > 0.002) {
         char.mass = targetMass;
       }
-      mod.lastAppliedValues["mass"] = targetMass;
+      mod.lastAppliedValues["mass"] = char.baseMass;
     }
 
     // 3. Apply Collider & Sprite Scaling (cube-root of volume multiplier M)
-    const baseRadius = resolveBaseValue("colliderRadius", char.colliderRadius, 0.08);
+    const baseRadius = resolveBaseValue("colliderRadius", char.colliderRadius, 0.08, radiusMult);
     const scaledRadius = Math.max(0.08, baseRadius * radiusMult);
     mod.currentComputedSpriteRadius = scaledRadius;
 
@@ -80,7 +81,7 @@ export class EnergyGrowthCapability {
           char.colliderModule.radius = scaledRadius;
         }
       }
-      mod.lastAppliedValues["colliderRadius"] = scaledRadius;
+      mod.lastAppliedValues["colliderRadius"] = char.colliderRadius;
 
       // Automatic Reach Margin Compensation (unless pickup.pickupReach is manually in scaledProperties)
       if (mod.autoScaleReachWithCollider && char.pickupModule) {
@@ -154,13 +155,13 @@ export class EnergyGrowthCapability {
           rule.customExponent ?? 1.0
         );
         const curLiveVal = target.getCurrentValue(char);
-        const baseVal = resolveBaseValue(propKey, curLiveVal, 0.01);
+        const baseVal = resolveBaseValue(propKey, curLiveVal, 0.01, propMult);
         const targetVal = Math.max(0.01, baseVal * propMult);
 
         if (Math.abs(curLiveVal - targetVal) > 0.002) {
           target.applyValue(char, targetVal);
         }
-        mod.lastAppliedValues[propKey] = targetVal;
+        mod.lastAppliedValues[propKey] = target.getCurrentValue(char);
       }
     }
   }

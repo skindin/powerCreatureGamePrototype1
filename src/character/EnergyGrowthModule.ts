@@ -313,10 +313,8 @@ export class EnergyGrowthModule {
             const oldCur = c.energyPool.currentStaminaProp.get(c.properties);
             const ratio = Math.max(0, Math.min(1, oldCur / oldMax));
             const newMax = Math.max(50, val);
-            if (Math.abs(newMax - oldMax) > 0.05) {
-              c.energyPool.maxStaminaProp.set(newMax, c.properties);
-              c.energyPool.currentStaminaProp.set(newMax * ratio, c.properties);
-            }
+            c.energyPool.maxStaminaProp.set(newMax, c.properties);
+            c.energyPool.currentStaminaProp.set(newMax * ratio, c.properties);
           },
         },
         bindProp(
@@ -348,10 +346,8 @@ export class EnergyGrowthModule {
             const oldCur = c.healthModule.getCurrentHp(c.properties);
             const ratio = Math.max(0, Math.min(1, oldCur / oldMax));
             const newMax = Math.max(1, val);
-            if (Math.abs(newMax - oldMax) > 0.05) {
-              c.healthModule.maxHpProp.set(newMax, c.properties);
-              c.healthModule.currentHpProp.set(newMax * ratio, c.properties);
-            }
+            c.healthModule.maxHpProp.set(newMax, c.properties);
+            c.healthModule.currentHpProp.set(newMax * ratio, c.properties);
           },
         },
         bindProp(

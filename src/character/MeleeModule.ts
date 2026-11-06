@@ -171,9 +171,11 @@ export class MeleeModule {
     }
 
     // 1. Calculate Burst Energy Cost from physical work
-    // Work = Force * distance. With biological muscle efficiency (0.25 default), demandedJoules = W / efficiency.
+    // Use a normalized 1.2m reference stroke for work calculation so scaling hitbox reach with size
+    // does not artificially penalize delivered punch force.
     const muscleEff = registry?.get("muscleEfficiency") ?? 0.25;
-    const mechanicalWorkJoules = maxForce * reach;
+    const referenceStroke = 1.2;
+    const mechanicalWorkJoules = maxForce * referenceStroke;
     const rawDemandedJoules = mechanicalWorkJoules / Math.max(0.01, muscleEff);
     const maxPower = this.maxPowerProp.get(registry);
     // Demanded burst Joules is budgeted up to the ability's maxPower capacity:
@@ -204,7 +206,8 @@ export class MeleeModule {
       if (!burstRes.granted || burstRes.fraction <= 0.001) {
         return null;
       }
-      actualForce = maxForce * burstRes.fraction * (demandedJoules / rawDemandedJoules);
+      const powerCapRatio = Math.min(1.0, demandedJoules / Math.max(1.0, mechanicalWorkJoules));
+      actualForce = maxForce * burstRes.fraction * powerCapRatio;
       energySpent = burstRes.grantedJoules;
     }
 
@@ -321,14 +324,18 @@ export class MeleeModule {
         target.lastCollisionTime = now;
         target.lastContactNormal = { x: -uX, y: -uY };
 
-        // Apply HP damage via target's DamageSolverModule (consistent with 60Hz collision shock)
+        // Apply HP damage via target's DamageSolverModule:
+        // Use a fixed reference tissue mass (1.2 kg) for blunt strike shock rather than dividing by
+        // total body mass, because scaled-up characters already scale up their maxHp with mass.
         const targetBounce = target.hasBounce && target.bounceMod !== null ? target.bounceMod : (target.isCharacter ? 0.2 : 0);
         const absFrac = Math.max(0.1, 1.0 - Math.min(1.0, targetBounce * targetBounce));
-        const shock = targetDv * 60 * absFrac;
+        const damageRefMass = target.isCharacter ? 1.2 : Math.min(1.5, targetMass);
+        const traumaDv = impulsePerTarget / damageRefMass;
+        const shock = traumaDv * 60 * absFrac;
 
         const damageDealt = target.dispatchImpact({
           absorbedShock: shock,
-          impactSpeed: targetDv,
+          impactSpeed: traumaDv,
           otherEntity: attacker,
           normalX: -uX,
           normalY: -uY,
