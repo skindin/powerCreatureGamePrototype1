@@ -61,6 +61,10 @@ export class GrappleCapability {
     if ((target as any).grappledBy === character) {
       (target as any).grappledBy = null;
     }
+    target.isInFlight = false;
+    target.knockbackUntilTime = 0;
+    target.lastThrower = null;
+    target.originalThrower = null;
     return target;
   }
 
@@ -402,6 +406,10 @@ export class GrappleCapability {
     const effShoveSpeed = shoveSpeed * speedScale;
     const effRecoilSpeed = recoilSpeed * speedScale;
 
+    // Release the grapple first, then apply shove velocity and knockback window
+    character.activeTrajectory = null;
+    GrappleCapability.releaseGrapple(character);
+
     // Accelerate target forward
     target.velocity.x += dirX * effShoveSpeed;
     target.velocity.y += dirY * effShoveSpeed;
@@ -412,9 +420,6 @@ export class GrappleCapability {
     character.velocity.x -= dirX * effRecoilSpeed;
     character.velocity.y -= dirY * effRecoilSpeed;
 
-    // Release the grapple
-    character.activeTrajectory = null;
-    GrappleCapability.releaseGrapple(character);
     return true;
   }
 
@@ -424,6 +429,12 @@ export class GrappleCapability {
   public static updateGrapple(character: Character, _dt: number, _arena?: Arena): void {
     const target = character.grappledTarget;
     if (!target) return;
+
+    // Neutralize any residual projectile / knockback threat flags while actively grappled
+    target.isInFlight = false;
+    target.knockbackUntilTime = 0;
+    target.lastThrower = null;
+    target.originalThrower = null;
 
     // Target cleanup check
     if (target.isHeld && target.heldBy !== character) {

@@ -35,7 +35,7 @@ export class MotionIntegrator {
           const impactVz = Math.abs(entity.verticalVelocity);
           // Contextual collision damage: Involuntary crashes (thrown bodies in flight or under knockback)
           // always take full damage. Intentional jumps and falls scale by selfImpactWeight (default 0.0 arcade immunity).
-          const isThreat = Boolean(entity.isUnderKnockback || entity.isInFlight || entity.originalThrower || entity.lastThrower);
+          const isThreat = Boolean((entity.isUnderKnockback || entity.isInFlight) && !(entity as any).grappledBy);
           const kSelf = isThreat
             ? 1.0
             : (entity.damageSolverModule ? Math.max(0, Math.min(1.0, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0.0);
@@ -159,6 +159,12 @@ export class MotionIntegrator {
       Math.abs(entity.verticalVelocity) <= restVzThreshold;
 
     if (isResting && entity.hasFriction) {
+      const horizSpeed = Math.hypot(entity.velocity.x, entity.velocity.y);
+      if (horizSpeed < 1.5) {
+        entity.isInFlight = false;
+        entity.lastThrower = null;
+        entity.originalThrower = null;
+      }
       const isActivelyWalking =
         entity.isCharacter &&
         (entity as any).locomotionMode === "walk" &&

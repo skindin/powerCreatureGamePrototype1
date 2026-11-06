@@ -136,6 +136,9 @@ export class GameObject {
     if (this.isCharacter || this.isHeld || this.heldBy !== null) return;
     this.isSleeping = true;
     this.isInFlight = false;
+    this.lastThrower = null;
+    this.originalThrower = null;
+    this.knockbackUntilTime = 0;
     this.velocity.x = 0;
     this.velocity.y = 0;
     this.verticalVelocity = 0;

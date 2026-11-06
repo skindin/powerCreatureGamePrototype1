@@ -420,7 +420,7 @@ export class CollisionResolver {
       const impactSpeed = Math.abs(vn);
       // Plasticity fraction: bouncier entity absorbs far less injury (elastic rebound vs plastic damage: 1 - e^2)
       const absFrac = Math.max(0, 1.0 - Math.min(1.0, bRestitution * bRestitution));
-      const isThreat = Boolean(entity.isUnderKnockback || entity.isInFlight || entity.originalThrower || entity.lastThrower);
+      const isThreat = Boolean((entity.isUnderKnockback || entity.isInFlight) && !(entity as any).grappledBy && impactSpeed > 2.5);
       const kSelf = isThreat
         ? 1.0
         : (entity.damageSolverModule ? Math.max(0, Math.min(1.0, entity.damageSolverModule.getSelfImpactWeight(entity.properties))) : 0.0);
@@ -621,7 +621,10 @@ export class CollisionResolver {
     const absFracA = Math.max(0, 1.0 - Math.min(1.0, bModA * bModA));
     const absFracB = Math.max(0, 1.0 - Math.min(1.0, bModB * bModB));
 
-    // Compute effective deltaV for A and B based on 3D relative speed and mass ratios
+    // Compute effective deltaV for A and B based on 3D relative speed and mass ratios.
+    // For characters whose mass is dynamically scaled down (e.g. EnergyGrowthModule at small size),
+    // use at least their unscaled baseMass for shock partitioning so they don't suffer a double
+    // lethality penalty (higher deltaV from tiny mass AND lower maxHp from tiny mass).
     let deltaVa = relSpeed * 0.5;
     let deltaVb = relSpeed * 0.5;
     if (a.isImmovable && !b.isImmovable) {
@@ -631,14 +634,32 @@ export class CollisionResolver {
       deltaVa = relSpeed;
       deltaVb = 0;
     } else if (!isMasslessA && !isMasslessB && invMassSum > 0.0001) {
-      deltaVa = relSpeed * (invMassA / invMassSum);
-      deltaVb = relSpeed * (invMassB / invMassSum);
+      const shockMassA = a.isCharacter ? Math.max(mA, (a as any).baseMass ?? mA) : mA;
+      const shockMassB = b.isCharacter ? Math.max(mB, (b as any).baseMass ?? mB) : mB;
+      const shockInvA = shockMassA > 0 ? 1 / shockMassA : invMassA;
+      const shockInvB = shockMassB > 0 ? 1 / shockMassB : invMassB;
+      const shockInvSum = shockInvA + shockInvB;
+      deltaVa = shockInvSum > 0.0001 ? relSpeed * (shockInvA / shockInvSum) : relSpeed * 0.5;
+      deltaVb = shockInvSum > 0.0001 ? relSpeed * (shockInvB / shockInvSum) : relSpeed * 0.5;
     } else if (isMasslessA && !isMasslessB) {
       deltaVa = relSpeed;
       deltaVb = 0;
     } else if (!isMasslessA && isMasslessB) {
       deltaVa = 0;
       deltaVb = relSpeed;
+    }
+
+    // Active grapple / drag pair immunity:
+    // An entity being actively dragged via grapple tether (or colliding with its own grappler)
+    // is under voluntary tether control and never inflicts or receives impact shock from its partner.
+    const isGrappledPair = Boolean(
+      (a as any).grappledTarget === b ||
+      (b as any).grappledTarget === a ||
+      (a as any).grappledBy === b ||
+      (b as any).grappledBy === a
+    );
+    if (isGrappledPair) {
+      return;
     }
 
     // Material Hardness & Cushioning:
@@ -679,11 +700,12 @@ export class CollisionResolver {
     }
 
     // Gamification threat multipliers:
-    // Active threats (1.0): bodies in flight (thrown items/projectiles) or under knockback (hurled bodies).
-    // Resting obstacles, props, or pushed items: deliver 0 active threat to a character walking/running into them.
+    // Active threats (1.0): bodies in flight (thrown items/projectiles) or under knockback (hurled bodies)
+    // that are not currently being dragged by a grappler and have meaningful closing speed (> 2.5 u/s).
+    // Resting obstacles, props, or low-speed bumped items deliver 0 active threat to a character.
     // Characters under voluntary locomotion use their selfImpactWeight multiplier (default 0.0 = arcade bump immunity).
-    const isThreatA = Boolean(a.isUnderKnockback || a.isInFlight || a.originalThrower || a.lastThrower);
-    const isThreatB = Boolean(b.isUnderKnockback || b.isInFlight || b.originalThrower || b.lastThrower);
+    const isThreatA = Boolean((a.isUnderKnockback || a.isInFlight) && !(a as any).grappledBy && relSpeed > 2.5);
+    const isThreatB = Boolean((b.isUnderKnockback || b.isInFlight) && !(b as any).grappledBy && relSpeed > 2.5);
 
     const multA = isThreatA
       ? 1.0
@@ -709,8 +731,8 @@ export class CollisionResolver {
         normalX: -normX,
         normalY: -normY,
       });
-      // Knockback window is applied for true high-impact events or if either entity was in flight
-      if (a.isInFlight || b.isInFlight || shockA > 100) {
+      // Knockback window is only applied when struck by an actual external threat at high impact
+      if (isThreatB && (b.isInFlight || shockA > 150)) {
         a.applyKnockbackWindow(600);
       }
     }
@@ -723,8 +745,8 @@ export class CollisionResolver {
         normalX: normX,
         normalY: normY,
       });
-      // Knockback window is applied for true high-impact events or if either entity was in flight
-      if (a.isInFlight || b.isInFlight || shockB > 100) {
+      // Knockback window is only applied when struck by an actual external threat at high impact
+      if (isThreatA && (a.isInFlight || shockB > 150)) {
         b.applyKnockbackWindow(600);
       }
     }
