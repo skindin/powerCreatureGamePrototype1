@@ -79,6 +79,7 @@ export class Character extends GameObject {
   public isChargingShove: boolean = false;
   public shoveChargeStartTime: number | null = null;
   public shoveChargeProgress: number = 0;
+  public shoveAimAngle?: number;
   public hasDiedAwaitingNewPickup: boolean = false;
   private _heldObject: GameObject | null = null;
   public get heldObject(): GameObject | null {
@@ -938,6 +939,10 @@ export class Character extends GameObject {
       this.isAiming = true;
       this.aimTarget = aimTargetPos;
       VomitCapability.updateTrajectoryPreview(this, arena, aimTargetPos);
+    } else if (this.isChargingShove && this.grappledTarget && !isLaserModeActive) {
+      this.isAiming = true;
+      this.aimTarget = aimTargetPos;
+      GrappleCapability.updateShoveTrajectoryPreview(this, arena, aimTargetPos);
     } else {
       ThrowCapability.updateTrajectoryPreview(
         this,

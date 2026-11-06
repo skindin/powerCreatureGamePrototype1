@@ -309,6 +309,7 @@ export class TrajectoryRenderer {
     );
     const isCharging = Boolean(
       character?.isChargingThrow ||
+      character?.isChargingShove ||
       (character as any)?.isChargingVomit
     );
     const hasUserSetArc = Boolean(
@@ -440,7 +441,7 @@ export class TrajectoryRenderer {
 
     // Direct sightline from held object release position to target land position:
     // Dots share the exact same sizing and layer transparency as the corresponding points along the arc.
-    if (traj.launchPos && traj.landPoint) {
+    if (traj.launchPos && traj.landPoint && !(traj as any).isGroundShove) {
       const startX = traj.launchPos.x;
       const startY = traj.launchPos.y;
       const startZ = traj.launchPos.z;
@@ -625,9 +626,11 @@ export class TrajectoryRenderer {
       const distToChar = character
         ? Math.hypot(traj.landPoint.x - character.position.x, traj.landPoint.y - character.position.y)
         : Infinity;
-      const minDrawDist = character
-        ? (character.colliderRadius ?? 0.35) + (traj.colliderRadius ?? 0.26) + 0.15
-        : 0;
+      const minDrawDist = (traj as any).isGroundShove
+        ? 0.05
+        : (character
+          ? (character.colliderRadius ?? 0.35) + (traj.colliderRadius ?? 0.26) + 0.15
+          : 0);
 
       if (distToChar >= minDrawDist) {
         ctx.save();

@@ -1,6 +1,8 @@
 import type { Character, AnticipatedModifier } from "../Character.js";
 import type { GameObject } from "../../engine/GameObject.js";
 import type { Arena } from "../../engine/Arena.js";
+import type { TrajectoryCalculation, TrajectoryPoint } from "../ThrowModule.js";
+import type { ThrowControlBlock } from "../../input/schema/ControlSchemaTypes.js";
 
 export interface ShoveKinematics {
   shoveSpeed: number;
@@ -50,6 +52,7 @@ export class GrappleCapability {
     character.isChargingShove = false;
     character.shoveChargeStartTime = null;
     character.shoveChargeProgress = 0;
+    character.shoveAimAngle = undefined;
 
     const target = character.grappledTarget;
     if (!target) return null;
@@ -154,6 +157,181 @@ export class GrappleCapability {
   }
 
   /**
+   * Updates `character.activeTrajectory` while charging a shove so `TrajectoryRenderer`
+   * renders the exact same dotted trajectory line, ghost full-charge dots, green/red landing
+   * collider footprint, sightline, and cancel reticle as throwing.
+   */
+  public static updateShoveTrajectoryPreview(
+    character: Character,
+    arena: Arena,
+    aimTargetPos: { x: number; y: number } | null
+  ): void {
+    const target = character.grappledTarget;
+    if (!character.isChargingShove || !target || !aimTargetPos) {
+      character.activeTrajectory = null;
+      return;
+    }
+
+    const throwBlock = (character.controlSchema?.gamepad?.blocks || character.controlSchema?.keyboardMouse?.blocks)?.find(
+      (b) => b.type === "throw"
+    ) as ThrowControlBlock | undefined;
+
+    const enableProximityCancel = throwBlock ? Boolean(throwBlock.enableProximityCancel) : true;
+    const cancelRadius = throwBlock?.cancelRadius ?? Math.max(1.0, (character.colliderRadius ?? 0.35) + 0.65);
+
+    const charAimDx = aimTargetPos.x - character.position.x;
+    const charAimDy = aimTargetPos.y - character.position.y;
+    const distToCharAim = Math.hypot(charAimDx, charAimDy);
+
+    if (distToCharAim > 0.05) {
+      character.facingAngle = Math.atan2(charAimDy, charAimDx);
+    }
+
+    if (enableProximityCancel && distToCharAim < cancelRadius) {
+      character.activeTrajectory = null;
+      character.isThrowCancelZone = true;
+      return;
+    }
+    character.isThrowCancelZone = false;
+
+    // Direction of shove: directly from the grappled target toward the mouse cursor
+    const targetAimDx = aimTargetPos.x - target.position.x;
+    const targetAimDy = aimTargetPos.y - target.position.y;
+    const distToTargetAim = Math.hypot(targetAimDx, targetAimDy);
+    const shoveAngle = distToTargetAim > 0.05
+      ? Math.atan2(targetAimDy, targetAimDx)
+      : (distToCharAim > 0.05 ? Math.atan2(charAimDy, charAimDx) : (character.shoveAimAngle ?? character.facingAngle ?? 0));
+    character.shoveAimAngle = shoveAngle;
+
+    const now = performance.now();
+    const start = character.shoveChargeStartTime ?? now;
+    const chargeProgress = Math.min(1.0, Math.max(0.0, (now - start) / 700));
+    character.shoveChargeProgress = chargeProgress;
+
+    const curKin = GrappleCapability.calculateShoveKinematics(character, target, chargeProgress);
+    const maxKin = GrappleCapability.calculateShoveKinematics(character, target, 1.0);
+
+    const fric = (arena.frictionCoeff || 10.4) * Math.max(0.25, target.dynamicGroundFrictionMod || 1.0);
+    const isRoller = Boolean(target.rollModule && target.rollModule.enabled && !target.isCharacter);
+    const decel = isRoller ? Math.max(3.5, fric * 0.38) : Math.max(6.0, fric);
+
+    const maxRollDist = Math.min(14.0, Math.max(0.8, (maxKin.shoveSpeed * maxKin.shoveSpeed) / (2.0 * decel)));
+    const curRollDist = Math.min(maxRollDist, Math.max(0.35, (curKin.shoveSpeed * curKin.shoveSpeed) / (2.0 * decel)));
+
+    const startX = target.position.x;
+    const startY = target.position.y;
+    const startZ = Math.max(
+      target.position.z,
+      target.supportingSurfaceHeight ?? 0,
+      target.standingWall ? arena.wallHeight : 0
+    );
+    const dirX = Math.cos(shoveAngle);
+    const dirY = Math.sin(shoveAngle);
+    const targetRadius = target.colliderRadius ?? 0.35;
+
+    const traceGroundRay = (distLimit: number): {
+      points: TrajectoryPoint[];
+      landPoint: { x: number; y: number; z: number };
+      isBlockedByWall: boolean;
+    } => {
+      const pts: TrajectoryPoint[] = [
+        { x: startX, y: startY, z: startZ, t: 0, couldClearWall: false, isOverWall: false, collidesWall: false },
+      ];
+      const steps = Math.max(4, Math.ceil(distLimit / 0.08));
+      let lastX = startX;
+      let lastY = startY;
+
+      for (let i = 1; i <= steps; i++) {
+        const frac = i / steps;
+        const d = frac * distLimit;
+        const px = startX + dirX * d;
+        const py = startY + dirY * d;
+
+        // Check arena boundary or wall collision at target's altitude
+        let hitsWall = false;
+        if (
+          px - targetRadius < 0 ||
+          px + targetRadius > arena.width ||
+          py - targetRadius < 0 ||
+          py + targetRadius > arena.height
+        ) {
+          hitsWall = true;
+        } else {
+          for (const w of arena.walls) {
+            if (w.wallHeight <= startZ + 0.05) continue;
+            const closestX = Math.max(w.x, Math.min(px, w.x + w.width));
+            const closestY = Math.max(w.y, Math.min(py, w.y + w.height));
+            if (Math.hypot(px - closestX, py - closestY) < targetRadius * 0.92) {
+              hitsWall = true;
+              break;
+            }
+          }
+        }
+
+        if (hitsWall) {
+          pts.push({
+            x: lastX,
+            y: lastY,
+            z: startZ,
+            t: frac,
+            couldClearWall: false,
+            isOverWall: false,
+            collidesWall: true,
+          });
+          return {
+            points: pts,
+            landPoint: { x: lastX, y: lastY, z: startZ },
+            isBlockedByWall: true,
+          };
+        }
+
+        lastX = px;
+        lastY = py;
+        pts.push({
+          x: px,
+          y: py,
+          z: startZ,
+          t: frac,
+          couldClearWall: false,
+          isOverWall: false,
+          collidesWall: false,
+        });
+      }
+
+      return {
+        points: pts,
+        landPoint: { x: lastX, y: lastY, z: startZ },
+        isBlockedByWall: false,
+      };
+    };
+
+    const curTrace = traceGroundRay(curRollDist);
+    const maxTrace = traceGroundRay(maxRollDist);
+
+    const traj: TrajectoryCalculation = {
+      points: curTrace.points,
+      flattestPoints: maxTrace.points,
+      landPoint: curTrace.landPoint,
+      isBlockedByWall: curTrace.isBlockedByWall,
+      isLandingOnWallTop: startZ >= arena.wallHeight - 0.05,
+      targetSurfaceHeight: startZ,
+      launchPos: { x: startX, y: startY, z: startZ },
+      launchVel: {
+        vx: dirX * curKin.shoveSpeed,
+        vy: dirY * curKin.shoveSpeed,
+        vz: 0,
+      },
+      flightTime: curRollDist / Math.max(0.1, curKin.shoveSpeed * 0.5),
+      colliderRadius: targetRadius,
+      visualShape: target.visualShape,
+    };
+    (traj as any).chargingTowards = "flattest";
+    (traj as any).isGroundShove = true;
+
+    character.activeTrajectory = traj;
+  }
+
+  /**
    * Executes a grounded shove / push on the grappled target along the aim angle or character facing angle
    */
   public static executeShove(
@@ -164,7 +342,7 @@ export class GrappleCapability {
     const target = character.grappledTarget;
     if (!target) return false;
 
-    const angle = aimAngle !== undefined ? aimAngle : (character.facingAngle ?? 0);
+    const angle = aimAngle !== undefined ? aimAngle : (character.shoveAimAngle ?? character.facingAngle ?? 0);
     const dirX = Math.cos(angle);
     const dirY = Math.sin(angle);
 
@@ -187,6 +365,7 @@ export class GrappleCapability {
         character.isChargingShove = false;
         character.shoveChargeStartTime = null;
         character.shoveChargeProgress = 0;
+        character.activeTrajectory = null;
         return false;
       }
       if (!allowPartial && !pool.canSatisfyFullEnergy(demandedMetabolicJoules, 0.05, character.properties)) {
@@ -199,6 +378,7 @@ export class GrappleCapability {
         character.isChargingShove = false;
         character.shoveChargeStartTime = null;
         character.shoveChargeProgress = 0;
+        character.activeTrajectory = null;
         return false;
       }
       const burstRes = pool.requestInstantBurst({
@@ -211,6 +391,7 @@ export class GrappleCapability {
         character.isChargingShove = false;
         character.shoveChargeStartTime = null;
         character.shoveChargeProgress = 0;
+        character.activeTrajectory = null;
         return false;
       }
       energyFraction = burstRes.fraction;
@@ -232,6 +413,7 @@ export class GrappleCapability {
     character.velocity.y -= dirY * effRecoilSpeed;
 
     // Release the grapple
+    character.activeTrajectory = null;
     GrappleCapability.releaseGrapple(character);
     return true;
   }

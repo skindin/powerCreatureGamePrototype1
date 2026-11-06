@@ -1203,6 +1203,14 @@ export class ModularBlockEvaluator {
                 const distToAim = Math.hypot(aimDx, aimDy);
                 const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
 
+                const target = char.grappledTarget;
+                const targetDx = effAim.x - target.position.x;
+                const targetDy = effAim.y - target.position.y;
+                const distToTargetAim = Math.hypot(targetDx, targetDy);
+                const shoveAngle = distToTargetAim > 0.05
+                  ? Math.atan2(targetDy, targetDx)
+                  : (distToAim > 0.05 ? Math.atan2(aimDy, aimDx) : (char.shoveAimAngle ?? char.facingAngle));
+
                 const isHoldingShove =
                   isSlotActive(shoveTrigger, "hold", false, b.id, "throw.shoveCharge") ||
                   isSlotActive(shoveTrigger, "down", false, b.id, "throw.shoveCharge") ||
@@ -1210,6 +1218,7 @@ export class ModularBlockEvaluator {
 
                 if (isHoldingShove) {
                   char.isChargingShove = true;
+                  char.shoveAimAngle = shoveAngle;
                   if (!char.shoveChargeStartTime) {
                     char.shoveChargeStartTime = now;
                   }
@@ -1223,41 +1232,48 @@ export class ModularBlockEvaluator {
                     char.facingAngle = Math.atan2(aimDy, aimDx);
                   }
                   claimSlot(shoveTrigger, b.id, "throw.shoveCharge", false);
-                }
-
-                if (isSlotAnyJustReleased(shoveTrigger) && char.isChargingShove) {
+                } else if (isSlotAnyJustReleased(shoveTrigger) && char.isChargingShove) {
                   if (b.enableProximityCancel && distToAim < cancelDistance) {
                     char.isChargingShove = false;
                     char.shoveChargeStartTime = null;
                     char.shoveChargeProgress = 0;
+                    char.shoveAimAngle = undefined;
                     char.isThrowCancelZone = false;
+                    char.activeTrajectory = null;
                     claimSlot(shoveTrigger, b.id, "throw.shoveCancel", false);
                   } else {
                     const finalCharge = char.shoveChargeStartTime
                       ? Math.min(1.0, Math.max(0.0, (now - char.shoveChargeStartTime) / 700))
                       : char.shoveChargeProgress;
-                    const aimAngle = distToAim > 0.05 ? Math.atan2(aimDy, aimDx) : char.facingAngle;
-                    GrappleCapability.executeShove(char, aimAngle, finalCharge);
+                    GrappleCapability.executeShove(char, shoveAngle, finalCharge);
                     char.isChargingShove = false;
                     char.shoveChargeStartTime = null;
                     char.shoveChargeProgress = 0;
+                    char.shoveAimAngle = undefined;
                     char.isThrowCancelZone = false;
+                    char.activeTrajectory = null;
                     claimSlot(shoveTrigger, b.id, "throw.shove", true);
                     (char as any)._isConsumeToggledOn = false;
                     (char as any)._toggledConsumeItemId = null;
                   }
+                } else if (!isHoldingShove) {
+                  char.isChargingShove = false;
+                  char.shoveChargeStartTime = null;
+                  char.shoveChargeProgress = 0;
+                  char.shoveAimAngle = undefined;
                 }
               }
             } else {
               char.isChargingShove = false;
               char.shoveChargeStartTime = null;
               char.shoveChargeProgress = 0;
+              char.shoveAimAngle = undefined;
             }
             char.isChargingThrow = false;
             char.isAimingWallClear = false;
             char.isHoldingThrowRelease = false;
             char.isTriggerPullThrowing = false;
-            if (!isVomitAiming && !isVomitRequested && !(char as any).isChargingVomit && !(char as any).isHoldingVomitRelease) {
+            if (!char.isChargingShove && !isVomitAiming && !isVomitRequested && !(char as any).isChargingVomit && !(char as any).isHoldingVomitRelease) {
               char.activeTrajectory = null;
             }
             break;
@@ -1959,10 +1975,10 @@ export class ModularBlockEvaluator {
       char.activeTrajectory = null;
     }
 
-    // Face toward aim target if aiming trajectory, laser, vomit, melee, or gun:
+    // Face toward aim target if aiming trajectory, laser, vomit, melee, gun, or charging shove:
     // In Cursor Mode (or Mouse/Keyboard): character faces towards cursor.
     // In Raw Direction Mode on Gamepad: character strictly maintains stick-directed facing angle.
-    if (isLaserAiming || isLaserFiring || isVomitAiming || isMeleeRequested || isAimingTrajectory || isGunAimFiring) {
+    if (isLaserAiming || isLaserFiring || isVomitAiming || isMeleeRequested || isAimingTrajectory || isGunAimFiring || char.isChargingShove) {
       if (isGunAimFiring) {
         const effAim = getEffectiveAimPos();
         const aimDx = effAim.x - char.position.x;
@@ -2004,7 +2020,7 @@ export class ModularBlockEvaluator {
       char.isSprinting = false;
     }
 
-    const isAiming = !isEditMode && (isLaserAiming || isVomitAiming || isAimingTrajectory || isGunAimFiring);
+    const isAiming = !isEditMode && (isLaserAiming || isVomitAiming || isAimingTrajectory || isGunAimFiring || Boolean(char.isChargingShove));
     const kLaunchVel = isThrow && char.activeTrajectory?.launchVel ? char.activeTrajectory.launchVel : undefined;
     const kLaunchPos = isThrow && char.activeTrajectory?.launchPos ? char.activeTrajectory.launchPos : undefined;
 
