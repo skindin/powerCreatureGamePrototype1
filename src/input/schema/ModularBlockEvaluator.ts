@@ -2171,12 +2171,12 @@ export class ModularBlockEvaluator {
           if (isSteerCursorActive || char.isSteeringCursor) {
             break;
           }
-          const locoBlock = execCtx.schema?.gamepad?.blocks?.find((blk) => blk.enabled && (blk.type === "locomotion" || blk.type === "walkSprint")) as WalkSprintControlBlock | undefined;
-          if (locoBlock?.mode === "stickDirectionDriveButton") {
-            // Facing is already set by left stick heading in locomotion block
-            break;
-          }
           if (execCtx.gamepadStates) {
+            const gpLocoBlock = execCtx.schema?.gamepad?.blocks?.find((blk) => blk.enabled && (blk.type === "locomotion" || blk.type === "walkSprint")) as WalkSprintControlBlock | undefined;
+            if (gpLocoBlock?.mode === "stickDirectionDriveButton") {
+              // Facing is already set by left stick heading in locomotion block
+              break;
+            }
             const gpLeftStick = (execCtx.gamepadStates as any)?.leftStick ?? execCtx.getGamepadAxis(0, "LeftStick");
             if (gpLeftStick && Math.hypot(gpLeftStick.x, gpLeftStick.y) > 0.08) {
               char.facingAngle = Math.atan2(gpLeftStick.y, gpLeftStick.x);
