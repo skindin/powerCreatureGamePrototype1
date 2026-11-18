@@ -108,7 +108,7 @@ export class TelekinesisCapability {
     if ((target as any).telekinesedBy === char) {
       (target as any).telekinesedBy = null;
     }
-    if ((target as any).facingAngle !== undefined) {
+    if (!target.isCharacter && (target as any).facingAngle !== undefined) {
       delete (target as any).facingAngle;
     }
     return target;
@@ -359,7 +359,10 @@ export class TelekinesisCapability {
     if (!plan) return;
 
     // Resolve energy budget BEFORE applying Stage 1 braking so running out of energy never slows a falling object
-    let accelScale = 1.0;
+    // Prioritize vertical lift (vertWatts) first so heavy targets (like characters/dummies) always lift off the ground
+    // instead of scraping against ground friction, and allocate remaining power to horizontal movement (horizWatts).
+    let vertScale = 1.0;
+    let horizScale = 1.0;
     if (plan.rawDemandedWatts > 0.01) {
       if (mod.consumesEnergy && char.energyPool && char.energyPool.enabled) {
         if (plan.requestedWatts <= 0) {
@@ -384,12 +387,19 @@ export class TelekinesisCapability {
             TelekinesisCapability.releaseTarget(char);
             return;
           }
-          const powerRatio = Math.max(0, Math.min(1.0, grantedWatts / plan.rawDemandedWatts));
-          accelScale = Math.sqrt(powerRatio);
+          const vertGranted = Math.min(grantedWatts, plan.vertWatts);
+          vertScale = plan.vertWatts > 0.0001
+            ? Math.sqrt(Math.max(0, Math.min(1.0, vertGranted / plan.vertWatts)))
+            : 1.0;
+          const remWatts = Math.max(0, grantedWatts - vertGranted);
+          horizScale = plan.horizWatts > 0.0001
+            ? Math.sqrt(Math.max(0, Math.min(1.0, remWatts / plan.horizWatts)))
+            : 1.0;
         }
       }
     } else {
-      accelScale = 0;
+      vertScale = 0;
+      horizScale = 0;
     }
 
     const mObj = Math.max(0.2, target.hasMass ? target.mass : 1.0);
@@ -414,10 +424,10 @@ export class TelekinesisCapability {
 
     // 2. Apply Stage 2 (Active Momentum Creation, scaled by granted power)
 
-    if (accelScale > 0.0001) {
-      const dvx = plan.axCreate * accelScale * safeDt;
-      const dvy = plan.ayCreate * accelScale * safeDt;
-      const dvz = plan.azCreate * accelScale * safeDt;
+    if (vertScale > 0.0001 || horizScale > 0.0001) {
+      const dvx = plan.axCreate * horizScale * safeDt;
+      const dvy = plan.ayCreate * horizScale * safeDt;
+      const dvz = plan.azCreate * vertScale * safeDt;
 
       target.velocity.x += dvx;
       target.velocity.y += dvy;
@@ -434,11 +444,15 @@ export class TelekinesisCapability {
         target.supportingSurfaceHeight ?? 0,
         wallAtTarget ? wallAtTarget.wallHeight : 0
       );
+      // Clear ground surface contact as soon as upward lift is applied so character ground friction (2.0x) does not drag the target
+      if (dvz > 0.05 && target.position.z - targetSurfZ <= 0.03) {
+        target.position.z = targetSurfZ + 0.035;
+      }
       const isTargetAnchored = Math.max(0, target.position.z - targetSurfZ) <= mod.getGroundAnchorRange(reg);
       const azReaction = isTargetAnchored && target.hasGravity
         ? (plan.azCreate - g)
         : plan.azCreate;
-      const dvzReaction = azReaction * accelScale * safeDt;
+      const dvzReaction = azReaction * vertScale * safeDt;
 
       TelekinesisCapability.applyReactionImpulse(
         char,
@@ -473,6 +487,8 @@ export class TelekinesisCapability {
     axCreate: number;
     ayCreate: number;
     azCreate: number;
+    horizWatts: number;
+    vertWatts: number;
     rawDemandedWatts: number;
     requestedWatts: number;
   } | null {
@@ -585,17 +601,22 @@ export class TelekinesisCapability {
     }
 
     // Stage 2: Active Momentum Creation (Equivalence-Principle counter-gravity + acceleration toward goal)
-    const maxCreateAccel = 45.0;
+    const maxHorizCreateAccel = 36.0;
+    const maxVertCreateAccel = 18.0;
     const rawAx = (vxWant - vxFree) / safeDt;
     const rawAy = (vyWant - vyFree) / safeDt;
     const rawAHMag = Math.hypot(rawAx, rawAy);
-    const clampedAHMag = Math.min(maxCreateAccel, rawAHMag);
+    const clampedAHMag = Math.min(maxHorizCreateAccel, rawAHMag);
     const axCreate = rawAHMag > 0.0001 ? (rawAx / rawAHMag) * clampedAHMag : 0;
     const ayCreate = rawAHMag > 0.0001 ? (rawAy / rawAHMag) * clampedAHMag : 0;
 
     // Must counter gravity g in uncurved space + accelerate vzFree toward vzWant
-    const climbAccel = Math.max(-g, Math.min(maxCreateAccel, (vzWant - vzFree) / safeDt));
+    const climbAccel = Math.max(-g, Math.min(maxVertCreateAccel, (vzWant - vzFree) / safeDt));
     const azCreate = target.hasGravity ? Math.max(0, g + climbAccel) : Math.max(0, climbAccel);
+    const isTargetAnchored = Math.max(0, target.position.z - surfaceZ) <= mod.getGroundAnchorRange(reg);
+    // When braced against the ground anchor, static hover counter-gravity has a 0.55x bracing efficiency
+    const effHoverG = isTargetAnchored ? g * 0.55 : g;
+    const azDemand = target.hasGravity ? Math.max(0, effHoverG + climbAccel) : Math.max(0, climbAccel);
 
     const mObj = Math.max(0.2, target.hasMass ? target.mass : 1.0);
     const mChar = Math.max(0.2, char.hasMass ? char.mass : 1.2);
@@ -610,10 +631,10 @@ export class TelekinesisCapability {
     // When unanchored in mid-air, two-body acceleration requires 0.5 * mObj * a^2 * (1 + mObj / mChar).
     const recoilWorkMult = isAnchored ? 1.0 : (1.0 + mObj / mChar);
 
-    const aSq = axCreate * axCreate + ayCreate * ayCreate + azCreate * azCreate;
-    const mechWatts = 0.5 * mObj * recoilWorkMult * aSq;
     const efficiency = Math.max(0.01, char.energyPool ? char.energyPool.getMuscleEfficiency(reg) : 0.25);
-    const rawDemandedWatts = mechWatts / efficiency;
+    const horizWatts = (0.5 * mObj * recoilWorkMult * (axCreate * axCreate + ayCreate * ayCreate)) / efficiency;
+    const vertWatts = (0.5 * mObj * recoilWorkMult * (azDemand * azDemand)) / efficiency;
+    const rawDemandedWatts = horizWatts + vertWatts;
 
     const cap = mod.getMaxPower(reg);
     let requestedWatts = rawDemandedWatts;
@@ -628,6 +649,8 @@ export class TelekinesisCapability {
       axCreate,
       ayCreate,
       azCreate,
+      horizWatts,
+      vertWatts,
       rawDemandedWatts,
       requestedWatts,
     };

@@ -55,8 +55,8 @@ export class LocomotionCapability {
       }
     }
 
-    // While FlightModule is active, flight owns horizontal & vertical locomotion (prevents free ground-walk bypass)
-    if (char.hasFlight) {
+    // While FlightModule is active or character is being levitated by telekinesis, suppress ground-walk braking
+    if (char.hasFlight || Boolean(char.telekinesedBy)) {
       return false;
     }
 
