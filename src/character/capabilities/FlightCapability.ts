@@ -371,6 +371,7 @@ export class FlightCapability {
     // Auto-disable FlightModule when the player intentionally descends all the way down to the ground
     if (verticalIntent < -0.05 && heightAboveSurface <= 0.04 && char.verticalVelocity <= 0.05) {
       mod.enabled = false;
+      (char as any)._flightAutoGroundedOff = true;
       mod.appliedWaveVx = 0;
       mod.appliedWaveVy = 0;
       mod.appliedWaveVz = 0;

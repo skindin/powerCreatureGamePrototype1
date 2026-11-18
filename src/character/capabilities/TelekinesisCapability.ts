@@ -92,13 +92,9 @@ export class TelekinesisCapability {
   }
 
   /**
-   * Computes the character's ground-anchored state and desired self-momentum direction,
-   * then distributes the equal-and-opposite reaction impulse `recoil = -appliedObjImpulse`:
-   * - If ground-anchored: keeps only the component of `recoil` aligned with `movementInput`
-   *   (helpful recoil toward where the character already wants to move), and routes the rest
-   *   into the infinite-mass ground at 0 extra energy cost.
-   * - If unanchored (high above groundAnchorRange): applies full equal-and-opposite reaction
-   *   to `char.velocity`.
+   * Applies Newton's 3rd law equal-and-opposite reaction impulse `recoil = -appliedObjImpulse`
+   * directly to the caster's velocity (`Δv_char = -Δp_obj / m_char`).
+   * Surface friction (when grounded) or active FlightModule thrust naturally resists or counters it.
    */
   public static applyReactionImpulse(
     char: Character,
@@ -114,61 +110,25 @@ export class TelekinesisCapability {
     const availX = -appliedObjImpulseX;
     const availY = -appliedObjImpulseY;
     const availZ = -appliedObjImpulseZ;
-    const availMag = Math.hypot(availX, availY, availZ);
-    if (availMag <= 1e-6) return;
+    if (Math.hypot(availX, availY, availZ) <= 1e-6) return;
 
-    const surfaceHeight = Math.max(
-      0,
-      char.supportingSurfaceHeight ?? 0,
-      char.standingWall && arena ? arena.wallHeight : 0
-    );
-    const heightAboveSurface = Math.max(0, char.position.z - surfaceHeight);
-    const isAnchored = heightAboveSurface <= mod.getGroundAnchorRange(char.properties);
+    char.velocity.x += availX / charMass;
+    char.velocity.y += availY / charMass;
 
-    if (!isAnchored) {
-      // Mid-air unanchored: conservation of momentum applies 100% of opposite reaction to character
-      char.velocity.x += availX / charMass;
-      char.velocity.y += availY / charMass;
-      if (char.hasVerticalVelocity) {
+    if (char.hasVerticalVelocity) {
+      const surfaceHeight = arena
+        ? Math.max(
+            0,
+            char.supportingSurfaceHeight ?? 0,
+            char.standingWall ? arena.wallHeight : 0
+          )
+        : (char.supportingSurfaceHeight ?? 0);
+      const heightAboveSurface = Math.max(0, char.position.z - surfaceHeight);
+      // When resting on a surface, downward reaction is borne by ground normal force; upward or airborne reaction moves character vertically.
+      if (heightAboveSurface > 0.02 || availZ > 0) {
         char.verticalVelocity += availZ / charMass;
       }
-      return;
     }
-
-    // Anchored to ground: build character's desired self-momentum vector from current movement intent
-    const inX = char.movementInput?.x ?? 0;
-    const inY = char.movementInput?.y ?? 0;
-    const inMag = Math.hypot(inX, inY);
-    if (inMag <= 0.05) {
-      // Character wants to stay still: dump 100% of unwanted reaction into ground anchor at 0 cost
-      return;
-    }
-
-    const ux = inX / inMag;
-    const uy = inY / inMag;
-    const wantSpeed = char.hasFlight && char.flightModule
-      ? char.flightModule.getMaxHorizontalSpeed(char.properties)
-      : (char.walkingModule ? char.walkingModule.maxWalkSpeedProp.get(char.properties) : 5.0);
-    const curParSpeed = char.velocity.x * ux + char.velocity.y * uy;
-    const deficitSpeed = Math.max(0, wantSpeed * Math.min(1, inMag) - curParSpeed);
-    if (deficitSpeed <= 0.001) {
-      // Already at or above desired speed: brace all recoil into ground for 0 cost
-      return;
-    }
-
-    // Project desired impulse onto available horizontal reaction impulse direction
-    const availHorizMag = Math.hypot(availX, availY);
-    if (availHorizMag <= 1e-6) return;
-    const uAvailX = availX / availHorizMag;
-    const uAvailY = availY / availHorizMag;
-
-    const pWantParallel = deficitSpeed * charMass * (ux * uAvailX + uy * uAvailY);
-    const pKeepMag = Math.max(0, Math.min(availHorizMag, pWantParallel));
-    if (pKeepMag > 0.0001) {
-      char.velocity.x += (uAvailX * pKeepMag) / charMass;
-      char.velocity.y += (uAvailY * pKeepMag) / charMass;
-    }
-    // Excess (avail - pKeep) is braced against the infinite-mass ground at 0 energy cost
   }
 
   /**
@@ -194,7 +154,8 @@ export class TelekinesisCapability {
       char.supportingSurfaceHeight ?? 0,
       char.standingWall ? arena.wallHeight : 0
     );
-    const isAnchored = Math.max(0, char.position.z - surfaceHeight) <= mod.getGroundAnchorRange(reg);
+    const heightAboveSurface = Math.max(0, char.position.z - surfaceHeight);
+    const isAnchored = heightAboveSurface <= 0.04 || (char.hasFlight && heightAboveSurface <= mod.getGroundAnchorRange(reg));
     const effMass = isAnchored ? mObj : (mObj * mChar) / (mObj + mChar);
 
     const dx = aimTargetPos.x - target.position.x;
@@ -575,7 +536,8 @@ export class TelekinesisCapability {
       char.supportingSurfaceHeight ?? 0,
       char.standingWall ? arena.wallHeight : 0
     );
-    const isAnchored = Math.max(0, char.position.z - charSurfZ) <= mod.getGroundAnchorRange(reg);
+    const heightAboveSurface = Math.max(0, char.position.z - charSurfZ);
+    const isAnchored = heightAboveSurface <= 0.04 || (char.hasFlight && heightAboveSurface <= mod.getGroundAnchorRange(reg));
     // When ground-anchored, m_ground = ∞ so kinetic work is 0.5 * mObj * a^2.
     // When unanchored in mid-air, two-body acceleration requires 0.5 * mObj * a^2 * (1 + mObj / mChar).
     const recoilWorkMult = isAnchored ? 1.0 : (1.0 + mObj / mChar);

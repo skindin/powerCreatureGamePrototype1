@@ -135,7 +135,10 @@ export class EntityModuleLifecycle {
         if (char?.vomitModule) char.vomitModule.enabled = !char.vomitModule.enabled;
         break;
       case "flight":
-        if (char?.flightModule) char.flightModule.enabled = !char.flightModule.enabled;
+        if (char?.flightModule) {
+          char.flightModule.enabled = !char.flightModule.enabled;
+          (char as any)._flightAutoGroundedOff = false;
+        }
         break;
       case "telekinesis":
         if (char?.telekinesisModule) {

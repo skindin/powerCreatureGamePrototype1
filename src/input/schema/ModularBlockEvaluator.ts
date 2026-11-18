@@ -830,6 +830,7 @@ export class ModularBlockEvaluator {
           if (b.flightToggleTrigger?.code) {
             if (isSlotActive(b.flightToggleTrigger, "down", true, b.id, "flight.toggle")) {
               char.flightModule.enabled = !char.flightModule.enabled;
+              (char as any)._flightAutoGroundedOff = false;
               claimSlot(b.flightToggleTrigger, b.id, "flight.toggle", true);
             }
           }
@@ -856,12 +857,13 @@ export class ModularBlockEvaluator {
                 ? isSlotActive(ascendSlot, "down", true, b.id, "flight.ascend")
                 : isSlotActive(ascendSlot, "hold", false, b.id, "flight.ascend");
               if (wantsAscend) {
-                if (!char.flightModule.enabled && !char.jumpModule?.enabled && !char.isFlightDescendHeld) {
+                if (!char.flightModule.enabled && Boolean((char as any)._flightAutoGroundedOff) && !char.jumpModule?.enabled && !char.isFlightDescendHeld) {
                   const pool = char.energyPool;
                   const canAffordLift = !char.flightModule.consumesEnergy || !pool || !pool.enabled || pool.infiniteEnergy ||
                     (!pool.isExhausted && pool.getCurrentEnergy(char.properties) > 0.0001 && pool.getCurrentStamina(char.properties) > 0.0001);
                   if (canAffordLift) {
                     char.flightModule.enabled = true;
+                    (char as any)._flightAutoGroundedOff = false;
                   } else if (pool) {
                     pool.notifyInsufficientEnergy({
                       abilityId: "flight",
