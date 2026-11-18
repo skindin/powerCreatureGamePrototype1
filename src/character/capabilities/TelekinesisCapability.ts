@@ -128,6 +128,9 @@ export class TelekinesisCapability {
     (char as any).isHoldingTkGunFire = false;
     (char as any)._tkObjectControlScreenAnchor = null;
     (char as any)._tkObjectControlCharOffset = null;
+    (char as any).isHoldingTkGunFire = false;
+    (char as any)._tkObjectControlScreenAnchor = null;
+    (char as any)._tkObjectControlCharOffset = null;
     char.telekineticFrozenPos = null;
     char.activeTrajectory = null;
     char.isThrowCancelZone = false;
@@ -173,8 +176,10 @@ export class TelekinesisCapability {
           )
         : (char.supportingSurfaceHeight ?? 0);
       const heightAboveSurface = Math.max(0, char.position.z - surfaceHeight);
-      // When resting on a surface, downward reaction is borne by ground normal force; upward or airborne reaction moves character vertically.
-      if (heightAboveSurface > 0.02 || availZ > 0) {
+      // When Flight is active, it sustains the character's elevation as an independent model;
+      // telekinetic vertical forces must not push a flying character down or increase Flight power cost.
+      // When resting on a surface, downward reaction is borne by ground normal force.
+      if (!char.hasFlight && (heightAboveSurface > 0.04 || availZ > 0)) {
         char.verticalVelocity += availZ / charMass;
       }
     }
