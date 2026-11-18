@@ -107,6 +107,9 @@ export class EntityModuleCardsHtml {
     const hasFlightModule = isChar && Boolean(char?.flightModule);
     const flightEnabled = isChar && Boolean(char?.flightModule?.enabled);
 
+    const hasTelekinesisModule = isChar && Boolean(char?.telekinesisModule);
+    const telekinesisEnabled = isChar && Boolean(char?.telekinesisModule?.enabled);
+
     const hasSpawnerModule = Boolean(e.spawnerModule);
     const spawnerEnabled = Boolean(e.spawnerModule?.enabled);
 
@@ -1036,6 +1039,31 @@ export class EntityModuleCardsHtml {
       `;
     }
 
+    // Telekinesis & Remote Grab Module
+    if (hasTelekinesisModule && char?.telekinesisModule) {
+      attachedCount++;
+      const tm = char.telekinesisModule;
+      html += `
+        <div class="module-card ${!telekinesisEnabled ? "module-disabled" : ""}" data-module-id="telekinesis">
+          ${panel.renderModuleHeader("telekinesis", "🔮 Telekinesis & Remote Grab", renderToggleBtn("telekinesis", telekinesisEnabled))}
+          <div id="collapse-body-mod-telekinesis" style="display: ${isCollapsed("mod-telekinesis") ? "none" : "block"};">
+            ${!telekinesisEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Telekinesis is disabled</div>` : ""}
+            <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+              Remotely grabs, levitates, moves, flings, and shoots objects/guns at range using 0-energy momentum transfer + power-capped momentum creation.
+            </div>
+            <div id="prop-socket-tk-max-power"></div>
+            <div id="prop-socket-tk-reach"></div>
+            <div id="prop-socket-tk-move-speed"></div>
+            <div id="prop-socket-tk-hover-height"></div>
+            <div id="prop-socket-tk-anchor-range"></div>
+            <div id="prop-socket-tk-stability"></div>
+            ${renderToggleRow("check-tk-consumes-energy", "Consumes Energy", tm.consumesEnergy, "Save Telekinesis Consumes Energy to project")}
+            ${renderToggleRow("check-tk-partial-power", "Allow Partial Power", tm.allowPartialPower, "Save Telekinesis Allow Partial Power to project")}
+          </div>
+        </div>
+      `;
+    }
+
     if (attachedCount === 0) {
       html = `
         <div class="empty-behaviors-msg">
@@ -1089,7 +1117,8 @@ export class EntityModuleCardsHtml {
         { id: "energyPool", name: "Energy Pool & Stamina", icon: "⚡", description: "Consolidated biochemical energy reservoir (Joules) and burst stamina", isAttached: hasEnergyPool },
         { id: "energyGrowth", name: "Scale With Energy", icon: "📈", description: "Scales mass, collider, sprite, and connected ability properties with stored energy", isAttached: hasEnergyGrowthModule },
         { id: "vomit", name: "Projectile Vomit", icon: "🤮", description: "Expels stored energy as a ballistic consumable glob, shrinking the character", isAttached: hasVomitModule },
-        { id: "flight", name: "Flight & Hover", icon: "🦅", description: "Equivalence-principle hover, 0-energy momentum transfer/glide, and 3D flight", isAttached: hasFlightModule }
+        { id: "flight", name: "Flight & Hover", icon: "🦅", description: "Equivalence-principle hover, 0-energy momentum transfer/glide, and 3D flight", isAttached: hasFlightModule },
+        { id: "telekinesis", name: "Telekinesis & Remote Grab", icon: "🔮", description: "Remotely levitate, move, fling, and shoot objects/guns at range", isAttached: hasTelekinesisModule }
       );
     }
 

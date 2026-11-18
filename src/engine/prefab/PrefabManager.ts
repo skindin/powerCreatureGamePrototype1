@@ -8,6 +8,7 @@ import { LocomotionStanceModule } from "../../character/LocomotionStanceModule.j
 import { EnergyGrowthModule } from "../../character/EnergyGrowthModule.js";
 import { VomitModule } from "../../character/VomitModule.js";
 import { FlightModule } from "../../character/FlightModule.js";
+import { TelekinesisModule } from "../../character/TelekinesisModule.js";
 import { Prefab } from "./Prefab.js";
 import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
@@ -406,6 +407,8 @@ export class PrefabManager {
     flyerArchetype.bounceMod = 0.15;
     flyerArchetype.climbingModule = null;
     flyerArchetype.jumpModule = null;
+    flyerArchetype.pickupModule = null;
+    flyerArchetype.grappleModule = null;
     if (flyerArchetype.walkingModule) {
       flyerArchetype.walkingModule.walkInAir = false;
       flyerArchetype.walkingModule.maxWalkSpeedProp.set(4.5, flyerArchetype.properties);
@@ -430,6 +433,18 @@ export class PrefabManager {
       allowPartialPower: true,
     });
     flyerArchetype.flightModule.registerProperties(flyerArchetype.properties);
+    flyerArchetype.telekinesisModule = new TelekinesisModule({
+      enabled: true,
+      maxPower: 2400.0,
+      telekinesisReach: 6.5,
+      maxMoveSpeed: 12.0,
+      holdHoverHeight: 0.65,
+      groundAnchorRange: 5.0,
+      stability: 0.85,
+      consumesEnergy: true,
+      allowPartialPower: true,
+    });
+    flyerArchetype.telekinesisModule.registerProperties(flyerArchetype.properties);
     flyerArchetype.prefabId = "prefab_flyer_character";
 
     const flyerSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
@@ -488,7 +503,7 @@ export class PrefabManager {
         cfg.id === "prefab_fighter" ||
         cfg.id === "prefab_grower_character" ||
         cfg.id === "prefab_flyer_character" ||
-        Boolean(arc.walkingModule || arc.jumpModule || arc.rollMovementModule || arc.energyGrowthModule || arc.vomitModule || arc.flightModule || arc.isCharacter);
+        Boolean(arc.walkingModule || arc.jumpModule || arc.rollMovementModule || arc.energyGrowthModule || arc.vomitModule || arc.flightModule || arc.telekinesisModule || arc.isCharacter);
 
       let archetype: GameObject;
       if (isCharacterConfig) {

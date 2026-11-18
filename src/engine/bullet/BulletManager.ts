@@ -157,21 +157,27 @@ export class BulletManager {
   }
 
   /**
-   * Fires a bullet from a character wielding a gun towards aimPos.
-   * Inflicts recoil impulse on shooter and records heat in GunModule.
+   * Fires a bullet from a character wielding a gun towards aimPos, OR from a remotely
+   * held telekinetic gunEntity directly at aimPos (applying recoil to the floating gun).
    */
   public fireBullet(
     char: Character,
     gun: GunModule,
     aimPos: { x: number; y: number },
-    arena: Arena
+    arena: Arena,
+    gunEntity?: GameObject
   ): Bullet | null {
     if (!gun.canFire()) return null;
 
     gun.recordShot();
 
-    const launchPos = char.calculateHeldObjectPosition(arena);
-    launchPos.z = Math.max(char.position.z + 0.45, launchPos.z);
+    const isRemoteGun = Boolean(gunEntity && gunEntity !== char.heldObject);
+    const launchPos = isRemoteGun && gunEntity
+      ? { x: gunEntity.position.x, y: gunEntity.position.y, z: Math.max(gunEntity.position.z + 0.12, 0.35) }
+      : char.calculateHeldObjectPosition(arena);
+    if (!isRemoteGun) {
+      launchPos.z = Math.max(char.position.z + 0.45, launchPos.z);
+    }
     const speed = gun.bulletSpeed;
 
     const dx = aimPos.x - launchPos.x;
@@ -181,24 +187,29 @@ export class BulletManager {
     const dirX = dist > 0.001 ? dx / dist : Math.cos(char.facingAngle);
     const dirY = dist > 0.001 ? dy / dist : Math.sin(char.facingAngle);
 
-    // Incorporate character's rigidbody velocity into bullet launch momentum
-    const charVx = char.velocity ? char.velocity.x : 0;
-    const charVy = char.velocity ? char.velocity.y : 0;
-    const charVz = char.verticalVelocity || 0;
+    if (isRemoteGun && gunEntity) {
+      (gunEntity as any).facingAngle = Math.atan2(dirY, dirX);
+    }
 
-    const vx = dirX * speed + charVx;
-    const vy = dirY * speed + charVy;
+    // Incorporate shooter / floating gun velocity into bullet launch momentum
+    const emitter = isRemoteGun && gunEntity ? gunEntity : char;
+    const emitVx = emitter.velocity ? emitter.velocity.x : 0;
+    const emitVy = emitter.velocity ? emitter.velocity.y : 0;
+    const emitVz = emitter.verticalVelocity || 0;
+
+    const vx = dirX * speed + emitVx;
+    const vy = dirY * speed + emitVy;
     // Ballistic arc loft: slight upward velocity so the projectile travels along a shallow arc
-    const vz = Math.max(2.5, speed * 0.12) + charVz;
+    const vz = Math.max(2.5, speed * 0.12) + emitVz;
 
-    // Apply recoil kickback impulse on shooter: I = m_bullet * v
+    // Apply recoil kickback impulse on shooter (or on the floating gun entity): I = m_bullet * v
     const bulletMass = gun.bulletMass;
     const recoilImpulse = bulletMass * speed;
-    const shooterMass = char.mass > 0 ? char.mass : 1.2;
+    const recoilMass = emitter.hasMass && emitter.mass > 0 ? emitter.mass : 1.0;
 
-    char.velocity.x -= (dirX * recoilImpulse) / shooterMass;
-    char.velocity.y -= (dirY * recoilImpulse) / shooterMass;
-    if (recoilImpulse / shooterMass > 0.8) {
+    emitter.velocity.x -= (dirX * recoilImpulse) / recoilMass;
+    emitter.velocity.y -= (dirY * recoilImpulse) / recoilMass;
+    if (!isRemoteGun && recoilImpulse / recoilMass > 0.8) {
       char.applyKnockbackWindow(180);
     }
 
@@ -410,7 +421,7 @@ export class BulletManager {
     for (const obj of objects) {
       if (obj.gunModule && obj.gunModule.enabled) {
         const isFiringNow = characters.some(
-          (c) => c.heldObject === obj && Boolean((c as any).isFiringWeapon)
+          (c) => (c.heldObject === obj || c.telekineticTarget === obj) && Boolean((c as any).isFiringWeapon)
         );
         obj.gunModule.update(dt, isFiringNow);
       }
@@ -591,7 +602,7 @@ export class BulletManager {
           } else if (char.healthModule && char.healthModule.enabled) {
             char.healthModule.takeDamage(b.damage, char.properties, {
               id: "piercing_damage",
-              name: "Piercing",
+              name: "📌",
               type: "instant",
               amount: b.damage,
               color: "#f59e0b",
@@ -627,7 +638,7 @@ export class BulletManager {
           } else if (obj.healthModule && obj.healthModule.enabled) {
             obj.healthModule.takeDamage(b.damage, obj.properties, {
               id: "piercing_damage",
-              name: "Piercing",
+              name: "📌",
               type: "instant",
               amount: b.damage,
               color: "#f59e0b",

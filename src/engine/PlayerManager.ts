@@ -16,6 +16,7 @@ import { prefabManager } from "./prefab/PrefabManager.js";
 import { applyCharacterConfig, serializeCharacter } from "../config/WorldConfig.js";
 import { CharacterSelectModal } from "../ui/CharacterSelectModal.js";
 import { GrabIntentArbiter } from "../character/capabilities/GrabIntentArbiter.js";
+import { TelekinesisCapability } from "../character/capabilities/TelekinesisCapability.js";
 
 export interface PlayerEntry {
   id: string; // "keyboard" | "gamepad-0" | "gamepad-1" | ...
@@ -211,7 +212,7 @@ export class PlayerManager {
       player.character.name = trimmed;
       player.character.hasCustomName = !/^Player(\s+\d+)?$/i.test(trimmed) && !/^Controller\s+#\d+$/i.test(trimmed);
       if (player.isKeyboard || playerId === "keyboard") {
-        try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) {}
+        try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) { }
       }
       found = true;
     }
@@ -219,7 +220,7 @@ export class PlayerManager {
     if (this.baseCharacter && (this.baseCharacter.playerId === playerId || playerId === "keyboard" || this.baseCharacter.playerId === "")) {
       this.baseCharacter.name = trimmed;
       this.baseCharacter.hasCustomName = !/^Player(\s+\d+)?$/i.test(trimmed) && !/^Controller\s+#\d+$/i.test(trimmed);
-      try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) {}
+      try { localStorage.setItem("pcg_player_handle", trimmed); } catch (_) { }
       found = true;
     }
 
@@ -383,15 +384,15 @@ export class PlayerManager {
 
     const defaultHandle = isKeyboard
       ? (() => {
-          try {
-            const h = localStorage.getItem("pcg_player_handle");
-            if (h && h.trim()) return h.trim();
-          } catch {}
-          return `Player ${playerNum}`;
-        })()
+        try {
+          const h = localStorage.getItem("pcg_player_handle");
+          if (h && h.trim()) return h.trim();
+        } catch { }
+        return `Player ${playerNum}`;
+      })()
       : (deviceName
-          ? (deviceName.length > 28 ? deviceName.slice(0, 28) + "…" : deviceName)
-          : `Controller #${(slotIndex ?? 0) + 1}`);
+        ? (deviceName.length > 28 ? deviceName.slice(0, 28) + "…" : deviceName)
+        : `Controller #${(slotIndex ?? 0) + 1}`);
 
     const isBaseUnassigned = !Array.from(this.players.values()).some((p) => p.character === this.baseCharacter);
     let char: Character;
@@ -757,14 +758,14 @@ export class PlayerManager {
     if ((kEntry || isUnassignedKeyboard) && !input.isKeyboardSuspended) {
       const kChar = kEntry ? kEntry.character : this.baseCharacter;
       const kSchema = ControlsInspector.getActiveSchema(kChar);
-      const isHolding = kChar.heldObject !== null || Boolean(kChar.grappledTarget);
+      const isHolding = kChar.heldObject !== null || Boolean(kChar.grappledTarget) || Boolean(kChar.telekineticTarget);
       const isHoldingConsumable = Boolean(kChar.canConsumeHeldObject ? kChar.canConsumeHeldObject() : false);
 
-      // Target discovery in reach for pickup or swap
+      // Target discovery in reach for pickup, grapple, swap, or telekinesis
       let grabTargetObject: GameObject | null = null;
-      if (kChar.pickupModule || kChar.grappleModule) {
+      if (kChar.pickupModule || kChar.grappleModule || kChar.telekinesisModule) {
         const candidateEntities = [...this.allCharacters.filter((c) => c !== kChar), ...objects].filter(
-          (c) => c !== kChar.heldObject && c !== (kChar as any).grappledTarget
+          (c) => c !== kChar.heldObject && c !== (kChar as any).grappledTarget && c !== kChar.telekineticTarget
         );
         const target = GrabIntentArbiter.findTarget(
           kChar,
@@ -839,231 +840,231 @@ export class PlayerManager {
         input.aimLockRawDx = 0;
         input.aimLockRawDy = 0;
       } else {
-      // 1. Locomotion Movement Vector
-      let moveX = 0;
-      let moveY = 0;
-      const locoCfg = kSchema.keyboardMouse.locomotion;
-      if (locoCfg.mode === "forwardFacingDrive") {
-        const aimDx = input.actualMousePos.x - kChar.position.x;
-        const aimDy = input.actualMousePos.y - kChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          kChar.facingAngle = Math.atan2(aimDy, aimDx);
-        }
-
-        const isFwd = locoCfg.forwardTrigger
-          ? ControlSchemaArbiter.isTriggerActive(locoCfg.forwardTrigger, execCtx, keyStates, mouseStates)
-          : false;
-
-        const fwdAngle = kChar.facingAngle ?? 0;
-        const fwdX = Math.cos(fwdAngle);
-        const fwdY = Math.sin(fwdAngle);
-        const leftX = -fwdY;
-        const leftY = fwdX;
-
-        if (isFwd) {
-          moveX += fwdX;
-          moveY += fwdY;
-        }
-        if (locoCfg.reverseKey && keyStates.isDown(locoCfg.reverseKey)) {
-          moveX -= fwdX * 0.75;
-          moveY -= fwdY * 0.75;
-        }
-        if (locoCfg.strafeLeftKey && keyStates.isDown(locoCfg.strafeLeftKey)) {
-          moveX += leftX * 0.85;
-          moveY += leftY * 0.85;
-        }
-        if (locoCfg.strafeRightKey && keyStates.isDown(locoCfg.strafeRightKey)) {
-          moveX -= leftX * 0.85;
-          moveY -= leftY * 0.85;
-        }
-      } else {
-        // Direct 8-Way Vector — strictly schema-driven (no unconfigured key fallbacks)
-        const upKey = locoCfg.moveForwardKey;
-        const downKey = locoCfg.reverseKey;
-        const leftKey = locoCfg.strafeLeftKey;
-        const rightKey = locoCfg.strafeRightKey;
-
-        if (upKey && keyStates.isDown(upKey)) moveY -= 1;
-        if (downKey && keyStates.isDown(downKey)) moveY += 1;
-        if (leftKey && keyStates.isDown(leftKey)) moveX -= 1;
-        if (rightKey && keyStates.isDown(rightKey)) moveX += 1;
-      }
-
-      const moveMag = Math.hypot(moveX, moveY);
-      if (moveMag > 1.0) {
-        moveX /= moveMag;
-        moveY /= moveMag;
-      }
-
-      // 2. Aiming Paradigm & Facing Angle
-      const aimCfg = kSchema.keyboardMouse.aiming;
-      if (aimCfg.mode === "faceMouseCursor") {
-        const aimDx = input.actualMousePos.x - kChar.position.x;
-        const aimDy = input.actualMousePos.y - kChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          kChar.facingAngle = Math.atan2(aimDy, aimDx);
-        }
-      } else if (aimCfg.mode === "faceMovement") {
-        if (moveMag > 0.05) {
-          kChar.facingAngle = Math.atan2(moveY, moveX);
-        }
-      }
-
-      // 3. Schema Action Rules Evaluation (Sorted by priority descending)
-      let isSprinting = false;
-      let isJumpHeld = false;
-      let isGrabHeld = false;
-      let isDrop = false;
-      let isSwap = false;
-      let isThrow = false;
-      let isUsingItem = false;
-      let isLaserAiming = false;
-      let isLaserFiring = false;
-      let isMeleeRequested = false;
-      let isAimingTrajectory = false;
-
-      const executedKbmThreads = new Set<string>();
-      const executeKbmRules = (ruleList: ControlRule[]) => {
-        const sortedRules = [...ruleList].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-        for (const rule of sortedRules) {
-          if (rule.enabled === false) continue;
-          const threadKey = rule.threadId ?? null;
-          if (threadKey && executedKbmThreads.has(threadKey)) {
-            continue;
+        // 1. Locomotion Movement Vector
+        let moveX = 0;
+        let moveY = 0;
+        const locoCfg = kSchema.keyboardMouse.locomotion;
+        if (locoCfg.mode === "forwardFacingDrive") {
+          const aimDx = input.actualMousePos.x - kChar.position.x;
+          const aimDy = input.actualMousePos.y - kChar.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            kChar.facingAngle = Math.atan2(aimDy, aimDx);
           }
 
-          if (!ControlSchemaArbiter.isRuleApplicable(rule, execCtx, kSchema, "keyboardMouse", keyStates, mouseStates)) {
-            continue;
+          const isFwd = locoCfg.forwardTrigger
+            ? ControlSchemaArbiter.isTriggerActive(locoCfg.forwardTrigger, execCtx, keyStates, mouseStates)
+            : false;
+
+          const fwdAngle = kChar.facingAngle ?? 0;
+          const fwdX = Math.cos(fwdAngle);
+          const fwdY = Math.sin(fwdAngle);
+          const leftX = -fwdY;
+          const leftY = fwdX;
+
+          if (isFwd) {
+            moveX += fwdX;
+            moveY += fwdY;
           }
-
-          if (threadKey) {
-            executedKbmThreads.add(threadKey);
+          if (locoCfg.reverseKey && keyStates.isDown(locoCfg.reverseKey)) {
+            moveX -= fwdX * 0.75;
+            moveY -= fwdY * 0.75;
           }
-          ControlsInspector.notifyRuleFired(rule.id);
+          if (locoCfg.strafeLeftKey && keyStates.isDown(locoCfg.strafeLeftKey)) {
+            moveX += leftX * 0.85;
+            moveY += leftY * 0.85;
+          }
+          if (locoCfg.strafeRightKey && keyStates.isDown(locoCfg.strafeRightKey)) {
+            moveX -= leftX * 0.85;
+            moveY -= leftY * 0.85;
+          }
+        } else {
+          // Direct 8-Way Vector — strictly schema-driven (no unconfigured key fallbacks)
+          const upKey = locoCfg.moveForwardKey;
+          const downKey = locoCfg.reverseKey;
+          const leftKey = locoCfg.strafeLeftKey;
+          const rightKey = locoCfg.strafeRightKey;
 
-          const statements = ControlSchemaArbiter.getRuleBody(rule);
-          const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, kSchema, "keyboardMouse");
+          if (upKey && keyStates.isDown(upKey)) moveY -= 1;
+          if (downKey && keyStates.isDown(downKey)) moveY += 1;
+          if (leftKey && keyStates.isDown(leftKey)) moveX -= 1;
+          if (rightKey && keyStates.isDown(rightKey)) moveX += 1;
+        }
 
-          for (const stmt of statements) {
-            if (stmt.type === "action") {
-              const act = stmt.action;
-              const mid = act.moduleId;
-              const intent = act.intent;
+        const moveMag = Math.hypot(moveX, moveY);
+        if (moveMag > 1.0) {
+          moveX /= moveMag;
+          moveY /= moveMag;
+        }
 
-              if (mid === "locomotion") {
-                if (intent === "jump") isJumpHeld = true;
-                else if (intent === "holdSprint") isSprinting = true;
-                else if (intent === "toggleSprint") {
-                  if (effTrigger.mode === "press" ? (keyStates.justPressed(effTrigger.code) || mouseStates.justPressed(effTrigger.code === "MouseLeft" ? 0 : 2)) : true) {
-                    kChar.setSprinting(!kChar.isSprinting);
+        // 2. Aiming Paradigm & Facing Angle
+        const aimCfg = kSchema.keyboardMouse.aiming;
+        if (aimCfg.mode === "faceMouseCursor") {
+          const aimDx = input.actualMousePos.x - kChar.position.x;
+          const aimDy = input.actualMousePos.y - kChar.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            kChar.facingAngle = Math.atan2(aimDy, aimDx);
+          }
+        } else if (aimCfg.mode === "faceMovement") {
+          if (moveMag > 0.05) {
+            kChar.facingAngle = Math.atan2(moveY, moveX);
+          }
+        }
+
+        // 3. Schema Action Rules Evaluation (Sorted by priority descending)
+        let isSprinting = false;
+        let isJumpHeld = false;
+        let isGrabHeld = false;
+        let isDrop = false;
+        let isSwap = false;
+        let isThrow = false;
+        let isUsingItem = false;
+        let isLaserAiming = false;
+        let isLaserFiring = false;
+        let isMeleeRequested = false;
+        let isAimingTrajectory = false;
+
+        const executedKbmThreads = new Set<string>();
+        const executeKbmRules = (ruleList: ControlRule[]) => {
+          const sortedRules = [...ruleList].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+          for (const rule of sortedRules) {
+            if (rule.enabled === false) continue;
+            const threadKey = rule.threadId ?? null;
+            if (threadKey && executedKbmThreads.has(threadKey)) {
+              continue;
+            }
+
+            if (!ControlSchemaArbiter.isRuleApplicable(rule, execCtx, kSchema, "keyboardMouse", keyStates, mouseStates)) {
+              continue;
+            }
+
+            if (threadKey) {
+              executedKbmThreads.add(threadKey);
+            }
+            ControlsInspector.notifyRuleFired(rule.id);
+
+            const statements = ControlSchemaArbiter.getRuleBody(rule);
+            const effTrigger = ControlSchemaArbiter.resolveEffectiveTrigger(rule, kSchema, "keyboardMouse");
+
+            for (const stmt of statements) {
+              if (stmt.type === "action") {
+                const act = stmt.action;
+                const mid = act.moduleId;
+                const intent = act.intent;
+
+                if (mid === "locomotion") {
+                  if (intent === "jump") isJumpHeld = true;
+                  else if (intent === "holdSprint") isSprinting = true;
+                  else if (intent === "toggleSprint") {
+                    if (effTrigger.mode === "press" ? (keyStates.justPressed(effTrigger.code) || mouseStates.justPressed(effTrigger.code === "MouseLeft" ? 0 : 2)) : true) {
+                      kChar.setSprinting(!kChar.isSprinting);
+                    }
+                    isSprinting = Boolean(kChar.isSprinting);
                   }
-                  isSprinting = Boolean(kChar.isSprinting);
+                } else if (mid === "throw" || mid === "throwPickup") {
+                  if (intent === "aimThrow") isAimingTrajectory = true;
+                  else if (intent === "releaseThrow") isThrow = true;
+                  else if (intent === "pickupReach") isGrabHeld = true;
+                  else if (intent === "dropItem") isDrop = true;
+                  else if (intent === "swap" || intent === "swapItem") isSwap = true;
+                } else if (mid === "pickup") {
+                  if (intent === "pickupReach") isGrabHeld = true;
+                  else if (intent === "dropItem") isDrop = true;
+                  else if (intent === "swap" || intent === "swapItem") isSwap = true;
+                } else if (mid === "laser") {
+                  if (intent === "aimLaser") isLaserAiming = true;
+                  else if (intent === "fireLaser") {
+                    isLaserFiring = true;
+                    isLaserAiming = true;
+                  }
+                } else if (mid === "melee") {
+                  if (intent === "punch") isMeleeRequested = true;
+                } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
+                  if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
+                } else if (mid === "staging") {
+                  if (intent === "setStage") {
+                    kChar.setStage(act.args?.group || act.args?.stageSet || "default", act.args?.stage || "none");
+                  } else if (intent.includes("Laser")) {
+                    kChar.stagedAction = "laser";
+                  } else if (intent.includes("Throw")) {
+                    kChar.stagedAction = "throw";
+                  } else if (intent.includes("Pickup") || intent.includes("Grab")) {
+                    kChar.stagedAction = "pickup";
+                  } else if (intent.includes("Melee")) {
+                    kChar.stagedAction = "melee";
+                  } else if (intent === "clearStage") {
+                    kChar.stagedAction = "none";
+                  }
                 }
-              } else if (mid === "throw" || mid === "throwPickup") {
-                if (intent === "aimThrow") isAimingTrajectory = true;
-                else if (intent === "releaseThrow") isThrow = true;
-                else if (intent === "pickupReach") isGrabHeld = true;
-                else if (intent === "dropItem") isDrop = true;
-                else if (intent === "swap" || intent === "swapItem") isSwap = true;
-              } else if (mid === "pickup") {
-                if (intent === "pickupReach") isGrabHeld = true;
-                else if (intent === "dropItem") isDrop = true;
-                else if (intent === "swap" || intent === "swapItem") isSwap = true;
-              } else if (mid === "laser") {
-                if (intent === "aimLaser") isLaserAiming = true;
-                else if (intent === "fireLaser") {
-                  isLaserFiring = true;
-                  isLaserAiming = true;
-                }
-              } else if (mid === "melee") {
-                if (intent === "punch") isMeleeRequested = true;
-              } else if (mid === "heldItem" || mid === "item" || mid === "consume") {
-                if (intent === "primaryItemAbility" || intent === "eatHeldItem") isUsingItem = true;
-              } else if (mid === "staging") {
-                if (intent === "setStage") {
-                  kChar.setStage(act.args?.group || act.args?.stageSet || "default", act.args?.stage || "none");
-                } else if (intent.includes("Laser")) {
-                  kChar.stagedAction = "laser";
-                } else if (intent.includes("Throw")) {
-                  kChar.stagedAction = "throw";
-                } else if (intent.includes("Pickup") || intent.includes("Grab")) {
-                  kChar.stagedAction = "pickup";
-                } else if (intent.includes("Melee")) {
-                  kChar.stagedAction = "melee";
-                } else if (intent === "clearStage") {
-                  kChar.stagedAction = "none";
-                }
+              } else if (stmt.type === "nestedThread") {
+                executeKbmRules(stmt.rules);
               }
-            } else if (stmt.type === "nestedThread") {
-              executeKbmRules(stmt.rules);
+            }
+          }
+        };
+
+        executeKbmRules(kSchema.keyboardMouse.rules);
+
+        kChar.isAimingTrajectory = isAimingTrajectory;
+        kChar.isLaserAiming = isLaserAiming;
+        kChar.isLaserFiring = isLaserFiring;
+        kChar.isMeleeRequested = isMeleeRequested;
+
+        // When aiming or holding with directional intent, face aim cursor
+        if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory) {
+          const aimDx = input.actualMousePos.x - kChar.position.x;
+          const aimDy = input.actualMousePos.y - kChar.position.y;
+          if (Math.hypot(aimDx, aimDy) > 0.05) {
+            kChar.facingAngle = Math.atan2(aimDy, aimDx);
+            if (isAimingTrajectory) {
+              kChar.lastThrowAimAngle = kChar.facingAngle;
             }
           }
         }
-      };
 
-      executeKbmRules(kSchema.keyboardMouse.rules);
+        const isMouseAiming = !isEditMode && (isLaserAiming || isAimingTrajectory);
 
-      kChar.isAimingTrajectory = isAimingTrajectory;
-      kChar.isLaserAiming = isLaserAiming;
-      kChar.isLaserFiring = isLaserFiring;
-      kChar.isMeleeRequested = isMeleeRequested;
+        const kLaunchVel = isThrow && kChar.activeTrajectory?.launchVel ? kChar.activeTrajectory.launchVel : undefined;
+        const kLaunchPos = isThrow && kChar.activeTrajectory?.launchPos ? kChar.activeTrajectory.launchPos : undefined;
 
-      // When aiming or holding with directional intent, face aim cursor
-      if (isLaserAiming || isLaserFiring || isMeleeRequested || isAimingTrajectory) {
-        const aimDx = input.actualMousePos.x - kChar.position.x;
-        const aimDy = input.actualMousePos.y - kChar.position.y;
-        if (Math.hypot(aimDx, aimDy) > 0.05) {
-          kChar.facingAngle = Math.atan2(aimDy, aimDx);
-          if (isAimingTrajectory) {
-            kChar.lastThrowAimAngle = kChar.facingAngle;
-          }
-        }
-      }
-
-      const isMouseAiming = !isEditMode && (isLaserAiming || isAimingTrajectory);
-
-      const kLaunchVel = isThrow && kChar.activeTrajectory?.launchVel ? kChar.activeTrajectory.launchVel : undefined;
-      const kLaunchPos = isThrow && kChar.activeTrajectory?.launchPos ? kChar.activeTrajectory.launchPos : undefined;
-
-      map.set("keyboard", {
-        playerId: "keyboard",
-        moveX,
-        moveY,
-        isSprinting: isSprinting || Boolean(kChar.isSprinting),
-        isJumpHeld,
-        isGrabHeld,
-        grabTargetObjectId: (isGrabHeld || isSwap) && grabTargetObject ? grabTargetObject.id : null,
-        isDrop,
-        isThrow,
-        isSwap,
-        isUsingItem,
-        isLaserAiming,
-        isLaserFiring,
-        laserAimX: input.actualMousePos.x,
-        laserAimY: input.actualMousePos.y,
-        isMeleeRequested,
-        meleeAimDirX: (input.actualMousePos.x - kChar.position.x) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1),
-        meleeAimDirY: (input.actualMousePos.y - kChar.position.y) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1),
-        meleeAimX: input.actualMousePos.x,
-        meleeAimY: input.actualMousePos.y,
-        aimX: input.actualMousePos.x,
-        aimY: input.actualMousePos.y,
-        isAiming: isMouseAiming,
-        isLockHeld: false,
-        lockedAimPos: null,
-        aimLockDelta: 0,
-        facingAngle: kChar.facingAngle,
-        ...(kLaunchVel ? {
-          launchVx: kLaunchVel.vx,
-          launchVy: kLaunchVel.vy,
-          launchVz: kLaunchVel.vz,
-        } : {}),
-        ...(kLaunchPos ? {
-          launchStartX: kLaunchPos.x,
-          launchStartY: kLaunchPos.y,
-          launchStartZ: kLaunchPos.z,
-        } : {}),
-      } as any);
+        map.set("keyboard", {
+          playerId: "keyboard",
+          moveX,
+          moveY,
+          isSprinting: isSprinting || Boolean(kChar.isSprinting),
+          isJumpHeld,
+          isGrabHeld,
+          grabTargetObjectId: (isGrabHeld || isSwap) && grabTargetObject ? grabTargetObject.id : null,
+          isDrop,
+          isThrow,
+          isSwap,
+          isUsingItem,
+          isLaserAiming,
+          isLaserFiring,
+          laserAimX: input.actualMousePos.x,
+          laserAimY: input.actualMousePos.y,
+          isMeleeRequested,
+          meleeAimDirX: (input.actualMousePos.x - kChar.position.x) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1),
+          meleeAimDirY: (input.actualMousePos.y - kChar.position.y) / (Math.hypot(input.actualMousePos.x - kChar.position.x, input.actualMousePos.y - kChar.position.y) || 1),
+          meleeAimX: input.actualMousePos.x,
+          meleeAimY: input.actualMousePos.y,
+          aimX: input.actualMousePos.x,
+          aimY: input.actualMousePos.y,
+          isAiming: isMouseAiming,
+          isLockHeld: false,
+          lockedAimPos: null,
+          aimLockDelta: 0,
+          facingAngle: kChar.facingAngle,
+          ...(kLaunchVel ? {
+            launchVx: kLaunchVel.vx,
+            launchVy: kLaunchVel.vy,
+            launchVz: kLaunchVel.vz,
+          } : {}),
+          ...(kLaunchPos ? {
+            launchStartX: kLaunchPos.x,
+            launchStartY: kLaunchPos.y,
+            launchStartZ: kLaunchPos.z,
+          } : {}),
+        } as any);
         input.aimLockRawDelta = 0;
         input.aimLockRawDx = 0;
         input.aimLockRawDy = 0;
@@ -1078,16 +1079,16 @@ export class PlayerManager {
 
       const cChar = entry.character;
       const gpSchema = ControlsInspector.getActiveSchema(cChar);
-      const isCharHolding = cChar.heldObject !== null || Boolean(cChar.grappledTarget);
+      const isCharHolding = cChar.heldObject !== null || Boolean(cChar.grappledTarget) || Boolean(cChar.telekineticTarget);
       const isCharHoldingConsumable = Boolean(cChar.canConsumeHeldObject ? cChar.canConsumeHeldObject() : false);
 
       let aimX = slot.aimPos.x;
       let aimY = slot.aimPos.y;
 
       let grabTargetObject: GameObject | null = null;
-      if (cChar.pickupModule || cChar.grappleModule) {
+      if (cChar.pickupModule || cChar.grappleModule || cChar.telekinesisModule) {
         const candidateEntities = [...this.allCharacters.filter((c) => c !== cChar), ...objects].filter(
-          (c) => c !== cChar.heldObject && c !== (cChar as any).grappledTarget
+          (c) => c !== cChar.heldObject && c !== (cChar as any).grappledTarget && c !== cChar.telekineticTarget
         );
         const target = GrabIntentArbiter.findTarget(
           cChar,
@@ -1239,6 +1240,15 @@ export class PlayerManager {
         );
       }
 
+      // Dedicated Telekinetic Fling (when telekinetically holding a target without hand/grapple hold)
+      if (pkt.isThrow && char.telekineticTarget && !char.heldObject && !char.grappledTarget && char.telekinesisModule) {
+        const throwAimX = aimTarget ? aimTarget.x : (char.position.x + Math.cos(char.facingAngle) * 4);
+        const throwAimY = aimTarget ? aimTarget.y : (char.position.y + Math.sin(char.facingAngle) * 4);
+        TelekinesisCapability.flingTarget(char, { x: throwAimX, y: throwAimY }, this.arena, 1.0);
+        char.isUsingItem = false;
+        char.eatRateWatts = 0;
+      }
+
       // Dedicated Throw (RT / Left Click)
       if (pkt.isThrow && char.heldObject && char.throwModule) {
         if (char.isThrowCancelZone) {
@@ -1378,6 +1388,20 @@ export class PlayerManager {
         char.facingAngle = pkt.facingAngle;
       }
 
+      // Freeze floating gun hover goal while firing so mouse cursor aims bullets cleanly away from the gun
+      if (char.telekineticTarget) {
+        const isFiringTkGun = Boolean((char as any).isFiringWeapon && char.telekineticTarget.gunModule?.enabled);
+        if (isFiringTkGun) {
+          if (!char.telekineticAimPos) {
+            char.telekineticAimPos = { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y };
+          }
+        } else if (aimTarget) {
+          char.telekineticAimPos = { x: aimTarget.x, y: aimTarget.y };
+        }
+      } else {
+        char.telekineticAimPos = aimTarget ? { x: aimTarget.x, y: aimTarget.y } : null;
+      }
+
       char.updateCharacter(
         dt,
         { x: pkt.moveX, y: pkt.moveY },
@@ -1392,8 +1416,8 @@ export class PlayerManager {
         pkt.facingAngle !== undefined
       );
 
-      // Detect newly acquired or released held/grappled object to reliably dispatch action
-      const activeHeldOrGrappled = char.heldObject || char.grappledTarget;
+      // Detect newly acquired or released held/grappled/telekinetic object to reliably dispatch action
+      const activeHeldOrGrappled = char.heldObject || char.grappledTarget || char.telekineticTarget;
       const currentHeldId = activeHeldOrGrappled ? activeHeldOrGrappled.id : null;
       const prevHeldId = this.lastHeldObjectIds.get(char.id) ?? null;
       if (currentHeldId !== prevHeldId) {
@@ -1460,10 +1484,10 @@ export class PlayerManager {
         char.heldObject.position.z = heldPos.z;
       }
 
-      // Primary Item Ability: Actuates held or grappled object's primary ability (e.g. consuming for consumables)
+      // Primary Item Ability: Actuates held, grappled, or telekinetic object's primary ability (e.g. consuming for consumables)
       const grabState = this.getGrabSuppressionState(char.id);
       const isUsingItem = Boolean((pkt as any).isUsingItem);
-      const activeConsumable = char.heldObject || char.grappledTarget;
+      const activeConsumable = char.heldObject || char.grappledTarget || char.telekineticTarget;
       if (isUsingItem && activeConsumable && char.hasPrimaryItemAbility()) {
         char.isUsingItem = true;
         const heldItem = activeConsumable;
@@ -1502,6 +1526,9 @@ export class PlayerManager {
           }
           if (char.grappledTarget === heldItem) {
             char.releaseGrapple();
+          }
+          if (char.telekineticTarget === heldItem) {
+            TelekinesisCapability.releaseTarget(char);
           }
           if (heldItem) {
             heldItem.isHeld = false;
@@ -1544,9 +1571,9 @@ export class PlayerManager {
           : (grabState.rtGrabSuppressed && grabState.bGrabSuppressed)
       );
 
-      // Dedicated Swap Action: drops current item (or releases grappled target), discludes it, and grabs selected item
-      if (!isEditMode && (pkt as any).isSwap && !isDeviceSuppressed && (char.pickupModule || char.grappleModule)) {
-        const currentlyHeld = char.heldObject || char.grappledTarget;
+      // Dedicated Swap Action: drops current item (or releases grappled/telekinetic target), excludes it, and grabs selected item
+      if (!isEditMode && (pkt as any).isSwap && !isDeviceSuppressed && (char.pickupModule || char.grappleModule || char.telekinesisModule)) {
+        const currentlyHeld = char.heldObject || char.grappledTarget || char.telekineticTarget;
         const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter((e) => e !== currentlyHeld);
         let targetObj: GameObject | null = null;
         if (pkt.grabTargetObjectId && pkt.grabTargetObjectId !== currentlyHeld?.id) {
@@ -1558,90 +1585,45 @@ export class PlayerManager {
 
         const isTargetInReach = Boolean(
           targetObj &&
-          ((char.pickupModule?.enabled && char.pickupModule.isObjectInReach(char, targetObj, this.arena.wallHeight)) ||
-           (char.grappleModule?.enabled && char.grappleModule.isTargetInReach(char, targetObj, this.arena.wallHeight)))
+          GrabIntentArbiter.isTargetInReach(char, targetObj, this.arena.wallHeight)
         );
 
-        // SWAP REQUIREMENT: If holding/dragging an item, do NOT drop it unless another object is near enough to swap with!
+        // SWAP REQUIREMENT: If holding/dragging/telekinesing an item, do NOT drop it unless another object is near enough to swap with!
         if (currentlyHeld && !isTargetInReach) {
-          // No candidate object in reach: preserve held/grappled object
+          // No candidate object in reach: preserve held/grappled/telekinetic object
         } else {
-        const droppedObj = currentlyHeld;
-        if (droppedObj) {
-          if (char.grappledTarget === droppedObj) {
-            char.releaseGrapple();
-          } else if (char.pickupModule) {
-            char.pickupModule.drop(char);
-          }
-          input.arcModulationCursor = null;
-          input.arcModulationDeltaY = 0;
-          if (entry && entry.slotIndex !== undefined) {
-            const slot = input.gamepadSlots.get(entry.slotIndex);
-            if (slot) {
-              slot.isLockHeld = false;
-              slot.lockedAimPos = null;
-              slot.arcModulationCursor = null;
-              slot.arcModulationDeltaY = 0;
-              slot.lastThrowAimAngle = undefined;
+          const droppedObj = currentlyHeld;
+          if (droppedObj) {
+            if (char.telekineticTarget === droppedObj) {
+              TelekinesisCapability.releaseTarget(char);
+            } else if (char.grappledTarget === droppedObj) {
+              char.releaseGrapple();
+            } else if (char.pickupModule) {
+              char.pickupModule.drop(char);
             }
-          }
-          const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-          ClientActionDispatcher.dispatchDrop(
-            this.onReliableActionDispatched,
-            isReplay,
-            actPlayerId,
-            pkt.tick ?? 0,
-            droppedObj.id
-          );
-        }
-
-        if (targetObj && isTargetInReach) {
-          grabState.grabSuppressed = true;
-          if (isKeyboardPlayer) {
-            grabState.mouseGrabSuppressed = true;
-            grabState.keyEGrabSuppressed = true;
-          } else {
-            grabState.rtGrabSuppressed = true;
-            grabState.bGrabSuppressed = true;
-          }
-          const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-          if (this.isOnlineMode) {
-            this.onPriorityGrabRequested?.(playerId, char.id, targetObj.id);
-            ClientActionDispatcher.dispatchPickup(
+            input.arcModulationCursor = null;
+            input.arcModulationDeltaY = 0;
+            if (entry && entry.slotIndex !== undefined) {
+              const slot = input.gamepadSlots.get(entry.slotIndex);
+              if (slot) {
+                slot.isLockHeld = false;
+                slot.lockedAimPos = null;
+                slot.arcModulationCursor = null;
+                slot.arcModulationDeltaY = 0;
+                slot.lastThrowAimAngle = undefined;
+              }
+            }
+            const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+            ClientActionDispatcher.dispatchDrop(
               this.onReliableActionDispatched,
               isReplay,
               actPlayerId,
               pkt.tick ?? 0,
-              targetObj.id
+              droppedObj.id
             );
-          } else {
-            let itemToHold: GameObject = targetObj;
-            if (targetObj.spawnerModule && targetObj.spawnerModule.enabled) {
-              const clone = targetObj.spawnerModule.triggerClone(targetObj, this.arena, objects);
-              if (clone) itemToHold = clone;
-            }
-            const grabRes = GrabIntentArbiter.executeGrab(char, itemToHold);
-            const pickedUp = grabRes.success;
-            if (!pickedUp && itemToHold !== targetObj) {
-              const idx = objects.indexOf(itemToHold);
-              if (idx !== -1) objects.splice(idx, 1);
-            } else if (pickedUp) {
-              this.lastHeldObjectIds.set(char.id, itemToHold.id);
-              char.isUsingItem = false;
-              char.eatRateWatts = 0;
-              ClientActionDispatcher.dispatchPickup(
-                this.onReliableActionDispatched,
-                isReplay,
-                actPlayerId,
-                pkt.tick ?? 0,
-                itemToHold.id
-              );
-            }
           }
-        } else if (aimTarget) {
-          const pickedUp = char.pickupModule ? char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y) : false;
-          const held = char.heldObject as GameObject | null;
-          if (pickedUp && held) {
+
+          if (targetObj && isTargetInReach) {
             grabState.grabSuppressed = true;
             if (isKeyboardPlayer) {
               grabState.mouseGrabSuppressed = true;
@@ -1650,27 +1632,73 @@ export class PlayerManager {
               grabState.rtGrabSuppressed = true;
               grabState.bGrabSuppressed = true;
             }
-            this.lastHeldObjectIds.set(char.id, held.id);
-            char.isUsingItem = false;
-            char.eatRateWatts = 0;
-            char.isChargingThrow = false;
-            char.isAimingWallClear = false;
-            char.isHoldingThrowRelease = false;
-            char.activeTrajectory = null;
             const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
-            ClientActionDispatcher.dispatchPickup(
-              this.onReliableActionDispatched,
-              isReplay,
-              actPlayerId,
-              pkt.tick ?? 0,
-              held.id
-            );
+            if (this.isOnlineMode) {
+              this.onPriorityGrabRequested?.(playerId, char.id, targetObj.id);
+              ClientActionDispatcher.dispatchPickup(
+                this.onReliableActionDispatched,
+                isReplay,
+                actPlayerId,
+                pkt.tick ?? 0,
+                targetObj.id
+              );
+            } else {
+              let itemToHold: GameObject = targetObj;
+              if (targetObj.spawnerModule && targetObj.spawnerModule.enabled) {
+                const clone = targetObj.spawnerModule.triggerClone(targetObj, this.arena, objects);
+                if (clone) itemToHold = clone;
+              }
+              const grabRes = GrabIntentArbiter.executeGrab(char, itemToHold, this.arena.wallHeight);
+              const pickedUp = grabRes.success;
+              if (!pickedUp && itemToHold !== targetObj) {
+                const idx = objects.indexOf(itemToHold);
+                if (idx !== -1) objects.splice(idx, 1);
+              } else if (pickedUp) {
+                this.lastHeldObjectIds.set(char.id, itemToHold.id);
+                char.isUsingItem = false;
+                char.eatRateWatts = 0;
+                ClientActionDispatcher.dispatchPickup(
+                  this.onReliableActionDispatched,
+                  isReplay,
+                  actPlayerId,
+                  pkt.tick ?? 0,
+                  itemToHold.id
+                );
+              }
+            }
+          } else if (aimTarget) {
+            const pickedUp = char.pickupModule ? char.pickupModule.pickupAndSwap(char, otherEntities, this.arena.wallHeight, aimTarget.x, aimTarget.y) : false;
+            const held = char.heldObject as GameObject | null;
+            if (pickedUp && held) {
+              grabState.grabSuppressed = true;
+              if (isKeyboardPlayer) {
+                grabState.mouseGrabSuppressed = true;
+                grabState.keyEGrabSuppressed = true;
+              } else {
+                grabState.rtGrabSuppressed = true;
+                grabState.bGrabSuppressed = true;
+              }
+              this.lastHeldObjectIds.set(char.id, held.id);
+              char.isUsingItem = false;
+              char.eatRateWatts = 0;
+              char.isChargingThrow = false;
+              char.isAimingWallClear = false;
+              char.isHoldingThrowRelease = false;
+              char.activeTrajectory = null;
+              const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
+              ClientActionDispatcher.dispatchPickup(
+                this.onReliableActionDispatched,
+                isReplay,
+                actPlayerId,
+                pkt.tick ?? 0,
+                held.id
+              );
+            }
           }
-        }
         }
       }
       const isSeeking = !justDepletedConsumable && pkt.isGrabHeld && !isDeviceSuppressed;
-      if (!isEditMode && isSeeking && !char.heldObject && !char.grappledTarget && (char.pickupModule || char.grappleModule)) {
+      if (!isEditMode && isSeeking && !char.heldObject && !char.grappledTarget && !char.telekineticTarget && (char.pickupModule || char.grappleModule || char.telekinesisModule)) {
         if (pkt.grabTargetObjectId !== undefined) {
           if (pkt.grabTargetObjectId !== null) {
             const otherEntities = [...this.allCharacters.filter((c) => c !== char), ...objects];
@@ -1706,7 +1734,7 @@ export class PlayerManager {
                     itemToHold = clone;
                   }
                 }
-                const result = GrabIntentArbiter.executeGrab(char, itemToHold);
+                const result = GrabIntentArbiter.executeGrab(char, itemToHold, this.arena.wallHeight);
                 if (!result.success && itemToHold !== targetObj) {
                   // Insufficient lift energy or failed pickup: clean up orphaned clone
                   const idx = objects.indexOf(itemToHold);
@@ -1922,10 +1950,10 @@ export class PlayerManager {
           this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
         }
 
-        // Unified single-object target selection via GrabIntentArbiter (including swap/grab candidates while holding or dragging):
-        if (char.pickupModule?.enabled || char.grappleModule?.enabled) {
+        // Unified single-object target selection via GrabIntentArbiter (including swap/grab candidates while holding, dragging, or telekinesing):
+        if (char.pickupModule?.enabled || char.grappleModule?.enabled || char.telekinesisModule?.enabled) {
           const candidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter(
-            (o) => o !== char.heldObject && o !== (char as any).grappledTarget && !o.isHeld
+            (o) => o !== char.heldObject && o !== (char as any).grappledTarget && o !== char.telekineticTarget && !o.isHeld
           );
           const target = GrabIntentArbiter.findTarget(
             char,
@@ -1976,10 +2004,10 @@ export class PlayerManager {
         slot.aimOffset.x = slot.aimPos.x - char.position.x;
         slot.aimOffset.y = slot.aimPos.y - char.position.y;
 
-        // Unified single-object target selection via GrabIntentArbiter (including swap/grab candidates while holding or dragging):
-        if (char.pickupModule?.enabled || char.grappleModule?.enabled) {
+        // Unified single-object target selection via GrabIntentArbiter (including swap/grab candidates while holding, dragging, or telekinesing):
+        if (char.pickupModule?.enabled || char.grappleModule?.enabled || char.telekinesisModule?.enabled) {
           const candidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter(
-            (o) => o !== char.heldObject && o !== (char as any).grappledTarget && !o.isHeld
+            (o) => o !== char.heldObject && o !== (char as any).grappledTarget && o !== char.telekineticTarget && !o.isHeld
           );
           const target = GrabIntentArbiter.findTarget(
             char,

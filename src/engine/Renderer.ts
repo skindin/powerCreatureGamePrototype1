@@ -915,8 +915,15 @@ export class Renderer {
         }
       }
 
-      // 7b. Active Grapple Tether Leashes (Renders ON TOP of all ground and elevated entity sprites!)
+      // 7b. Active Grapple & Telekinesis Tethers (Renders ON TOP of all ground and elevated entity sprites!)
       EntityPass.drawGrappleTethers(
+        ctx,
+        characters,
+        ppu,
+        this.viewSettings,
+        (obj) => this.getEffectiveObjectPosition(obj, arena, characters)
+      );
+      EntityPass.drawTelekinesisTethers(
         ctx,
         characters,
         ppu,

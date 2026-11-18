@@ -119,6 +119,14 @@ export class PlayerDeltaBuilder {
         if (prop === char.flightModule.groundAnchorRangeProp) return "flightModule.groundAnchorRange";
         if (prop === char.flightModule.stabilityProp) return "flightModule.stability";
       }
+      if (char.telekinesisModule) {
+        if (prop === char.telekinesisModule.maxPowerProp) return "telekinesisModule.maxPower";
+        if (prop === char.telekinesisModule.telekinesisReachProp) return "telekinesisModule.telekinesisReach";
+        if (prop === char.telekinesisModule.maxMoveSpeedProp) return "telekinesisModule.maxMoveSpeed";
+        if (prop === char.telekinesisModule.holdHoverHeightProp) return "telekinesisModule.holdHoverHeight";
+        if (prop === char.telekinesisModule.groundAnchorRangeProp) return "telekinesisModule.groundAnchorRange";
+        if (prop === char.telekinesisModule.stabilityProp) return "telekinesisModule.stability";
+      }
       if (char.colliderModule && prop === char.colliderModule.radiusProp) return "colliderRadius";
       if (char.rigidbodyModule && prop === char.rigidbodyModule.massProp) return "mass";
     }

@@ -1,6 +1,7 @@
 import type { Arena } from "../Arena.js";
 import type { GameObject } from "../GameObject.js";
 import { Character } from "../../character/Character.js";
+import { GrabIntentArbiter } from "../../character/capabilities/GrabIntentArbiter.js";
 import type { ViewSettings } from "../Renderer.js";
 
 export class EntityPass {
@@ -52,9 +53,9 @@ export class EntityPass {
         !c.isHeld &&
         c.heldObject !== obj &&
         c !== (obj as any).grappledBy &&
+        c !== (obj as any).telekinesedBy &&
         !obj.isHeld &&
-        ((c.pickupModule?.enabled && (c.pickupModule?.isObjectInReach(c, obj, arena.wallHeight) ?? false)) ||
-         (c.grappleModule?.enabled && (c.grappleModule?.isTargetInReach(c, obj, arena.wallHeight) ?? false)))
+        GrabIntentArbiter.isTargetInReach(c, obj, arena.wallHeight)
     );
 
     const targetingChars: Character[] = [];
@@ -245,50 +246,50 @@ export class EntityPass {
         ctx.lineWidth = isTargetGrab ? 2.5 : 2;
         ctx.stroke();
       }
- 
-       // King of the Hill / Unlimited Consumable: radiant pulsating aura halo
-       if (obj.consumableModule?.unlimited) {
-         const pulse = (Math.sin(performance.now() * 0.006) + 1) * 0.5;
-         ctx.save();
-         ctx.strokeStyle = `rgba(255, 20, 147, ${0.45 + pulse * 0.45})`;
-         ctx.lineWidth = 3.0;
-         ctx.shadowColor = "#ff1493";
-         ctx.shadowBlur = 10 + pulse * 6;
-         ctx.beginPath();
-         ctx.arc(x, y, renderRadius + 4 + pulse * 2, 0, Math.PI * 2);
-         ctx.stroke();
-         ctx.restore();
-       }
- 
-       // Food Stem & Leaf details
-       if (obj.foodModule || obj.consumableModule?.tag === "food") {
-         const stemH = Math.max(4, renderRadius * 0.45);
-         ctx.strokeStyle = "#854d0e";
-         ctx.lineWidth = Math.max(1.5, renderRadius * 0.14);
-         ctx.beginPath();
-         ctx.moveTo(x, y - renderRadius + 1);
-         ctx.quadraticCurveTo(x + 2, y - renderRadius - stemH * 0.5, x + 3, y - renderRadius - stemH);
-         ctx.stroke();
- 
-         ctx.fillStyle = obj.consumableModule?.unlimited ? "#f43f5e" : "#22c55e";
-         ctx.beginPath();
-         ctx.ellipse(x + 4.5, y - renderRadius - stemH * 0.65, Math.max(2.5, renderRadius * 0.25), Math.max(1.5, renderRadius * 0.14), Math.PI / 4, 0, Math.PI * 2);
-         ctx.fill();
-       }
-     }
- 
-     // Active eating nutrient pulse particles when being consumed
-     if ((isHeld || allCharacters.some((c) => c.grappledTarget === obj)) && allCharacters.some((c) => (c.heldObject === obj || c.grappledTarget === obj) && c.isUsingItem)) {
-       const pulseT = (performance.now() % 600) / 600;
-       const pulseColor = obj.consumableModule?.unlimited
-         ? `rgba(255, 20, 147, ${0.85 * (1 - pulseT)})`
-         : `rgba(34, 197, 94, ${0.75 * (1 - pulseT)})`;
-       ctx.strokeStyle = pulseColor;
-       ctx.lineWidth = 2.5;
-       ctx.beginPath();
-       ctx.arc(x, y, renderRadius + pulseT * 12, 0, Math.PI * 2);
-       ctx.stroke();
-     }
+
+      // King of the Hill / Unlimited Consumable: radiant pulsating aura halo
+      if (obj.consumableModule?.unlimited) {
+        const pulse = (Math.sin(performance.now() * 0.006) + 1) * 0.5;
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 20, 147, ${0.45 + pulse * 0.45})`;
+        ctx.lineWidth = 3.0;
+        ctx.shadowColor = "#ff1493";
+        ctx.shadowBlur = 10 + pulse * 6;
+        ctx.beginPath();
+        ctx.arc(x, y, renderRadius + 4 + pulse * 2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Food Stem & Leaf details
+      if (obj.foodModule || obj.consumableModule?.tag === "food") {
+        const stemH = Math.max(4, renderRadius * 0.45);
+        ctx.strokeStyle = "#854d0e";
+        ctx.lineWidth = Math.max(1.5, renderRadius * 0.14);
+        ctx.beginPath();
+        ctx.moveTo(x, y - renderRadius + 1);
+        ctx.quadraticCurveTo(x + 2, y - renderRadius - stemH * 0.5, x + 3, y - renderRadius - stemH);
+        ctx.stroke();
+
+        ctx.fillStyle = obj.consumableModule?.unlimited ? "#f43f5e" : "#22c55e";
+        ctx.beginPath();
+        ctx.ellipse(x + 4.5, y - renderRadius - stemH * 0.65, Math.max(2.5, renderRadius * 0.25), Math.max(1.5, renderRadius * 0.14), Math.PI / 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Active eating nutrient pulse particles when being consumed
+    if ((isHeld || allCharacters.some((c) => c.grappledTarget === obj)) && allCharacters.some((c) => (c.heldObject === obj || c.grappledTarget === obj) && c.isUsingItem)) {
+      const pulseT = (performance.now() % 600) / 600;
+      const pulseColor = obj.consumableModule?.unlimited
+        ? `rgba(255, 20, 147, ${0.85 * (1 - pulseT)})`
+        : `rgba(34, 197, 94, ${0.75 * (1 - pulseT)})`;
+      ctx.strokeStyle = pulseColor;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(x, y, renderRadius + pulseT * 12, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     this.drawRollIndicator(ctx, obj, x, y, renderRadius);
     ctx.restore();
@@ -385,8 +386,7 @@ export class EntityPass {
         c.heldObject !== char &&
         c !== (char as any).grappledBy &&
         !char.isHeld &&
-        ((c.pickupModule?.enabled && (c.pickupModule?.isObjectInReach(c, char, arena.wallHeight) ?? false)) ||
-         (c.grappleModule?.enabled && (c.grappleModule?.isTargetInReach(c, char, arena.wallHeight) ?? false)))
+        GrabIntentArbiter.isTargetInReach(c, char, arena.wallHeight)
     );
 
     const targetingChars: Character[] = [];
@@ -505,6 +505,89 @@ export class EntityPass {
       ctx.arc(x, y, 4, 0, Math.PI * 2);
       ctx.arc(tx, ty, 4, 0, Math.PI * 2);
       ctx.fillStyle = char.playerColor || "#f59e0b";
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Draws glowing psychokinetic tethers and target aura rings for active telekinetic grabs.
+   * Renders with subtle harmonic ripple reflecting `telekinesisModule.stability`.
+   */
+  public static drawTelekinesisTethers(
+    ctx: CanvasRenderingContext2D,
+    characters: Character[],
+    ppu: number,
+    viewSettings: ViewSettings,
+    getEffectiveObjectPosition: (obj: GameObject) => { x: number; y: number; z: number }
+  ): void {
+    const useHover = viewSettings.verticalVisuals === "hover" || viewSettings.verticalVisuals === "both";
+    const hoverScale = useHover ? viewSettings.visualAltitudeScale : 0;
+    const nowSec = performance.now() * 0.001;
+
+    for (const char of characters) {
+      const target = char.telekineticTarget;
+      if (!target) continue;
+
+      const charEffPos = getEffectiveObjectPosition(char);
+      const targetEffPos = getEffectiveObjectPosition(target);
+
+      const charVx = char.visualOffset ? char.visualOffset.x : 0;
+      const charVy = char.visualOffset ? char.visualOffset.y : 0;
+      const x = (charEffPos.x - charVx) * ppu;
+      const y = (charEffPos.y - charVy - charEffPos.z * hoverScale) * ppu;
+
+      const targetVx = target.visualOffset ? target.visualOffset.x : 0;
+      const targetVy = target.visualOffset ? target.visualOffset.y : 0;
+      const tx = (targetEffPos.x - targetVx) * ppu;
+      const ty = (targetEffPos.y - targetVy - targetEffPos.z * hoverScale) * ppu;
+
+      const stability = char.telekinesisModule ? char.telekinesisModule.getStability(char.properties) : 0.85;
+      const instability = Math.max(0, 1.0 - stability);
+      const waveAmp = (2.0 + instability * 14.0);
+
+      const dx = tx - x;
+      const dy = ty - y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+
+      ctx.save();
+      ctx.shadowColor = "rgba(168, 85, 247, 0.75)";
+      ctx.shadowBlur = 8;
+      ctx.strokeStyle = "rgba(192, 132, 252, 0.85)";
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+
+      ctx.beginPath();
+      const segs = 12;
+      for (let i = 0; i <= segs; i++) {
+        const t = i / segs;
+        const env = Math.sin(t * Math.PI);
+        const ripple = Math.sin(t * 10.0 - nowSec * 9.0) * waveAmp * env;
+        const px = x + dx * t + nx * ripple;
+        const py = y + dy * t + ny * ripple;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      // Target telekinetic ring
+      const tr = Math.max(0.18, target.colliderRadius || 0.25) * ppu;
+      ctx.beginPath();
+      ctx.arc(tx, ty, tr + 5, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([5, 4]);
+      ctx.lineDashOffset = -nowSec * 18;
+      ctx.stroke();
+
+      // Glowing focus dot at character & target
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#c084fc";
+      ctx.beginPath();
+      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+      ctx.arc(tx, ty, 3.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -721,7 +804,7 @@ export class EntityPass {
     const cMod = obj.consumableModule || obj.foodModule;
     if (!cMod || !cMod.enabled) return;
 
-    const holdingChar = allCharacters.find((c) => c.heldObject === obj || c.grappledTarget === obj);
+    const holdingChar = allCharacters.find((c) => c.heldObject === obj || c.grappledTarget === obj || c.telekineticTarget === obj);
     if (!holdingChar) return;
 
     const isEating = Boolean(holdingChar.isUsingItem && holdingChar.canConsumeHeldObject());
@@ -769,5 +852,5 @@ export class EntityPass {
 
   // Compatibility aliases
   public static drawConsumablePieForeground = EntityPass.drawConsumableEatingRing;
-  public static drawConsumablePieBackground(): void {}
+  public static drawConsumablePieBackground(): void { }
 }

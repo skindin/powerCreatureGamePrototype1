@@ -29,6 +29,8 @@ import { LocomotionStanceModule } from "../../character/LocomotionStanceModule.j
 import { EnergyGrowthModule } from "../../character/EnergyGrowthModule.js";
 import { VomitModule } from "../../character/VomitModule.js";
 import { FlightModule } from "../../character/FlightModule.js";
+import { TelekinesisModule } from "../../character/TelekinesisModule.js";
+import { TelekinesisCapability } from "../../character/capabilities/TelekinesisCapability.js";
 import type { DevPanel } from "../DevPanel.js";
 import type { GameObject } from "../../engine/GameObject.js";
 
@@ -134,6 +136,14 @@ export class EntityModuleLifecycle {
         break;
       case "flight":
         if (char?.flightModule) char.flightModule.enabled = !char.flightModule.enabled;
+        break;
+      case "telekinesis":
+        if (char?.telekinesisModule) {
+          char.telekinesisModule.enabled = !char.telekinesisModule.enabled;
+          if (!char.telekinesisModule.enabled && char.telekineticTarget) {
+            TelekinesisCapability.releaseTarget(char);
+          }
+        }
         break;
     }
 
@@ -288,6 +298,15 @@ export class EntityModuleLifecycle {
       case "flight":
         if (e instanceof Character) {
           (e as Character).flightModule = null;
+        }
+        break;
+      case "telekinesis":
+        if (e instanceof Character) {
+          const char = e as Character;
+          if (char.telekineticTarget) {
+            TelekinesisCapability.releaseTarget(char);
+          }
+          char.telekinesisModule = null;
         }
         break;
     }
@@ -495,6 +514,13 @@ export class EntityModuleLifecycle {
           char.flightModule.registerProperties(char.properties);
         }
         break;
+      case "telekinesis":
+        if (e instanceof Character) {
+          const char = e as Character;
+          char.telekinesisModule = new TelekinesisModule();
+          char.telekinesisModule.registerProperties(char.properties);
+        }
+        break;
     }
 
     panel.renderEntityModules();
@@ -536,6 +562,7 @@ export class EntityModuleLifecycle {
     "energyGrowth",
     "vomit",
     "flight",
+    "telekinesis",
     "damageAura",
     "damageSolver",
   ];
@@ -1060,6 +1087,26 @@ export class EntityModuleLifecycle {
             destChar.flightModule.registerProperties(destChar.properties);
           } else {
             destChar.flightModule = null;
+          }
+        }
+        break;
+
+      case "telekinesis":
+        if (destChar) {
+          if (srcChar?.telekinesisModule) {
+            if (!destChar.telekinesisModule) destChar.telekinesisModule = new TelekinesisModule();
+            destChar.telekinesisModule.enabled = srcChar.telekinesisModule.enabled;
+            destChar.telekinesisModule.maxPowerProp.set(srcChar.telekinesisModule.getMaxPower(srcChar.properties), destChar.properties);
+            destChar.telekinesisModule.telekinesisReachProp.set(srcChar.telekinesisModule.getTelekinesisReach(srcChar.properties), destChar.properties);
+            destChar.telekinesisModule.maxMoveSpeedProp.set(srcChar.telekinesisModule.getMaxMoveSpeed(srcChar.properties), destChar.properties);
+            destChar.telekinesisModule.holdHoverHeightProp.set(srcChar.telekinesisModule.getHoldHoverHeight(srcChar.properties), destChar.properties);
+            destChar.telekinesisModule.groundAnchorRangeProp.set(srcChar.telekinesisModule.getGroundAnchorRange(srcChar.properties), destChar.properties);
+            destChar.telekinesisModule.stabilityProp.set(srcChar.telekinesisModule.getStability(srcChar.properties), destChar.properties);
+            destChar.telekinesisModule.consumesEnergy = srcChar.telekinesisModule.consumesEnergy;
+            destChar.telekinesisModule.allowPartialPower = srcChar.telekinesisModule.allowPartialPower;
+            destChar.telekinesisModule.registerProperties(destChar.properties);
+          } else {
+            destChar.telekinesisModule = null;
           }
         }
         break;

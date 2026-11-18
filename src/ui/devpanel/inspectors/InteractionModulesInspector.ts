@@ -440,6 +440,41 @@ export class InteractionModulesInspector {
         aimToleranceSocketEl.appendChild(ctrl.element);
       }
     }
+
+    // Telekinesis sockets
+    if (char?.telekinesisModule) {
+      const tm = char.telekinesisModule;
+      const attachTk = (selector: string, prop: any, label: string, step: number) => {
+        const el = container.querySelector(selector);
+        if (el) {
+          const ctrl = new PropertyControl({ property: prop, owner: char, label, step });
+          el.appendChild(ctrl.element);
+        }
+      };
+
+      attachTk("#prop-socket-tk-max-power", tm.maxPowerProp, "Max Telekinesis Power (Watts)", 50.0);
+      attachTk("#prop-socket-tk-reach", tm.telekinesisReachProp, "Telekinesis Reach (u)", 0.25);
+      attachTk("#prop-socket-tk-move-speed", tm.maxMoveSpeedProp, "Max Move Speed (u/s)", 0.5);
+      attachTk("#prop-socket-tk-hover-height", tm.holdHoverHeightProp, "Hold Hover Height (u)", 0.05);
+      attachTk("#prop-socket-tk-anchor-range", tm.groundAnchorRangeProp, "Ground Anchor Range (u)", 0.5);
+      attachTk("#prop-socket-tk-stability", tm.stabilityProp, "Telekinetic Stability (0-1)", 0.05);
+
+      const checkTkEnergy = container.querySelector("#check-tk-consumes-energy") as HTMLInputElement | null;
+      checkTkEnergy?.addEventListener("change", () => {
+        if (char.telekinesisModule) char.telekinesisModule.consumesEnergy = checkTkEnergy.checked;
+      });
+      bindToggleSave("check-tk-consumes-energy", char, "telekinesisModule.consumesEnergy", "Telekinesis Consumes Energy", (v) => {
+        if (char.telekinesisModule) char.telekinesisModule.consumesEnergy = v;
+      });
+
+      const checkTkPartial = container.querySelector("#check-tk-partial-power") as HTMLInputElement | null;
+      checkTkPartial?.addEventListener("change", () => {
+        if (char.telekinesisModule) char.telekinesisModule.allowPartialPower = checkTkPartial.checked;
+      });
+      bindToggleSave("check-tk-partial-power", char, "telekinesisModule.allowPartialPower", "Telekinesis Partial Power", (v) => {
+        if (char.telekinesisModule) char.telekinesisModule.allowPartialPower = v;
+      });
+    }
   }
 }
 

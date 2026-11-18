@@ -2,8 +2,8 @@ import type { Character } from "../Character.js";
 import type { GameObject } from "../../engine/GameObject.js";
 
 /**
- * Coordinates player grab intention between PickupModule (overhead lift)
- * and GrappleModule (grounded tether / drag).
+ * Coordinates player grab intention between PickupModule (overhead lift),
+ * GrappleModule (grounded tether / drag), and TelekinesisModule (remote levitation).
  */
 export class GrabIntentArbiter {
   /**
@@ -22,7 +22,68 @@ export class GrabIntentArbiter {
   }
 
   /**
-   * Finds the best reachable object or character based on active pickup/grapple capabilities
+   * Returns true if target is within the character's applicable 3D reach:
+   * - Liftable targets can be reached via PickupModule (`pickupReach`) or GrappleModule (`grappleReach`).
+   * - Non-liftable targets (only strong enough to drag) can ONLY be reached via GrappleModule (`grappleReach`).
+   */
+  public static isTargetInReach(
+    character: Character,
+    obj: GameObject,
+    wallHeight: number = 1.0
+  ): boolean {
+    if (!character.pickupModule?.enabled && !character.grappleModule?.enabled && !character.telekinesisModule?.enabled) {
+      return false;
+    }
+    if (
+      obj === character ||
+      obj === character.heldObject ||
+      obj === character.grappledTarget ||
+      obj === character.telekineticTarget ||
+      obj.isHeld
+    ) {
+      return false;
+    }
+    if (obj.lastThrower === character) {
+      return false;
+    }
+
+    const isLiftable = GrabIntentArbiter.canLift(character, obj);
+    const pickupReach = isLiftable && character.pickupModule?.enabled
+      ? character.pickupModule.pickupReachProp.get(character.properties)
+      : 0;
+    const grappleReach = character.grappleModule?.enabled
+      ? character.grappleModule.grappleReachProp.get(character.properties)
+      : 0;
+    const tkReach = character.telekinesisModule?.enabled && !obj.isImmovable
+      ? character.telekinesisModule.getTelekinesisReach(character.properties)
+      : 0;
+
+    const allowedReach = Math.max(pickupReach, grappleReach, tkReach);
+    if (allowedReach <= 0) {
+      return false;
+    }
+
+    const charZ = Math.max(
+      character.position.z,
+      character.supportingSurfaceHeight ?? 0,
+      character.standingWall ? wallHeight : 0
+    );
+    const objZ = Math.max(
+      obj.position.z,
+      obj.supportingSurfaceHeight ?? 0,
+      obj.standingWall ? wallHeight : 0
+    );
+
+    const dx = obj.position.x - character.position.x;
+    const dy = obj.position.y - character.position.y;
+    const dz = objZ - charZ;
+    const dist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    return dist3D <= allowedReach;
+  }
+
+  /**
+   * Finds the best reachable object or character based on active pickup/grapple/telekinesis capabilities
    */
   public static findTarget(
     character: Character,
@@ -32,57 +93,15 @@ export class GrabIntentArbiter {
     wallHeight: number = 1.0,
     maxSelectDistance: number = Infinity
   ): GameObject | null {
-    if (!character.pickupModule?.enabled && !character.grappleModule?.enabled) {
+    if (!character.pickupModule?.enabled && !character.grappleModule?.enabled && !character.telekinesisModule?.enabled) {
       return null;
     }
 
     let bestCandidate: GameObject | null = null;
     let shortestDist = Infinity;
 
-    const charZ = Math.max(
-      character.position.z,
-      character.supportingSurfaceHeight ?? 0,
-      character.standingWall ? wallHeight : 0
-    );
-
-    const pickupReach = character.pickupModule?.enabled
-      ? character.pickupModule.pickupReachProp.get(character.properties)
-      : 0;
-    const grappleReach = character.grappleModule?.enabled
-      ? character.grappleModule.grappleReachProp.get(character.properties)
-      : 0;
-
     for (const obj of candidates) {
-      if (obj === character || obj === character.heldObject || obj === character.grappledTarget || obj.isHeld) {
-        continue;
-      }
-      if (obj.lastThrower === character) continue;
-
-      const isLiftable = GrabIntentArbiter.canLift(character, obj);
-      let allowedReach = 0;
-      if (isLiftable && character.pickupModule?.enabled) {
-        allowedReach = Math.max(allowedReach, pickupReach);
-      }
-      if (character.grappleModule?.enabled) {
-        allowedReach = Math.max(allowedReach, grappleReach);
-      }
-      if (allowedReach <= 0) {
-        continue;
-      }
-
-      const objZ = Math.max(
-        obj.position.z,
-        obj.supportingSurfaceHeight ?? 0,
-        obj.standingWall ? wallHeight : 0
-      );
-
-      const dx = obj.position.x - character.position.x;
-      const dy = obj.position.y - character.position.y;
-      const dz = objZ - charZ;
-      const dist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-      const reachWithBody = allowedReach + (character.colliderRadius ?? 0.35) + (obj.colliderRadius ?? 0.3);
-      if (dist3D > reachWithBody) {
+      if (!GrabIntentArbiter.isTargetInReach(character, obj, wallHeight)) {
         continue;
       }
 
@@ -100,32 +119,63 @@ export class GrabIntentArbiter {
   }
 
   /**
-   * Executes grab on target: arbitrates whether to lift overhead into heldObject
-   * or tether with grappledTarget.
+   * Executes grab on target: arbitrates whether to lift overhead into heldObject,
+   * tether with grappledTarget, or levitate remotely with telekineticTarget.
    */
   public static executeGrab(
     character: Character,
-    target: GameObject
-  ): { success: boolean; mode: "pickup" | "grapple" | "none" } {
-    if (character.heldObject || character.grappledTarget) {
+    target: GameObject,
+    wallHeight: number = 1.0
+  ): { success: boolean; mode: "pickup" | "grapple" | "telekinesis" | "none" } {
+    if (character.heldObject || character.grappledTarget || character.telekineticTarget) {
       return { success: false, mode: "none" };
     }
 
-    const isLiftable = GrabIntentArbiter.canLift(character, target);
+    const charZ = Math.max(
+      character.position.z,
+      character.supportingSurfaceHeight ?? 0,
+      character.standingWall ? wallHeight : 0
+    );
+    const objZ = Math.max(
+      target.position.z,
+      target.supportingSurfaceHeight ?? 0,
+      target.standingWall ? wallHeight : 0
+    );
+    const dist3D = Math.hypot(
+      target.position.x - character.position.x,
+      target.position.y - character.position.y,
+      objZ - charZ
+    );
 
-    // 1. If liftable and character has PickupModule -> Lift overhead
-    if (isLiftable && character.pickupModule && character.pickupModule.enabled) {
+    const isLiftable = GrabIntentArbiter.canLift(character, target);
+    const pickupReach = character.pickupModule?.enabled
+      ? character.pickupModule.pickupReachProp.get(character.properties)
+      : 0;
+    const grappleReach = character.grappleModule?.enabled
+      ? character.grappleModule.grappleReachProp.get(character.properties)
+      : 0;
+
+    // 1. If liftable and within physical pickup reach -> Lift overhead
+    if (isLiftable && character.pickupModule && character.pickupModule.enabled && dist3D <= pickupReach + 0.05) {
       const pickedUp = character.pickupModule.pickup(character, target);
       if (pickedUp) {
         return { success: true, mode: "pickup" };
       }
     }
 
-    // 2. If heavy or equal-mass (or character lacks PickupModule) and character has GrappleModule -> Grapple
-    if (character.grappleModule && character.grappleModule.enabled) {
+    // 2. If within physical grapple reach and GrappleModule enabled -> Grapple
+    if (character.grappleModule && character.grappleModule.enabled && dist3D <= grappleReach + 0.05) {
       const grappled = character.grappleModule.grapple(character, target);
       if (grappled) {
         return { success: true, mode: "grapple" };
+      }
+    }
+
+    // 3. Remote / Telekinetic Grab via TelekinesisModule
+    if (character.telekinesisModule && character.telekinesisModule.enabled) {
+      const grabbed = character.telekinesisModule.grab(character, target);
+      if (grabbed) {
+        return { success: true, mode: "telekinesis" };
       }
     }
 

@@ -234,17 +234,17 @@ export class CharacterSelectModal {
           <div style="font-size: 3.5rem; margin-bottom: 8px; filter: drop-shadow(0 2px 8px rgba(168, 85, 247, 0.45));">🦅</div>
           <h3 style="margin: 0 0 6px; font-size: 1.35rem; color: #c084fc; font-weight: 700;">Sky Kestrel</h3>
           <div style="font-size: 0.76rem; color: #cbd5e1; margin-bottom: 14px; line-height: 1.35;">
-            Telekinetic flyer combining Equivalence-Principle hover with 0 W gravity-powered gliding and braking.
+            Telekinetic flyer with remote object levitation, remote gun firing, and 0 W gravity-powered gliding.
           </div>
           <div style="display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: auto; font-size: 0.75rem; text-align: left;">
             <div style="background: rgba(15, 23, 42, 0.6); padding: 5px 8px; border-radius: 6px; color: #e9d5ff;">
-              <span style="font-weight: 600;">Ascend / Hover:</span> Space (Costs Power)
+              <span style="font-weight: 600;">Flight:</span> Space (Up) / C (0 W Glide) / G (Off)
             </div>
             <div style="background: rgba(15, 23, 42, 0.6); padding: 5px 8px; border-radius: 6px; color: #e9d5ff;">
-              <span style="font-weight: 600;">Glide / Descend:</span> C (0 W Braking)
+              <span style="font-weight: 600;">Telekinesis:</span> Remote Grab, Move & Fling
             </div>
             <div style="background: rgba(15, 23, 42, 0.6); padding: 5px 8px; border-radius: 6px; color: #e9d5ff;">
-              <span style="font-weight: 600;">Toggle Flight:</span> G (On / Off)
+              <span style="font-weight: 600;">Remote Gun:</span> Right-Click Fires Held Gun
             </div>
           </div>
           <button class="select-btn" style="

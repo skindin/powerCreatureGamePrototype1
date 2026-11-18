@@ -33,6 +33,8 @@ import { GrappleModule } from "./GrappleModule.js";
 import { GrappleCapability } from "./capabilities/GrappleCapability.js";
 import { FlightModule } from "./FlightModule.js";
 import { FlightCapability } from "./capabilities/FlightCapability.js";
+import { TelekinesisModule } from "./TelekinesisModule.js";
+import { TelekinesisCapability } from "./capabilities/TelekinesisCapability.js";
 import type { ControlSchema } from "../input/schema/ControlSchemaTypes.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
@@ -158,6 +160,10 @@ export class Character extends GameObject {
   public grappleModule: GrappleModule | null = null;
   public grappledTarget: GameObject | null = null;
   public grappledBy: Character | null = null;
+  public telekinesisModule: TelekinesisModule | null = null;
+  public telekineticTarget: GameObject | null = null;
+  public telekinesedBy: Character | null = null;
+  public telekineticAimPos: Vector2D | null = null;
   public throwModule: ThrowModule | null;
   public jumpModule: JumpModule | null;
   public wallEdgeAssistModule: WallEdgeAssistModule | null;
@@ -368,7 +374,7 @@ export class Character extends GameObject {
   public eatRateWatts: number = 0;
 
   public canConsumeHeldObject(): boolean {
-    const target = this.heldObject || this.grappledTarget;
+    const target = this.heldObject || this.grappledTarget || this.telekineticTarget;
     return this.consumeModule ? this.consumeModule.canConsume(target) : false;
   }
 
@@ -376,7 +382,7 @@ export class Character extends GameObject {
    * Returns true if the currently held object has an inherent primary ability other than throw.
    */
   public hasPrimaryItemAbility(): boolean {
-    const target = this.heldObject || this.grappledTarget;
+    const target = this.heldObject || this.grappledTarget || this.telekineticTarget;
     if (!target) return false;
     if (target.hasPrimaryItemAbility?.()) {
       const type = target.getPrimaryItemAbilityType?.();
@@ -392,7 +398,7 @@ export class Character extends GameObject {
    * Returns true if the held object's primary ability does not require directional aiming (e.g. eating food).
    */
   public isPrimaryAbilityNonDirectional(): boolean {
-    const target = this.heldObject || this.grappledTarget;
+    const target = this.heldObject || this.grappledTarget || this.telekineticTarget;
     if (!target) return false;
     if (target.hasPrimaryItemAbility?.()) {
       const type = target.getPrimaryItemAbilityType?.();
@@ -419,7 +425,7 @@ export class Character extends GameObject {
    * For any consumable object, its primary ability is to be consumed.
    */
   public useHeldItemPrimaryAbility(dt: number, objects?: GameObject[], arena?: Arena): boolean {
-    const target = this.heldObject || this.grappledTarget;
+    const target = this.heldObject || this.grappledTarget || this.telekineticTarget;
     if (!target) return false;
     if (target.hasPrimaryItemAbility?.()) {
       const res = target.usePrimaryItemAbility(dt, this, objects, arena);
@@ -713,6 +719,12 @@ export class Character extends GameObject {
     if (this.grappledBy) {
       GrappleCapability.releaseGrapple(this.grappledBy);
     }
+    if (this.telekineticTarget) {
+      TelekinesisCapability.releaseTarget(this);
+    }
+    if (this.telekinesedBy) {
+      TelekinesisCapability.releaseTarget(this.telekinesedBy);
+    }
     if (this.isHeld && this.heldBy) {
       if (this.heldBy instanceof Character && this.heldBy.heldObject === this) {
         this.heldBy.heldObject = null;
@@ -859,6 +871,8 @@ export class Character extends GameObject {
     }
     HealthRegenCapability.registerDemand(this);
     const canClimb = ClimbingCapability.registerDemand(this, isClimbInput, arena);
+    const tkAim = this.telekineticAimPos ?? aimTargetPos;
+    TelekinesisCapability.registerDemand(this, tkAim, dt, arena);
     const canFly = FlightCapability.canFly(this);
     const flightVertIntent = canFly
       ? FlightCapability.getVerticalIntent(this, isClimbInput, this.isFlightDescendHeld || this.isBraking)
@@ -866,6 +880,9 @@ export class Character extends GameObject {
     if (canFly) {
       FlightCapability.registerDemand(this, movementInput, flightVertIntent, dt, arena);
     }
+
+    // Phase 2: Actuate telekinetic manipulation BEFORE flight so kept recoil is seen by FlightCapability
+    TelekinesisCapability.actuate(this, tkAim, dt, arena);
 
     // Phase 2: Actuate movement & vertical capabilities
     ClimbingCapability.actuate(this, canClimb, movementInput, isClimbInput, dt, arena);
@@ -1029,6 +1046,9 @@ export class Character extends GameObject {
       this.heldObject.isHeld = false;
       this.heldObject.heldBy = null;
       this.heldObject = null;
+    }
+    if (this.telekineticTarget) {
+      TelekinesisCapability.releaseTarget(this);
     }
     this.hasDiedAwaitingNewPickup = true;
     this.velocity = { x: 0, y: 0 };

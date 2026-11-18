@@ -27,6 +27,7 @@ import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import { EnergyGrowthModule, type EnergyGrowthConfig } from "../character/EnergyGrowthModule.js";
 import { VomitModule, type VomitModuleConfig } from "../character/VomitModule.js";
 import { FlightModule } from "../character/FlightModule.js";
+import { TelekinesisModule } from "../character/TelekinesisModule.js";
 import { quarryPreset, createQuarryStones } from "../engine/maps/QuarryMap.js";
 import { Character } from "../character/Character.js";
 import type { ControlSchema } from "../input/schema/ControlSchemaTypes.js";
@@ -418,6 +419,19 @@ export interface SerializedCharacterConfig {
     maxAscentSpeed?: number;
     maxSinkSpeed?: number;
     maxFlightAltitude?: number;
+    groundAnchorRange?: number;
+    stability?: number;
+    consumesEnergy?: boolean;
+    allowPartialPower?: boolean;
+  } | null;
+
+  hasTelekinesis?: boolean;
+  telekinesisModule?: {
+    enabled?: boolean;
+    maxPower?: number;
+    telekinesisReach?: number;
+    maxMoveSpeed?: number;
+    holdHoverHeight?: number;
     groundAnchorRange?: number;
     stability?: number;
     consumesEnergy?: boolean;
@@ -853,6 +867,23 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
     };
   } else {
     result.hasFlight = false;
+  }
+
+  if (char.telekinesisModule) {
+    result.hasTelekinesis = true;
+    result.telekinesisModule = {
+      enabled: char.telekinesisModule.enabled,
+      maxPower: char.telekinesisModule.getMaxPower(char.properties),
+      telekinesisReach: char.telekinesisModule.getTelekinesisReach(char.properties),
+      maxMoveSpeed: char.telekinesisModule.getMaxMoveSpeed(char.properties),
+      holdHoverHeight: char.telekinesisModule.getHoldHoverHeight(char.properties),
+      groundAnchorRange: char.telekinesisModule.getGroundAnchorRange(char.properties),
+      stability: char.telekinesisModule.getStability(char.properties),
+      consumesEnergy: char.telekinesisModule.consumesEnergy,
+      allowPartialPower: char.telekinesisModule.allowPartialPower,
+    };
+  } else {
+    result.hasTelekinesis = false;
   }
 
   return result;
@@ -1557,6 +1588,25 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
       if (config.flightModule.allowPartialPower !== undefined) char.flightModule.allowPartialPower = config.flightModule.allowPartialPower;
     }
     char.flightModule.registerProperties(char.properties);
+  }
+
+  if (config.hasTelekinesis === false) {
+    char.telekinesisModule = null;
+  } else if (config.telekinesisModule || config.hasTelekinesis === true) {
+    if (!char.telekinesisModule) {
+      char.telekinesisModule = new TelekinesisModule(config.telekinesisModule ?? { enabled: true });
+    } else if (config.telekinesisModule) {
+      if (config.telekinesisModule.enabled !== undefined) char.telekinesisModule.enabled = config.telekinesisModule.enabled;
+      if (config.telekinesisModule.maxPower !== undefined) char.telekinesisModule.maxPowerProp.set(config.telekinesisModule.maxPower, char.properties);
+      if (config.telekinesisModule.telekinesisReach !== undefined) char.telekinesisModule.telekinesisReachProp.set(config.telekinesisModule.telekinesisReach, char.properties);
+      if (config.telekinesisModule.maxMoveSpeed !== undefined) char.telekinesisModule.maxMoveSpeedProp.set(config.telekinesisModule.maxMoveSpeed, char.properties);
+      if (config.telekinesisModule.holdHoverHeight !== undefined) char.telekinesisModule.holdHoverHeightProp.set(config.telekinesisModule.holdHoverHeight, char.properties);
+      if (config.telekinesisModule.groundAnchorRange !== undefined) char.telekinesisModule.groundAnchorRangeProp.set(config.telekinesisModule.groundAnchorRange, char.properties);
+      if (config.telekinesisModule.stability !== undefined) char.telekinesisModule.stabilityProp.set(config.telekinesisModule.stability, char.properties);
+      if (config.telekinesisModule.consumesEnergy !== undefined) char.telekinesisModule.consumesEnergy = config.telekinesisModule.consumesEnergy;
+      if (config.telekinesisModule.allowPartialPower !== undefined) char.telekinesisModule.allowPartialPower = config.telekinesisModule.allowPartialPower;
+    }
+    char.telekinesisModule.registerProperties(char.properties);
   }
 }
 
