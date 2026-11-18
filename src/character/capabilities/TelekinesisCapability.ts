@@ -91,6 +91,13 @@ export class TelekinesisCapability {
     target.lastThrower = null;
     target.originalThrower = null;
 
+    mod.appliedWaveOffsetX = 0;
+    mod.appliedWaveOffsetY = 0;
+    mod.appliedWaveOffsetZ = 0;
+    mod.appliedWaveVx = 0;
+    mod.appliedWaveVy = 0;
+    mod.appliedWaveVz = 0;
+
     char.telekineticTarget = target;
     (target as any).telekinesedBy = char;
     return true;
@@ -99,6 +106,16 @@ export class TelekinesisCapability {
   public static releaseTarget(char: Character): GameObject | null {
     const target = char.telekineticTarget;
     if (!target) return null;
+
+    if (char.telekinesisModule) {
+      const mod = char.telekinesisModule;
+      mod.appliedWaveOffsetX = 0;
+      mod.appliedWaveOffsetY = 0;
+      mod.appliedWaveOffsetZ = 0;
+      mod.appliedWaveVx = 0;
+      mod.appliedWaveVy = 0;
+      mod.appliedWaveVz = 0;
+    }
 
     char.telekineticTarget = null;
     char.isTelekineticObjectControl = false;
@@ -403,6 +420,17 @@ export class TelekinesisCapability {
     }
 
     const mObj = Math.max(0.2, target.hasMass ? target.mass : 1.0);
+
+    // Strip previous tick's zero-cost stability wave velocity before applying Stage 1 & Stage 2
+    target.velocity.x -= mod.appliedWaveVx;
+    target.velocity.y -= mod.appliedWaveVy;
+    if (target.hasVerticalVelocity) {
+      target.verticalVelocity -= mod.appliedWaveVz;
+    }
+    mod.appliedWaveVx = 0;
+    mod.appliedWaveVy = 0;
+    mod.appliedWaveVz = 0;
+
     const vxBefore = target.velocity.x;
     const vyBefore = target.velocity.y;
     const vzBefore = target.verticalVelocity;
@@ -463,11 +491,39 @@ export class TelekinesisCapability {
       );
     }
 
-    // 3. Advance Long-Period, High-Amplitude Telekinetic Stability Wave (applied directly to hold goal)
+    // 3. Apply Long-Period, High-Amplitude 3D Stability Wave at 0 Energy Cost (cost stays constant while oscillating)
     const stability = mod.getStability(reg);
     const instability = Math.max(0, Math.min(1, 1.0 - stability));
-    if (instability > 0.001) {
+    if (instability > 0.001 && !char.isTelekineticObjectControl) {
       mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
+      const p = mod.oscillationPhase;
+      const waveX = (Math.sin(p * 0.71) * 0.68 + Math.cos(p * 1.33) * 0.32) * instability * 2.5;
+      const waveY = (Math.cos(p * 0.57 + 0.9) * 0.68 + Math.sin(p * 1.21) * 0.32) * instability * 2.5;
+      const waveZ = (Math.sin(p * 0.81 + 0.4) * 0.70 + Math.cos(p * 1.49) * 0.30) * instability * 1.5;
+
+      const waveVx = (waveX - mod.appliedWaveOffsetX) / safeDt;
+      const waveVy = (waveY - mod.appliedWaveOffsetY) / safeDt;
+      const waveVz = target.hasVerticalVelocity ? (waveZ - mod.appliedWaveOffsetZ) / safeDt : 0;
+
+      target.velocity.x += waveVx;
+      target.velocity.y += waveVy;
+      if (target.hasVerticalVelocity) {
+        target.verticalVelocity += waveVz;
+      }
+
+      mod.appliedWaveVx = waveVx;
+      mod.appliedWaveVy = waveVy;
+      mod.appliedWaveVz = waveVz;
+      mod.appliedWaveOffsetX = waveX;
+      mod.appliedWaveOffsetY = waveY;
+      mod.appliedWaveOffsetZ = waveZ;
+    } else {
+      mod.appliedWaveOffsetX = 0;
+      mod.appliedWaveOffsetY = 0;
+      mod.appliedWaveOffsetZ = 0;
+      mod.appliedWaveVx = 0;
+      mod.appliedWaveVy = 0;
+      mod.appliedWaveVz = 0;
     }
 
     // Clamp target within telekinesis reach
@@ -502,20 +558,9 @@ export class TelekinesisCapability {
     const maxMoveSpeed = mod.getMaxMoveSpeed(reg);
     const hoverOffset = mod.getHoldHoverHeight(reg);
 
-    // Desired 2D cursor goal clamped within telekinesisReach around the character
+    // Desired 2D cursor goal clamped within telekinesisReach around the character (without stability wave so power cost stays constant)
     let goalX = aimTargetPos ? aimTargetPos.x : char.position.x + Math.cos(char.facingAngle) * Math.min(2.2, reach * 0.6);
     let goalY = aimTargetPos ? aimTargetPos.y : char.position.y + Math.sin(char.facingAngle) * Math.min(2.2, reach * 0.6);
-
-    // Apply long-period, high-amplitude stability wave in all 3 dimensions (X, Y, Z)
-    const tkStability = mod.getStability(reg);
-    const tkInstability = Math.max(0, Math.min(1, 1.0 - tkStability));
-    let waveGoalZ = 0;
-    if (tkInstability > 0.001) {
-      const p = mod.oscillationPhase;
-      goalX += (Math.sin(p * 0.71) * 0.68 + Math.cos(p * 1.33) * 0.32) * tkInstability * 2.5;
-      goalY += (Math.cos(p * 0.57 + 0.9) * 0.68 + Math.sin(p * 1.21) * 0.32) * tkInstability * 2.5;
-      waveGoalZ = (Math.sin(p * 0.81 + 0.4) * 0.70 + Math.cos(p * 1.49) * 0.30) * tkInstability * 1.5;
-    }
 
     const gDx = goalX - char.position.x;
     const gDy = goalY - char.position.y;
@@ -531,19 +576,23 @@ export class TelekinesisCapability {
     goalX = Math.max(tr, Math.min(arena.width - tr, goalX));
     goalY = Math.max(tr, Math.min(arena.height - tr, goalY));
 
-    const wallAtTarget = arena.getWallAt(target.position.x, target.position.y);
+    const meanPosX = target.position.x - mod.appliedWaveOffsetX;
+    const meanPosY = target.position.y - mod.appliedWaveOffsetY;
+    const meanPosZ = Math.max(0, target.position.z - mod.appliedWaveOffsetZ);
+
+    const wallAtTarget = arena.getWallAt(meanPosX, meanPosY);
     const wallAtGoal = arena.getWallAt(goalX, goalY);
     const surfaceZ = Math.max(
       target.supportingSurfaceHeight ?? 0,
       wallAtTarget ? wallAtTarget.wallHeight : 0,
       wallAtGoal ? wallAtGoal.wallHeight : 0
     );
-    const goalZ = Math.max(surfaceZ + 0.15, surfaceZ + hoverOffset + waveGoalZ);
+    const goalZ = Math.max(surfaceZ + 0.15, surfaceZ + hoverOffset);
 
-    // Desired velocity toward goal (proportional spring clamped to maxMoveSpeed)
-    const errX = goalX - target.position.x;
-    const errY = goalY - target.position.y;
-    const errZ = goalZ - target.position.z;
+    // Desired velocity toward goal in the wave-stripped mean frame (proportional spring clamped to maxMoveSpeed)
+    const errX = goalX - meanPosX;
+    const errY = goalY - meanPosY;
+    const errZ = goalZ - meanPosZ;
 
     const kpHoriz = 11.0;
     const kpVert = 10.0;
@@ -556,9 +605,9 @@ export class TelekinesisCapability {
     }
     const vzWant = Math.max(-maxMoveSpeed, Math.min(maxMoveSpeed, errZ * kpVert));
 
-    let vxFree = target.velocity.x;
-    let vyFree = target.velocity.y;
-    let vzFree = target.verticalVelocity;
+    let vxFree = target.velocity.x - mod.appliedWaveVx;
+    let vyFree = target.velocity.y - mod.appliedWaveVy;
+    let vzFree = target.verticalVelocity - mod.appliedWaveVz;
 
     // Stage 1: Energy-Free Braking / Transfer (strictly reduces speed or matches direction without creating from 0)
     const maxBrakeDeltaV = 42.0 * safeDt;

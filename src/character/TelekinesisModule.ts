@@ -65,6 +65,14 @@ export class TelekinesisModule {
   /** Internal harmonic phase accumulator for stability wobble */
   public oscillationPhase: number = 0;
 
+  /** Current zero-cost stability wave position & velocity offsets (excluded from power demand calculation) */
+  public appliedWaveOffsetX: number = 0;
+  public appliedWaveOffsetY: number = 0;
+  public appliedWaveOffsetZ: number = 0;
+  public appliedWaveVx: number = 0;
+  public appliedWaveVy: number = 0;
+  public appliedWaveVz: number = 0;
+
   constructor(options?: TelekinesisModuleOptions) {
     this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 2400.0);
     this.telekinesisReachProp = new DynamicProperty(options?.telekinesisReach ?? 6.5);

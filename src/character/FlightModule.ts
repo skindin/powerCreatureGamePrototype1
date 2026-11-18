@@ -68,10 +68,11 @@ export class FlightModule {
   /** Internal harmonic phase accumulator for stability wobble */
   public oscillationPhase: number = 0;
 
-  /** Tracks previous tick's stability wave velocity so Stage 1 braking does not cancel the wave */
+  /** Tracks previous tick's stability wave velocity and offset so Stage 1/2 power cost stays constant while oscillating */
   public appliedWaveVx: number = 0;
   public appliedWaveVy: number = 0;
   public appliedWaveVz: number = 0;
+  public appliedWaveOffsetZ: number = 0;
 
   constructor(options?: FlightModuleOptions) {
     this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 3000.0);

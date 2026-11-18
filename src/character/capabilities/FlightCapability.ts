@@ -73,10 +73,11 @@ export class FlightCapability {
       char.supportingSurfaceHeight ?? 0,
       char.standingWall ? arena.wallHeight : 0
     );
-    const heightAboveSurface = Math.max(0, char.position.z - surfaceHeight);
-    const isAirborne = heightAboveSurface > 0.02;
+    const meanZ = Math.max(surfaceHeight, char.position.z - mod.appliedWaveOffsetZ);
+    const heightAboveSurface = Math.max(0, meanZ - surfaceHeight);
+    const isAirborne = heightAboveSurface > 0.02 || Math.max(0, char.position.z - surfaceHeight) > 0.02;
     const anchorRange = mod.getGroundAnchorRange(reg);
-    const isAnchored = heightAboveSurface <= anchorRange;
+    const isAnchored = heightAboveSurface <= anchorRange + 0.05;
 
     const rawInputMag = Math.hypot(movementInput.x, movementInput.y);
     const inputMag = Math.min(1.0, rawInputMag);
@@ -92,14 +93,14 @@ export class FlightCapability {
 
     const vWantMag = hasHorizInput ? inputMag * maxHorizSpeed : 0;
 
-    // Determine desired vertical velocity vzWant
+    // Determine desired vertical velocity vzWant using wave-stripped meanZ so oscillation never changes power cost
     let vzWant = 0;
     if (verticalIntent > 0.05) {
       vzWant = verticalIntent * maxAscentSpeed;
-      if (char.position.z >= effectiveMaxAlt) {
+      if (meanZ >= effectiveMaxAlt) {
         vzWant = 0;
-      } else if (char.position.z + vzWant * 0.25 > effectiveMaxAlt) {
-        vzWant = Math.max(0, (effectiveMaxAlt - char.position.z) / 0.25);
+      } else if (meanZ + vzWant * 0.25 > effectiveMaxAlt) {
+        vzWant = Math.max(0, (effectiveMaxAlt - meanZ) / 0.25);
       }
     } else if (verticalIntent < -0.05) {
       vzWant = verticalIntent * maxSinkSpeed; // Negative (controlled descent)
@@ -420,8 +421,9 @@ export class FlightCapability {
       char.supportingSurfaceHeight ?? 0,
       char.standingWall ? arena.wallHeight : 0
     );
-    const heightAboveSurface = Math.max(0, char.position.z - surfaceHeight);
-    const isAirborne = heightAboveSurface > 0.02;
+    const meanZNow = Math.max(surfaceHeight, char.position.z - mod.appliedWaveOffsetZ);
+    const heightAboveSurface = Math.max(0, meanZNow - surfaceHeight);
+    const isAirborne = heightAboveSurface > 0.02 || Math.max(0, char.position.z - surfaceHeight) > 0.02;
 
     // Auto-disable FlightModule when the player intentionally descends all the way down to the ground
     if (verticalIntent < -0.05 && heightAboveSurface <= 0.04 && char.verticalVelocity <= 0.05) {
@@ -430,26 +432,30 @@ export class FlightCapability {
       mod.appliedWaveVx = 0;
       mod.appliedWaveVy = 0;
       mod.appliedWaveVz = 0;
+      mod.appliedWaveOffsetZ = 0;
       char.position.z = surfaceHeight;
       char.verticalVelocity = 0;
       return;
     }
 
-    const isAnchoredNow = heightAboveSurface <= mod.getGroundAnchorRange(reg);
+    const isAnchoredNow = heightAboveSurface <= mod.getGroundAnchorRange(reg) + 0.05;
     const canSustainHover = isAnchoredNow && (!checksEnergy || accelScale > 0.0001 || !isAirborne);
     if (instability > 0.001 && isAirborne && canSustainHover) {
       mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
       const p = mod.oscillationPhase;
-      const waveVz = (Math.sin(p * 0.79 + 0.45) * 0.70 + Math.cos(p * 1.47) * 0.30) * instability * 3.0;
+      const waveZ = (Math.sin(p * 0.79 + 0.45) * 0.70 + Math.cos(p * 1.47) * 0.30) * instability * 1.5;
+      const waveVz = (waveZ - mod.appliedWaveOffsetZ) / safeDt;
 
       char.verticalVelocity += waveVz;
       mod.appliedWaveVx = 0;
       mod.appliedWaveVy = 0;
       mod.appliedWaveVz = waveVz;
+      mod.appliedWaveOffsetZ = waveZ;
     } else {
       mod.appliedWaveVx = 0;
       mod.appliedWaveVy = 0;
       mod.appliedWaveVz = 0;
+      mod.appliedWaveOffsetZ = 0;
     }
   }
 }
