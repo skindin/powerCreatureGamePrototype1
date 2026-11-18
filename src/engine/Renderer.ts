@@ -978,8 +978,8 @@ export class Renderer {
           (char.laserModule && (char.laserModule.isAiming || char.laserModule.isFiring))
         );
         const isHoldingGun = Boolean(
-          char.heldObject?.gunModule &&
-          char.heldObject.gunModule.enabled
+          (char.heldObject?.gunModule && char.heldObject.gunModule.enabled) ||
+          (char.telekineticTarget?.gunModule && char.telekineticTarget.gunModule.enabled && char.isTelekineticObjectControl)
         );
         const isThrowOverride = isHoldingGun && Boolean(
           char.isChargingThrow ||
@@ -1010,8 +1010,8 @@ export class Renderer {
           const cursorY = cursor.y * ppu;
 
           const isCursorHoldingGun = Boolean(
-            cChar.heldObject?.gunModule &&
-            cChar.heldObject.gunModule.enabled
+            (cChar.heldObject?.gunModule && cChar.heldObject.gunModule.enabled) ||
+            (cChar.telekineticTarget?.gunModule && cChar.telekineticTarget.gunModule.enabled && cChar.isTelekineticObjectControl)
           );
           const isCursorThrowOverride = isCursorHoldingGun && Boolean(
             cChar.isChargingThrow ||

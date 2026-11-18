@@ -1242,11 +1242,22 @@ export class PlayerManager {
 
       // Dedicated Telekinetic Fling (when telekinetically holding a target without hand/grapple hold)
       if (pkt.isThrow && char.telekineticTarget && !char.heldObject && !char.grappledTarget && char.telekinesisModule) {
-        const throwAimX = aimTarget ? aimTarget.x : (char.position.x + Math.cos(char.facingAngle) * 4);
-        const throwAimY = aimTarget ? aimTarget.y : (char.position.y + Math.sin(char.facingAngle) * 4);
-        TelekinesisCapability.flingTarget(char, { x: throwAimX, y: throwAimY }, this.arena, 1.0);
-        char.isUsingItem = false;
-        char.eatRateWatts = 0;
+        if (!char.isThrowCancelZone) {
+          const launchOrigin = { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y };
+          const throwAimX = aimTarget ? aimTarget.x : (char.position.x + Math.cos(char.facingAngle) * 4);
+          const throwAimY = aimTarget ? aimTarget.y : (char.position.y + Math.sin(char.facingAngle) * 4);
+          const clientLaunchVel = (pkt as any).launchVx !== undefined
+            ? { vx: (pkt as any).launchVx, vy: (pkt as any).launchVy, vz: (pkt as any).launchVz }
+            : char.activeTrajectory?.launchVel;
+          const wasObjectControl = char.isTelekineticObjectControl;
+          TelekinesisCapability.flingTarget(char, { x: throwAimX, y: throwAimY }, this.arena, 1.0, clientLaunchVel);
+          if (wasObjectControl && entry?.isKeyboard) {
+            input.endTelekineticObjectControl(launchOrigin);
+          }
+          char.isUsingItem = false;
+          char.eatRateWatts = 0;
+          char.activeTrajectory = null;
+        }
       }
 
       // Dedicated Throw (RT / Left Click)
@@ -1388,10 +1399,13 @@ export class PlayerManager {
         char.facingAngle = pkt.facingAngle;
       }
 
-      // Freeze floating gun hover goal while firing so mouse cursor aims bullets cleanly away from the gun
+      // Keep telekinetic target frozen at anchor point during Alt Object Control Mode or remote gun firing;
+      // otherwise track aimTarget normally.
       if (char.telekineticTarget) {
         const isFiringTkGun = Boolean((char as any).isFiringWeapon && char.telekineticTarget.gunModule?.enabled);
-        if (isFiringTkGun) {
+        if (char.isTelekineticObjectControl && char.telekineticFrozenPos) {
+          char.telekineticAimPos = { x: char.telekineticFrozenPos.x, y: char.telekineticFrozenPos.y };
+        } else if (isFiringTkGun) {
           if (!char.telekineticAimPos) {
             char.telekineticAimPos = { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y };
           }
@@ -1950,8 +1964,8 @@ export class PlayerManager {
           this.inputManager.mousePos.y = this.inputManager.actualMousePos.y;
         }
 
-        // Unified single-object target selection via GrabIntentArbiter (including swap/grab candidates while holding, dragging, or telekinesing):
-        if (char.pickupModule?.enabled || char.grappleModule?.enabled || char.telekinesisModule?.enabled) {
+        // Unified single-object target selection via GrabIntentArbiter (suppressed during Alt Telekinetic Object Control Mode):
+        if (!char.isTelekineticObjectControl && (char.pickupModule?.enabled || char.grappleModule?.enabled || char.telekinesisModule?.enabled)) {
           const candidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter(
             (o) => o !== char.heldObject && o !== (char as any).grappledTarget && o !== char.telekineticTarget && !o.isHeld
           );
@@ -2004,8 +2018,8 @@ export class PlayerManager {
         slot.aimOffset.x = slot.aimPos.x - char.position.x;
         slot.aimOffset.y = slot.aimPos.y - char.position.y;
 
-        // Unified single-object target selection via GrabIntentArbiter (including swap/grab candidates while holding, dragging, or telekinesing):
-        if (char.pickupModule?.enabled || char.grappleModule?.enabled || char.telekinesisModule?.enabled) {
+        // Unified single-object target selection via GrabIntentArbiter (suppressed during Alt Telekinetic Object Control Mode):
+        if (!char.isTelekineticObjectControl && (char.pickupModule?.enabled || char.grappleModule?.enabled || char.telekinesisModule?.enabled)) {
           const candidateEntities = [...this.allCharacters.filter((c) => c !== char), ...objects].filter(
             (o) => o !== char.heldObject && o !== (char as any).grappledTarget && o !== char.telekineticTarget && !o.isHeld
           );

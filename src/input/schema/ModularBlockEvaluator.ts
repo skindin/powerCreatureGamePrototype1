@@ -246,8 +246,54 @@ export class ModularBlockEvaluator {
     let activeRawDragThisFrame = false;
     let isSteerCursorActive = false;
 
-    // Reticle/Aim target position (works seamlessly for mouse and gamepad reticle)
-    const baseAim = execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos || { x: char.position.x + 1, y: char.position.y };
+    // Telekinetic Object Control Mode (holding Alt while floating an object):
+    // Freezes the floating object at its current world coordinates and switches the mouse
+    // into a virtual reticle anchored from that object, releasing back to the object on Alt up.
+    const isAltDownNow = !execCtx.gamepadStates && (tokens.isDown("AltLeft") || tokens.isDown("AltRight") || Boolean(input.isAltHeld));
+    const isTkObjectControlNow = Boolean(
+      char.telekineticTarget &&
+      isAltDownNow &&
+      !char.heldObject &&
+      !char.grappledTarget
+    );
+    if (isTkObjectControlNow && char.telekineticTarget) {
+      if (!char.isTelekineticObjectControl) {
+        const freezePos = { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y };
+        char.telekineticFrozenPos = freezePos;
+        char.isTelekineticObjectControl = true;
+        input.beginTelekineticObjectControl(freezePos);
+        // Prevent leftover throw state on entry until player initiates charge/throw
+        char.isChargingThrow = false;
+        char.isHoldingThrowRelease = false;
+        char.isAimingWallClear = false;
+        char.isTriggerPullThrowing = false;
+        char.throwChargeStartTime = null;
+        char.throwChargeProgress = 0;
+        (char as any)._throwRequiresFreshPress = false;
+        (char as any)._pickupPressCode = null;
+      }
+      isAimingTrajectory = true;
+    } else if (char.isTelekineticObjectControl) {
+      const restorePos = char.telekineticTarget
+        ? { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y }
+        : char.telekineticFrozenPos;
+      input.endTelekineticObjectControl(restorePos);
+      char.isTelekineticObjectControl = false;
+      char.telekineticFrozenPos = null;
+      char.isChargingThrow = false;
+      char.isHoldingThrowRelease = false;
+      char.isAimingWallClear = false;
+      char.isTriggerPullThrowing = false;
+      char.throwChargeStartTime = null;
+      char.throwChargeProgress = 0;
+      char.activeTrajectory = null;
+      char.isThrowCancelZone = false;
+    }
+
+    // Reticle/Aim target position (works seamlessly for mouse, virtual object-control mouse, and gamepad reticle)
+    const baseAim = isTkObjectControlNow
+      ? { x: input.actualMousePos.x, y: input.actualMousePos.y }
+      : (execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos || { x: char.position.x + 1, y: char.position.y });
     const targetAimPos = { x: baseAim.x, y: baseAim.y };
 
     const hasBothRollAndWalkBlocks =
@@ -314,7 +360,8 @@ export class ModularBlockEvaluator {
     }
 
     // Pre-evaluate laser aiming & firing state for modal arbitration (LASER > CONSUME > THROW > PICKUP)
-    const hasLaserCapability = Boolean(char.laserModule && char.laserModule.enabled);
+    // Suppressed while in Telekinetic Object Control Mode (Alt-hold) so Alt aims the floated object cleanly.
+    const hasLaserCapability = !isTkObjectControlNow && Boolean(char.laserModule && char.laserModule.enabled);
     const laserBlock = hasLaserCapability
       ? (blocks.find((blk) => blk.enabled && blk.type === "laser") as LaserControlBlock | undefined)
       : undefined;
@@ -333,7 +380,7 @@ export class ModularBlockEvaluator {
     }
 
     // Pre-evaluate Throw Up (vomit) aiming & charging state for modal arbitration (LASER / VOMIT > CONSUME > THROW > PICKUP)
-    const hasVomitCapability = Boolean(char.vomitModule && char.vomitModule.enabled);
+    const hasVomitCapability = !isTkObjectControlNow && Boolean(char.vomitModule && char.vomitModule.enabled);
     const vomitBlock = hasVomitCapability
       ? (blocks.find((blk) => blk.enabled && blk.type === "vomit") as VomitControlBlock | undefined)
       : undefined;
@@ -609,14 +656,14 @@ export class ModularBlockEvaluator {
               (isVomitAiming || (char as any).isChargingVomit || isVomitRequested) &&
               b.forwardTrigger?.code &&
               (b.forwardTrigger.code === vomitBlock?.chargeTrigger?.code ||
-               b.forwardTrigger.code === vomitBlock?.aimTrigger?.code ||
-               b.forwardTrigger.code === vomitBlock?.fireTrigger?.code)
+                b.forwardTrigger.code === vomitBlock?.aimTrigger?.code ||
+                b.forwardTrigger.code === vomitBlock?.fireTrigger?.code)
             );
             const isFwdMatchingLaser = Boolean(
               (isLaserAiming || isLaserFiring) &&
               b.forwardTrigger?.code &&
               (b.forwardTrigger.code === laserBlock?.aimTrigger?.code ||
-               b.forwardTrigger.code === laserBlock?.fireTrigger?.code)
+                b.forwardTrigger.code === laserBlock?.fireTrigger?.code)
             );
             const fwdActive = !isFwdMatchingVomit && !isFwdMatchingLaser && isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forward");
             if (fwdActive && arrive.driveFactor > 0.001) {
@@ -1176,7 +1223,8 @@ export class ModularBlockEvaluator {
             break;
           }
           if (!char.heldObject) {
-            if (char.telekineticTarget && !char.grappledTarget) {
+            if (char.telekineticTarget && !char.grappledTarget && !char.isTelekineticObjectControl) {
+              // Normal floating mode (Alt not held): direct quick fling on flingTrigger if pressed cleanly
               const pickupCode = (char as any)._pickupPressCode;
               if (pickupCode && !tokens.isDown(pickupCode) && !isButtonCodePhysicallyDown(pickupCode)) {
                 (char as any)._pickupPressCode = null;
@@ -1216,7 +1264,7 @@ export class ModularBlockEvaluator {
               }
               break;
             }
-            if (char.grappledTarget) {
+            if (!char.isTelekineticObjectControl && char.grappledTarget) {
               const shoveTrigger = b.chargeTrigger ?? b.quickTrigger ?? b.aimTrigger ?? b.fireTrigger;
               const pickupCode = (char as any)._pickupPressCode;
               if (pickupCode && !tokens.isDown(pickupCode) && !isButtonCodePhysicallyDown(pickupCode)) {
@@ -1339,9 +1387,15 @@ export class ModularBlockEvaluator {
           char.shoveChargeStartTime = null;
           char.shoveChargeProgress = 0;
 
-          // Gun Wielding: If holding a gun, check if throw override trigger is active.
-          // If not active, show high-speed ballistic bullet trajectory and suppress physical throwing.
-          const isHoldingGun = Boolean(char.heldObject?.gunModule && char.heldObject.gunModule.enabled);
+          // Origin for throw proximity cancel checks (character hand vs floating telekinetic object)
+          const throwOriginObj = (char.telekineticTarget && char.isTelekineticObjectControl)
+            ? char.telekineticTarget
+            : char;
+
+          // Gun Wielding: If holding (or telekinetically controlling) a gun, check if throw override trigger is active.
+          // If not active, show gun aiming reticle and suppress physical throwing.
+          const controlledGunTarget = char.heldObject || (char.isTelekineticObjectControl ? char.telekineticTarget : null);
+          const isHoldingGun = Boolean(controlledGunTarget?.gunModule && controlledGunTarget.gunModule.enabled);
           const isThrowOverrideActive = isHoldingGun && Boolean(
             b.throwOverrideTrigger &&
             b.throwOverrideTrigger.code &&
@@ -1455,6 +1509,23 @@ export class ModularBlockEvaluator {
 
           const effAim = getEffectiveAimPos();
 
+          // Allow trajectory arc modulation with mouse wheel / raw drag while in telekinetic object control
+          if (!isHoldingGun && char.telekineticTarget && char.isTelekineticObjectControl && b.arcModulation?.source === "mouseWheel") {
+            const rawDelta = input.aimLockRawDelta || input.arcModulationDeltaY || 0;
+            if (rawDelta !== 0) {
+              const sens = b.arcModulation.sensitivity || 0.05;
+              const cur = this.getAccumulatorValue(b.id, 0.5);
+              const next = Math.max(0.0, Math.min(1.0, cur + rawDelta * sens));
+              this.setAccumulatorValue(b.id, next);
+              if (char.throwModule) {
+                char.throwModule.savedArcRatio = next;
+                char.throwModule.hasUserSetArcRatio = true;
+              }
+              char.savedArcRatio = next;
+              char.hasUserSetArcRatio = true;
+            }
+          }
+
           switch (b.mode) {
             case "chargeAndRelease": {
               if (isSlotActive(b.chargeTrigger, "hold", false, b.id, "throw.chargeBow")) {
@@ -1468,10 +1539,10 @@ export class ModularBlockEvaluator {
 
               // Auto-release fire on button / gate release
               if (isSlotAnyJustReleased(b.chargeTrigger) && char.isChargingThrow) {
-                const aimDx = effAim.x - char.position.x;
-                const aimDy = effAim.y - char.position.y;
+                const aimDx = effAim.x - throwOriginObj.position.x;
+                const aimDy = effAim.y - throwOriginObj.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
-                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (throwOriginObj.colliderRadius ?? 0.35) + 0.65);
 
                 if (b.enableProximityCancel && distToAim < cancelDistance) {
                   isThrow = false;
@@ -1505,10 +1576,10 @@ export class ModularBlockEvaluator {
               }
 
               if (isSlotAnyJustReleased(b.chargeTrigger) && char.isHoldingThrowRelease) {
-                const aimDx = effAim.x - char.position.x;
-                const aimDy = effAim.y - char.position.y;
+                const aimDx = effAim.x - throwOriginObj.position.x;
+                const aimDy = effAim.y - throwOriginObj.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
-                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (char.colliderRadius ?? 0.35) + 0.65);
+                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (throwOriginObj.colliderRadius ?? 0.35) + 0.65);
 
                 if (b.enableProximityCancel && distToAim < cancelDistance) {
                   isThrow = false;
@@ -1895,13 +1966,23 @@ export class ModularBlockEvaluator {
             )
           );
 
+          // In Telekinetic Object Control Mode, continuously orient a telekinetically held gun toward the virtual mouse
+          if (char.isTelekineticObjectControl && char.telekineticTarget?.gunModule?.enabled) {
+            const effAimGun = getEffectiveAimPos();
+            const gDx = effAimGun.x - char.telekineticTarget.position.x;
+            const gDy = effAimGun.y - char.telekineticTarget.position.y;
+            if (Math.hypot(gDx, gDy) > 0.05) {
+              (char.telekineticTarget as any).facingAngle = Math.atan2(gDy, gDx);
+            }
+          }
+
           if (isHoldingGunItem && activeGunObj && isFireSlotActive && execCtx.arena) {
             isGunAimFiring = true;
             const gun = activeGunObj.gunModule!;
             const effAim = getEffectiveAimPos();
             const isRemoteGun = activeGunObj !== char.heldObject;
-            const aimDx = effAim.x - char.position.x;
-            const aimDy = effAim.y - char.position.y;
+            const aimDx = effAim.x - (isRemoteGun ? activeGunObj.position.x : char.position.x);
+            const aimDy = effAim.y - (isRemoteGun ? activeGunObj.position.y : char.position.y);
             const targetAimAngle = Math.hypot(aimDx, aimDy) > 0.05
               ? Math.atan2(aimDy, aimDx)
               : (char.facingAngle ?? 0);
@@ -1913,6 +1994,8 @@ export class ModularBlockEvaluator {
               activeGunObj.position.x = heldPos.x;
               activeGunObj.position.y = heldPos.y;
               activeGunObj.position.z = heldPos.z;
+            } else {
+              (activeGunObj as any).facingAngle = targetAimAngle;
             }
 
             isUsingItem = true;

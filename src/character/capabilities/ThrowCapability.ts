@@ -12,17 +12,18 @@ import { BallisticTrajectorySolver } from "../BallisticTrajectorySolver.js";
  */
 export class ThrowCapability {
   public static getAnticipatedModifier(char: Character): AnticipatedModifier | null {
+    const activeThrownObj = char.heldObject || (char.isTelekineticObjectControl ? char.telekineticTarget : null);
     if (
       !char.isVomitAiming &&
       char.activeTrajectory &&
-      char.heldObject &&
-      char.throwModule &&
-      char.throwModule.enabled &&
-      char.throwModule.consumesEnergy
+      activeThrownObj &&
+      (char.heldObject
+        ? (char.throwModule && char.throwModule.enabled && char.throwModule.consumesEnergy)
+        : (char.telekinesisModule && char.telekinesisModule.enabled && char.telekinesisModule.consumesEnergy))
     ) {
       const launchVel = char.activeTrajectory.launchVel;
       if (launchVel) {
-        const heldMass = char.heldObject.hasMass ? Math.max(0.1, char.heldObject.mass) : 1.0;
+        const heldMass = activeThrownObj.hasMass ? Math.max(0.1, activeThrownObj.mass) : 1.0;
         const actualLaunchSpeed = Math.hypot(launchVel.vx, launchVel.vy, launchVel.vz);
         const mechWorkJoules = 0.5 * heldMass * (actualLaunchSpeed * actualLaunchSpeed);
         const pool = char.energyPool;
@@ -30,11 +31,13 @@ export class ThrowCapability {
         let metabolicJoules = Math.max(5, mechWorkJoules / poolEfficiency);
 
         if (pool && pool.enabled) {
-          const throwCap = char.throwModule.maxPowerProp.get(char.properties);
+          const throwCap = char.heldObject && char.throwModule
+            ? char.throwModule.maxPowerProp.get(char.properties) * char.strength
+            : (char.telekinesisModule ? Math.max(400, char.telekinesisModule.getMaxPower(char.properties) * 0.75) : 1000);
           const currentStamina = pool.currentStaminaProp.get(char.properties);
           const poolEnergy = pool.infiniteEnergy ? Infinity : pool.getCurrentEnergy(char.properties);
           const maxDeliverable = Math.min(
-            throwCap * char.strength,
+            throwCap,
             currentStamina,
             poolEnergy
           );
@@ -48,9 +51,9 @@ export class ThrowCapability {
 
         return {
           id: "anticipated_throw",
-          abilityId: "throw",
-          name: "Throw",
-          color: "#f43f5e",
+          abilityId: char.heldObject ? "throw" : "telekinesis",
+          name: "🎯",
+          color: char.heldObject ? "#f43f5e" : "#a855f7",
           amount: Math.round(metabolicJoules),
           isBurst: true,
           isPositive: false,
@@ -90,6 +93,130 @@ export class ThrowCapability {
     char.aimTarget = isAimingInput ? aimTargetPos : null;
 
     if (char.isVomitAiming) {
+      return;
+    }
+
+    // Telekinetic Object Control Mode (holding Alt while floating an object):
+    // Draws ballistic throw trajectories starting directly from the floating object's 3D position
+    // to the virtual mouse cursor, behaving identically to holding that object in hand.
+    if (char.telekineticTarget && char.isTelekineticObjectControl && char.telekinesisModule?.enabled) {
+      const tkObj = char.telekineticTarget;
+      const isTkGun = Boolean(tkObj.gunModule && tkObj.gunModule.enabled);
+      const isTkThrowOverride = isTkGun && Boolean(
+        char.isChargingThrow || char.isAimingWallClear || char.isHoldingThrowRelease || char.isTriggerPullThrowing
+      );
+
+      if (!isLaserModeActive && (!isTkGun || isTkThrowOverride) && canAimThrow && isAimingInput && aimTargetPos) {
+        const throwBlock = (char.controlSchema?.gamepad?.blocks || char.controlSchema?.keyboardMouse?.blocks)?.find(
+          (b) => b.type === "throw"
+        ) as ThrowControlBlock | undefined;
+
+        const cancelRadius = throwBlock?.cancelRadius ?? Math.max(0.8, (tkObj.colliderRadius ?? 0.26) + 0.55);
+        const aimDx = aimTargetPos.x - tkObj.position.x;
+        const aimDy = aimTargetPos.y - tkObj.position.y;
+        const distToAim = Math.hypot(aimDx, aimDy);
+
+        if (distToAim < cancelRadius) {
+          char.activeTrajectory = null;
+          char.isThrowCancelZone = true;
+          return;
+        }
+        char.isThrowCancelZone = false;
+
+        // Compute power-capped telekinetic launch speed matching TelekinesisCapability.flingTarget
+        const mObj = Math.max(0.2, tkObj.hasMass ? tkObj.mass : 1.0);
+        const capWatts = char.telekinesisModule.getMaxPower(char.properties);
+        const maxBurstJoules = Math.max(400, capWatts * 0.75);
+        const eff = Math.max(0.01, char.energyPool ? char.energyPool.getMuscleEfficiency(char.properties) : 0.25);
+        const availJoules = char.energyPool && !char.energyPool.infiniteEnergy
+          ? Math.min(maxBurstJoules, char.energyPool.getCurrentEnergy(char.properties), char.energyPool.getCurrentStamina(char.properties))
+          : maxBurstJoules;
+        const maxEnergySpeed = Math.sqrt(Math.max(1.0, (2.0 * availJoules * eff) / mObj));
+        const maxTkSpeed = Math.min(
+          Math.max(8.0, char.telekinesisModule.getMaxMoveSpeed(char.properties) * 1.45),
+          Math.max(4.0, maxEnergySpeed)
+        );
+
+        const baseParams = {
+          startX: tkObj.position.x,
+          startY: tkObj.position.y,
+          startZ: Math.max(0.15, tkObj.position.z),
+          colliderRadius: tkObj.colliderRadius > 0 ? tkObj.colliderRadius : 0.25,
+          maxSpeed: maxTkSpeed,
+          hasGravity: Boolean(tkObj.hasGravity),
+          hasVerticalVelocity: Boolean(tkObj.hasVerticalVelocity),
+          visualShape: tkObj.visualShape,
+          hasUserSetArcRatio: char.hasUserSetArcRatio,
+          savedArcRatio: char.savedArcRatio,
+        };
+
+        if (char.isChargingThrow) {
+          const clearRes = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
+            { ...baseParams, hasUserSetArcRatio: false },
+            aimTargetPos.x,
+            aimTargetPos.y,
+            arena,
+            arena.visualAltitudeScale,
+            lockedAimPos
+          );
+          const startRatio = char.savedArcRatio ?? clearRes.bestRatio ?? clearRes.savedArcRatio ?? 0.5;
+          const flattestBlocked = Boolean(clearRes.trajectory?.flattestPoints?.some((pt) => pt.collidesWall));
+
+          const now = performance.now();
+          const start = char.throwChargeStartTime ?? now;
+          const chargeProgress = Math.min(1.0, Math.max(0, (now - start) / 700));
+          char.throwChargeProgress = chargeProgress;
+
+          const targetRatio = flattestBlocked ? 1.0 : 0.0;
+          const chargedRatio = startRatio + (targetRatio - startRatio) * chargeProgress;
+          char.throwChargingTowards = flattestBlocked ? "steepest" : "flattest";
+          char.hasUserSetArcRatio = true;
+          char.savedArcRatio = chargedRatio;
+
+          char.activeTrajectory = chargeProgress > 0.001
+            ? BallisticTrajectorySolver.calculateTrajectoryFromParams(
+                { ...baseParams, hasUserSetArcRatio: true, savedArcRatio: chargedRatio },
+                aimTargetPos.x,
+                aimTargetPos.y,
+                arena,
+                arena.visualAltitudeScale,
+                lockedAimPos
+              )
+            : clearRes.trajectory;
+
+          if (char.activeTrajectory) {
+            (char.activeTrajectory as any).chargingTowards = char.throwChargingTowards;
+          }
+        } else if (char.isHoldingThrowRelease || char.isAimingWallClear) {
+          char.hasUserSetArcRatio = false;
+          char.throwChargingTowards = undefined;
+          const res = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
+            { ...baseParams, hasUserSetArcRatio: false },
+            aimTargetPos.x,
+            aimTargetPos.y,
+            arena,
+            arena.visualAltitudeScale,
+            lockedAimPos
+          );
+          char.activeTrajectory = res.trajectory;
+          char.savedArcRatio = res.bestRatio ?? res.savedArcRatio;
+        } else {
+          char.throwChargingTowards = undefined;
+          const res = BallisticTrajectorySolver.findLowestEnergyWallClearForParams(
+            baseParams,
+            aimTargetPos.x,
+            aimTargetPos.y,
+            arena,
+            arena.visualAltitudeScale,
+            lockedAimPos
+          );
+          char.activeTrajectory = res.trajectory;
+        }
+      } else {
+        char.activeTrajectory = null;
+        char.isThrowCancelZone = false;
+        char.throwChargingTowards = undefined;
+      }
       return;
     }
 

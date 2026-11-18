@@ -211,6 +211,68 @@ export class InputManager {
   public rawDragDx: number = 0;
   public rawDragDy: number = 0;
   public rawDragConsumer?: ((dx: number, dy: number) => void) | null = null;
+  public isTelekineticObjectControl: boolean = false;
+  private telekineticVirtualMouseActive: boolean = false;
+  private telekineticLastRawClientX: number | null = null;
+  private telekineticLastRawClientY: number | null = null;
+
+  public beginTelekineticObjectControl(anchorWorldPos: { x: number; y: number }): void {
+    this.isTelekineticObjectControl = true;
+    if (!this.telekineticVirtualMouseActive) {
+      this.telekineticVirtualMouseActive = true;
+      this.telekineticLastRawClientX = this.lastClientX;
+      this.telekineticLastRawClientY = this.lastClientY;
+      this.recordedMousePos = { x: anchorWorldPos.x, y: anchorWorldPos.y };
+      this.mousePos.x = anchorWorldPos.x;
+      this.mousePos.y = anchorWorldPos.y;
+      this.actualMousePos.x = anchorWorldPos.x;
+      this.actualMousePos.y = anchorWorldPos.y;
+      this.hideCursor();
+      this.requestPointerLock();
+      if (typeof document !== "undefined") {
+        document.body.classList.add("pointer-locked");
+        this.canvas?.classList.add("pointer-locked");
+      }
+    }
+  }
+
+  public endTelekineticObjectControl(restoreWorldPos?: { x: number; y: number } | null): void {
+    this.isTelekineticObjectControl = false;
+    if (!this.telekineticVirtualMouseActive) return;
+
+    this.telekineticVirtualMouseActive = false;
+    this.telekineticLastRawClientX = null;
+    this.telekineticLastRawClientY = null;
+
+    if (restoreWorldPos) {
+      this.recordedMousePos = { x: restoreWorldPos.x, y: restoreWorldPos.y };
+      this.mousePos.x = restoreWorldPos.x;
+      this.mousePos.y = restoreWorldPos.y;
+      this.actualMousePos.x = restoreWorldPos.x;
+      this.actualMousePos.y = restoreWorldPos.y;
+      // Clear cached client coordinates so viewport recomputation preserves restoreWorldPos until mouse moves
+      this.lastClientX = null;
+      this.lastClientY = null;
+    }
+
+    const wasLocked = Boolean(this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
+    if (wasLocked) {
+      this.isAwaitingUnlock = true;
+      this.exitPointerLock();
+      if (this.unlockTimeoutId) clearTimeout(this.unlockTimeoutId);
+      this.unlockTimeoutId = window.setTimeout(() => {
+        if (this.isAwaitingUnlock) {
+          this.completeUnlock();
+        }
+      }, 80);
+    } else {
+      this.unhideCursor();
+      if (typeof document !== "undefined") {
+        document.body.classList.remove("pointer-locked");
+        this.canvas?.classList.remove("pointer-locked");
+      }
+    }
+  }
 
   /**
    * Universal entry point for any action or system requesting raw mouse drag input (X or Y).
@@ -695,6 +757,38 @@ export class InputManager {
 
     window.addEventListener("mousemove", (e) => {
       this.syncModifierStates(e);
+      if (this.telekineticVirtualMouseActive) {
+        if (this.isKeyboardSuspended) {
+          return;
+        }
+        this.lastMouseMoveTime = performance.now();
+        const isLockedNow = Boolean(typeof document !== "undefined" && document.pointerLockElement === this.canvas);
+        const movementDx = (isLockedNow || (e.movementX !== undefined && e.movementX !== 0))
+          ? e.movementX
+          : (this.telekineticLastRawClientX !== null ? e.clientX - this.telekineticLastRawClientX : 0);
+        const movementDy = (isLockedNow || (e.movementY !== undefined && e.movementY !== 0))
+          ? e.movementY
+          : (this.telekineticLastRawClientY !== null ? e.clientY - this.telekineticLastRawClientY : 0);
+
+        this.telekineticLastRawClientX = e.clientX;
+        this.telekineticLastRawClientY = e.clientY;
+        this.lastClientX = e.clientX;
+        this.lastClientY = e.clientY;
+
+        const ppu = Math.max(1, this.pixelsPerUnit);
+        const nextX = Math.max(0.05, Math.min(this.arena.width - 0.05, this.actualMousePos.x + movementDx / ppu));
+        const nextY = Math.max(0.05, Math.min(this.arena.height - 0.05, this.actualMousePos.y + movementDy / ppu));
+        this.actualMousePos.x = nextX;
+        this.actualMousePos.y = nextY;
+        this.mousePos.x = nextX;
+        this.mousePos.y = nextY;
+        if (this.onMouseMove) {
+          this.onMouseMove(this.mousePos.x, this.mousePos.y);
+        }
+        return;
+      }
+      const prevClientX = this.lastClientX;
+      const prevClientY = this.lastClientY;
       this.lastClientX = e.clientX;
       this.lastClientY = e.clientY;
       if (this.isKeyboardSuspended) {
@@ -706,10 +800,10 @@ export class InputManager {
         // While locked, take raw mouse input to increase/decrease arc height
         const movementDy = (e.movementY !== undefined && e.movementY !== 0)
           ? e.movementY
-          : (this.lastClientY !== null ? e.clientY - this.lastClientY : 0);
+          : (prevClientY !== null ? e.clientY - prevClientY : 0);
         const movementDx = (e.movementX !== undefined && e.movementX !== 0)
           ? e.movementX
-          : (this.lastClientX !== null ? e.clientX - this.lastClientX : 0);
+          : (prevClientX !== null ? e.clientX - prevClientX : 0);
         this.lastClientX = e.clientX;
         this.lastClientY = e.clientY;
 
@@ -856,6 +950,8 @@ export class InputManager {
 
     this.canvas.addEventListener("contextmenu", (e) => {
       e.preventDefault(); // Prevent browser context menu
+      // Do not hijack mouse during virtual-mouse object control mode or unlock
+      if (this.telekineticVirtualMouseActive) return;
       if (this.isKeyboardSuspended || this.lockedAimPos || this.isAwaitingUnlock || (typeof document !== "undefined" && document.pointerLockElement)) {
         if (this.recordedMousePos) {
           this.mousePos.x = this.recordedMousePos.x;
@@ -1047,7 +1143,7 @@ export class InputManager {
 
   public recomputeMouseWorldPos(): void {
     if (this.lastClientX === null || this.lastClientY === null) return;
-    if (this.lockedAimPos || this.isAwaitingUnlock) return;
+    if (this.lockedAimPos || this.isAwaitingUnlock || this.telekineticVirtualMouseActive) return;
 
     const rect = this.canvas.getBoundingClientRect();
     let rawMx = 0;

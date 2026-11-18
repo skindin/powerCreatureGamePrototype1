@@ -176,7 +176,8 @@ export class TelekinesisCapability {
     char: Character,
     aimTargetPos: Vector2D,
     arena: Arena,
-    powerScale: number = 1.0
+    powerScale: number = 1.0,
+    explicitLaunchVel?: { vx: number; vy: number; vz: number }
   ): GameObject | null {
     const target = char.telekineticTarget;
     const mod = char.telekinesisModule;
@@ -201,8 +202,10 @@ export class TelekinesisCapability {
 
     // Compute desired launch speed scaled against Telekinesis maxPower capacity
     const capWatts = mod.getMaxPower(reg);
-    const desiredSpeed = Math.max(6.0, mod.getMaxMoveSpeed(reg) * 1.45) * Math.max(0.35, Math.min(1.0, powerScale));
-    const vzBoost = 4.2;
+    const desiredSpeed = explicitLaunchVel
+      ? Math.hypot(explicitLaunchVel.vx, explicitLaunchVel.vy)
+      : Math.max(6.0, mod.getMaxMoveSpeed(reg) * 1.45) * Math.max(0.35, Math.min(1.0, powerScale));
+    const vzBoost = explicitLaunchVel ? explicitLaunchVel.vz : 4.2;
 
     const mechWork = 0.5 * effMass * (desiredSpeed * desiredSpeed + vzBoost * vzBoost);
     const efficiency = Math.max(0.01, char.energyPool ? char.energyPool.getMuscleEfficiency(reg) : 0.25);
@@ -236,21 +239,25 @@ export class TelekinesisCapability {
       if (!res.granted || res.grantedJoules <= 0.001 || (!mod.allowPartialPower && res.fraction < 1.0)) {
         return null;
       }
-      speedScale = Math.sqrt(Math.max(0, res.grantedJoules / demandedJoules));
+      speedScale = Math.sqrt(Math.max(0, res.grantedJoules / Math.max(1, demandedJoules)));
     }
 
-    const effHoriz = desiredSpeed * speedScale;
-    const effVz = vzBoost * speedScale;
-    const impX = mObj * (dirX * effHoriz - target.velocity.x * 0.5);
-    const impY = mObj * (dirY * effHoriz - target.velocity.y * 0.5);
-    const impZ = mObj * effVz;
+    const vxOut = explicitLaunchVel ? explicitLaunchVel.vx * speedScale : dirX * desiredSpeed * speedScale;
+    const vyOut = explicitLaunchVel ? explicitLaunchVel.vy * speedScale : dirY * desiredSpeed * speedScale;
+    const vzOut = vzBoost * speedScale;
 
+    const impX = mObj * (vxOut - target.velocity.x);
+    const impY = mObj * (vyOut - target.velocity.y);
+    const impZ = mObj * (vzOut - target.verticalVelocity);
+
+    char.isTelekineticObjectControl = false;
+    char.telekineticFrozenPos = null;
     TelekinesisCapability.releaseTarget(char);
 
-    target.velocity.x += impX / mObj;
-    target.velocity.y += impY / mObj;
+    target.velocity.x = vxOut;
+    target.velocity.y = vyOut;
     if (target.hasVerticalVelocity) {
-      target.verticalVelocity = Math.max(target.verticalVelocity, effVz);
+      target.verticalVelocity = vzOut;
     }
     target.isInFlight = true;
     target.lastThrower = char;
