@@ -1957,6 +1957,42 @@ export class ModularBlockEvaluator {
             }
           }
 
+          // Empty-Handed Pick Up & Eat Consumable (Default: KeyE / GamepadRB)
+          const pickupAndConsumeEnabled = b.pickupAndConsumeWhenEmpty !== false;
+          const pickupAndConsumeSlot = b.pickupAndConsume !== undefined
+            ? b.pickupAndConsume
+            : (!execCtx.gamepadStates ? { code: "KeyE", requireCleanPress: true } : { code: "GamepadRB", requireCleanPress: true });
+          const isHandEmptyForEatGrab =
+            !isGrabHeld &&
+            !execCtx.isHoldingItem &&
+            !char.heldObject &&
+            !char.grappledTarget &&
+            !char.telekineticTarget;
+          const targetInReach = execCtx.targetInReach;
+          const isTargetEdibleForChar = Boolean(
+            targetInReach &&
+            char.consumeModule &&
+            char.consumeModule.enabled &&
+            (char.consumeModule.canConsume(targetInReach) ||
+              (targetInReach.consumableModule && targetInReach.consumableModule.enabled))
+          );
+          if (
+            pickupAndConsumeEnabled &&
+            pickupAndConsumeSlot?.code &&
+            isHandEmptyForEatGrab &&
+            grabTargetObjectId &&
+            isTargetEdibleForChar &&
+            isSlotActive(pickupAndConsumeSlot, "down", true, b.id, "pickup.grabAndConsume")
+          ) {
+            isGrabHeld = true;
+            (char as any)._pendingConsumeAfterGrab = true;
+            (char as any)._pendingConsumeTargetId = targetInReach!.id;
+            (char as any)._pickupPressCode = pickupAndConsumeSlot.code;
+            (char as any)._throwRequiresFreshPress = true;
+            (char as any)._fireRequiresFreshPress = true;
+            claimSlot(pickupAndConsumeSlot, b.id, "pickup.grabAndConsume", true);
+          }
+
           // Drop
           if ((execCtx.isHoldingItem || char.grappledTarget || char.telekineticTarget) && isSlotActive(b.drop, "down", true, b.id, "pickup.drop")) {
             if (char.telekineticTarget) {
@@ -2081,10 +2117,19 @@ export class ModularBlockEvaluator {
               }
             }
           } else {
-            // Traditional hold mode: active only while holding the button
+            // Traditional hold mode: active while holding the button, OR if auto-started by pickupAndConsume
             if (canConsumeHeld && isSlotActive(b.consume, "hold", false, b.id, "consume.bite")) {
               isUsingItem = true;
+              (char as any)._isConsumeToggledOn = false;
+              (char as any)._toggledConsumeItemId = null;
               claimSlot(b.consume, b.id, "consume.bite", false);
+            } else if ((char as any)._isConsumeToggledOn) {
+              if (currentHeldItemId && currentHeldItemId === (char as any)._toggledConsumeItemId && canConsumeHeld && !isDrop && !isSwap && !isThrow) {
+                isUsingItem = true;
+              } else {
+                (char as any)._isConsumeToggledOn = false;
+                (char as any)._toggledConsumeItemId = null;
+              }
             }
           }
 

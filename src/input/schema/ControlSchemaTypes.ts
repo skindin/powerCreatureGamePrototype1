@@ -463,6 +463,8 @@ export interface ItemInteractionControlBlock {
   swapRequiresHolding?: boolean;             // Default false
   triggerPickupWhenEmptyHanded?: boolean;    // Default false: if swap or secondary is pressed when empty-handed, triggers pickup
   additionalPickup?: BlockInputSlot;         // Optional extra button that triggers pickup when emptyhanded
+  pickupAndConsume?: BlockInputSlot;         // Button to immediately pick up an in-reach consumable and start eating it when empty-handed (Default: KeyE)
+  pickupAndConsumeWhenEmpty?: boolean;       // Default true: allow pickupAndConsume button to grab + eat consumables when empty-handed
 }
 
 export interface FacingControlBlock {

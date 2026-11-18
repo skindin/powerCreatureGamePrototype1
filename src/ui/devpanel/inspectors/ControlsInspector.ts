@@ -97,11 +97,29 @@ export class ControlsInspector {
           if (!blk.throwOverrideTrigger || blk.throwOverrideTrigger.code === "KeyT") {
             blk.throwOverrideTrigger = { code: "KeyR", requireCleanPress: false };
           }
+        } else if (blk && blk.type === "itemInteraction") {
+          if (blk.pickupAndConsume === undefined) {
+            blk.pickupAndConsume = { code: "KeyE", requireCleanPress: true };
+          }
+          if (blk.pickupAndConsumeWhenEmpty === undefined) {
+            blk.pickupAndConsumeWhenEmpty = true;
+          }
         }
       }
     }
     if (!schema.gamepad.blocks) {
       schema.gamepad.blocks = JSON.parse(JSON.stringify(DefaultGamepadControlBlocks));
+    } else {
+      for (const blk of schema.gamepad.blocks) {
+        if (blk && blk.type === "itemInteraction") {
+          if (blk.pickupAndConsume === undefined) {
+            blk.pickupAndConsume = { code: "GamepadRB", requireCleanPress: true };
+          }
+          if (blk.pickupAndConsumeWhenEmpty === undefined) {
+            blk.pickupAndConsumeWhenEmpty = true;
+          }
+        }
+      }
     }
     if (!schema.keyboardMouse.pipeline) {
       schema.keyboardMouse.pipeline = JSON.parse(JSON.stringify(DefaultPipelineBindings));
@@ -2395,6 +2413,7 @@ export class ControlsInspector {
 
       case "itemInteraction": {
         const b = block as ItemInteractionControlBlock;
+        const isGp = this.activeTab === "gamepad";
         b.pickup = b.pickup || { code: "MouseLeft" };
         b.drop = b.drop || { code: "KeyQ" };
         b.swap = b.swap || { code: "KeyF" };
@@ -2402,6 +2421,10 @@ export class ControlsInspector {
         b.consumeMode = b.consumeMode || (b.consume as any)?.mode || "toggle";
         b.swapRequiresHolding = Boolean(b.swapRequiresHolding);
         b.triggerPickupWhenEmptyHanded = b.triggerPickupWhenEmptyHanded ?? true;
+        if (b.pickupAndConsume === undefined) {
+          b.pickupAndConsume = { code: isGp ? "GamepadRB" : "KeyE", requireCleanPress: true };
+        }
+        b.pickupAndConsumeWhenEmpty = b.pickupAndConsumeWhenEmpty ?? true;
 
         return `
           <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -2444,14 +2467,26 @@ export class ControlsInspector {
                 <input type="checkbox" class="block-item-trigger-pickup-empty" data-block-id="${b.id}" ${b.triggerPickupWhenEmptyHanded ? "checked" : ""} />
                 <span>Swap button triggers pickup when empty-handed</span>
               </label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" class="block-item-pickup-and-consume" data-block-id="${b.id}" ${b.pickupAndConsumeWhenEmpty ? "checked" : ""} />
+                <span>Immediately pick up & start eating in-reach consumable on press (requires empty hand)</span>
+              </label>
             </div>
 
-            <!-- Additional Pickup Slot -->
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <div style="min-width: 200px;">
-                ${this.renderInputSlot(b.id, "additionalPickup", b.additionalPickup, "Additional Empty-Handed Pickup Button (Optional)")}
+            <!-- Extra Pickup & Auto-Eat Slots -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start;">
+              <div>
+                ${this.renderInputSlot(b.id, "pickupAndConsume", b.pickupAndConsume, "Pick Up & Eat Consumable (Empty-Handed)")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  When empty-handed with a consumable in reach, pressing this grabs it and immediately starts eating.
+                </div>
               </div>
-              <span style="font-size: 0.62rem; color: #64748b; padding-top: 12px;">Extra dedicated button to pick up when empty-handed.</span>
+              <div>
+                ${this.renderInputSlot(b.id, "additionalPickup", b.additionalPickup, "Additional Empty-Handed Pickup Button (Optional)")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  Extra dedicated button to pick up when empty-handed.
+                </div>
+              </div>
             </div>
           </div>
         `;
@@ -3378,6 +3413,8 @@ export class ControlsInspector {
               fireWeapon: { code: "GamepadRT", requireCleanPress: false },
               swapRequiresHolding: false,
               triggerPickupWhenEmptyHanded: true,
+              pickupAndConsume: { code: "GamepadRB", requireCleanPress: true },
+              pickupAndConsumeWhenEmpty: true,
             } : {
               type: "itemInteraction",
               id: newId,
@@ -3391,6 +3428,8 @@ export class ControlsInspector {
               fireWeapon: { code: "MouseRight", requireCleanPress: false },
               swapRequiresHolding: false,
               triggerPickupWhenEmptyHanded: true,
+              pickupAndConsume: { code: "KeyE", requireCleanPress: true },
+              pickupAndConsumeWhenEmpty: true,
             });
           } else if (type === "throw") {
             blocks.push(isGamepad ? {
@@ -4055,6 +4094,19 @@ export class ControlsInspector {
           const block = blocks.find((b) => b.id === bId) as ItemInteractionControlBlock;
           if (block) {
             block.triggerPickupWhenEmptyHanded = (e.target as HTMLInputElement).checked;
+            ControlsInspector.syncLiveWorkingSchema();
+          }
+        });
+      });
+
+      // Item empty-handed pickup + eat consumable checkbox
+      root.querySelectorAll(".block-item-pickup-and-consume").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as ItemInteractionControlBlock;
+          if (block) {
+            block.pickupAndConsumeWhenEmpty = (e.target as HTMLInputElement).checked;
+            ControlsInspector.syncLiveWorkingSchema();
           }
         });
       });

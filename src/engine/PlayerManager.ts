@@ -1456,6 +1456,13 @@ export class PlayerManager {
             char.isAimingWallClear = false;
             char.isHoldingThrowRelease = false;
             char.activeTrajectory = null;
+            if ((char as any)._pendingConsumeAfterGrab && activeHeldOrGrappled && char.hasPrimaryItemAbility()) {
+              (char as any)._pendingConsumeAfterGrab = false;
+              (char as any)._pendingConsumeTargetId = null;
+              (char as any)._isConsumeToggledOn = true;
+              (char as any)._toggledConsumeItemId = currentHeldId;
+              char.isUsingItem = true;
+            }
           }
           // Direct pickup fallback: if spawner itself was grabbed directly by external code,
           // spawn a clone for hands and restore spawner to its resting position.
@@ -1749,14 +1756,27 @@ export class PlayerManager {
                   }
                 }
                 const result = GrabIntentArbiter.executeGrab(char, itemToHold, this.arena.wallHeight);
-                if (!result.success && itemToHold !== targetObj) {
-                  // Insufficient lift energy or failed pickup: clean up orphaned clone
-                  const idx = objects.indexOf(itemToHold);
-                  if (idx !== -1) objects.splice(idx, 1);
-                } else if (result.success) {
+                if (!result.success) {
+                  (char as any)._pendingConsumeAfterGrab = false;
+                  (char as any)._pendingConsumeTargetId = null;
+                  if (itemToHold !== targetObj) {
+                    // Insufficient lift energy or failed pickup: clean up orphaned clone
+                    const idx = objects.indexOf(itemToHold);
+                    if (idx !== -1) objects.splice(idx, 1);
+                  }
+                } else {
                   this.lastHeldObjectIds.set(char.id, itemToHold.id);
                   char.isUsingItem = false;
                   char.eatRateWatts = 0;
+                  if ((char as any)._pendingConsumeAfterGrab) {
+                    (char as any)._pendingConsumeAfterGrab = false;
+                    (char as any)._pendingConsumeTargetId = null;
+                    if (char.hasPrimaryItemAbility()) {
+                      (char as any)._isConsumeToggledOn = true;
+                      (char as any)._toggledConsumeItemId = itemToHold.id;
+                      char.isUsingItem = true;
+                    }
+                  }
                   const actPlayerId = entry?.id || char.playerId || playerId || "keyboard";
                   ClientActionDispatcher.dispatchPickup(
                     this.onReliableActionDispatched,

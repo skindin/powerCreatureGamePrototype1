@@ -51,6 +51,8 @@ export const DefaultControlBlocks: ControlBlock[] = [
     fireWeapon: { code: "MouseRight", requireCleanPress: false },
     swapRequiresHolding: false,
     triggerPickupWhenEmptyHanded: true,
+    pickupAndConsume: { code: "KeyE", requireCleanPress: true },
+    pickupAndConsumeWhenEmpty: true,
   },
   {
     type: "throw",
@@ -157,6 +159,8 @@ export const DefaultGamepadControlBlocks: ControlBlock[] = [
     fireWeapon: { code: "GamepadRT", requireCleanPress: false },
     swapRequiresHolding: false,
     triggerPickupWhenEmptyHanded: true,
+    pickupAndConsume: { code: "GamepadRB", requireCleanPress: true },
+    pickupAndConsumeWhenEmpty: true,
   },
   {
     type: "throw",
@@ -878,6 +882,8 @@ export const SpeedBallControlBlocks: ControlBlock[] = [
     fireWeapon: { code: "MouseRight", requireCleanPress: false },
     swapRequiresHolding: false,
     triggerPickupWhenEmptyHanded: true,
+    pickupAndConsume: { code: "KeyE", requireCleanPress: true },
+    pickupAndConsumeWhenEmpty: true,
   },
   {
     type: "throw",
@@ -967,6 +973,8 @@ export const SpeedBallGamepadControlBlocks: ControlBlock[] = [
     fireWeapon: { code: "GamepadRT", requireCleanPress: false },
     swapRequiresHolding: false,
     triggerPickupWhenEmptyHanded: true,
+    pickupAndConsume: { code: "GamepadRB", requireCleanPress: true },
+    pickupAndConsumeWhenEmpty: true,
   },
   {
     type: "throw",
@@ -1178,6 +1186,8 @@ export const SkyKestrelControlBlocks: ControlBlock[] = [
     fireWeapon: { code: "MouseRight", requireCleanPress: false },
     swapRequiresHolding: false,
     triggerPickupWhenEmptyHanded: true,
+    pickupAndConsume: { code: "KeyE", requireCleanPress: true },
+    pickupAndConsumeWhenEmpty: true,
   },
   {
     type: "throw",
@@ -1266,6 +1276,8 @@ export const SkyKestrelGamepadControlBlocks: ControlBlock[] = [
     fireWeapon: { code: "GamepadRT", requireCleanPress: false },
     swapRequiresHolding: false,
     triggerPickupWhenEmptyHanded: true,
+    pickupAndConsume: { code: "GamepadRB", requireCleanPress: true },
+    pickupAndConsumeWhenEmpty: true,
   },
   {
     type: "throw",
