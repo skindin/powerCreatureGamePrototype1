@@ -1929,7 +1929,7 @@ export class ControlsInspector {
       case "telekinesis": {
         const b = block as TelekinesisControlBlock;
         const isGp = this.activeTab === "gamepad";
-        b.objectControlTrigger = b.objectControlTrigger || { code: isGp ? "GamepadLB" : "AltLeft", requireCleanPress: false };
+        b.objectControlTrigger = b.objectControlTrigger || { code: isGp ? "GamepadRT" : "MouseLeft", requireCleanPress: false };
         b.grabTrigger = b.grabTrigger || { code: null, requireCleanPress: true };
         b.releaseTrigger = b.releaseTrigger || { code: null, requireCleanPress: true };
         b.flingTrigger = b.flingTrigger || { code: null, requireCleanPress: true };
@@ -1940,7 +1940,7 @@ export class ControlsInspector {
               <div>
                 ${this.renderInputSlot(b.id, "objectControlTrigger", b.objectControlTrigger, "Object Control Mode (Hold)")}
                 <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
-                  Hold while floating an object to freeze it and aim throws or floating guns from the object with a virtual cursor.
+                  Hold while floating an object to freeze it and aim throws or floating gun direction with a virtual cursor.
                 </div>
               </div>
               <div>
@@ -3522,7 +3522,7 @@ export class ControlsInspector {
               id: newId,
               name: "Telekinesis & Object Control",
               enabled: true,
-              objectControlTrigger: { code: "GamepadLB", requireCleanPress: false },
+              objectControlTrigger: { code: "GamepadRT", requireCleanPress: false },
               grabTrigger: { code: null, requireCleanPress: true },
               releaseTrigger: { code: null, requireCleanPress: true },
               flingTrigger: { code: null, requireCleanPress: true },
@@ -3532,7 +3532,7 @@ export class ControlsInspector {
               id: newId,
               name: "Telekinesis & Object Control",
               enabled: true,
-              objectControlTrigger: { code: "AltLeft", requireCleanPress: false },
+              objectControlTrigger: { code: "MouseLeft", requireCleanPress: false },
               grabTrigger: { code: null, requireCleanPress: true },
               releaseTrigger: { code: null, requireCleanPress: true },
               flingTrigger: { code: null, requireCleanPress: true },

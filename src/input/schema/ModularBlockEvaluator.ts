@@ -250,18 +250,30 @@ export class ModularBlockEvaluator {
     let isSteerCursorActive = false;
     char.isFlightDescendHeld = false;
 
+    // Clear initial pickup press lockout as soon as that button is physically released
+    const topPickupCode = (char as any)._pickupPressCode as string | null | undefined;
+    if (topPickupCode && !tokens.isDown(topPickupCode) && getSlotAnalogValue({ code: topPickupCode }) <= 0.05) {
+      (char as any)._pickupPressCode = null;
+    }
+    const activePickupLockCode = (char as any)._pickupPressCode as string | null | undefined;
+
     const tkControlBlock = blocks.find((blk) => blk.enabled && blk.type === "telekinesis") as TelekinesisControlBlock | undefined;
     const flightControlBlock = blocks.find((blk) => blk.enabled && blk.type === "flight") as FlightControlBlock | undefined;
 
-    // Telekinetic Object Control Mode (configurable on TelekinesisControlBlock, defaults to AltLeft):
-    // Freezes the floating object at its current world coordinates and switches the mouse
-    // into a virtual reticle anchored from that object, releasing back to the object on trigger release.
-    const isTkObjectControlTriggerDown = tkControlBlock
-      ? (tkControlBlock.objectControlTrigger?.code
-          ? (isSlotActive(tkControlBlock.objectControlTrigger, "hold", false, tkControlBlock.id, "tk.objectControl") ||
-             (!execCtx.gamepadStates && tkControlBlock.objectControlTrigger.code === "AltLeft" && (tokens.isDown("AltRight") || Boolean(input.isAltHeld))))
-          : false)
-      : (!execCtx.gamepadStates && (tokens.isDown("AltLeft") || tokens.isDown("AltRight") || Boolean(input.isAltHeld)));
+    // Telekinetic Object Control Mode (configurable on TelekinesisControlBlock, defaults to MouseLeft):
+    // Freezes the floating object at its current world coordinates while held (on a fresh press after grab),
+    // switches the mouse into a virtual reticle anchored from that object to aim throws / shoot direction,
+    // and releases back to the object on trigger release (after throw release evaluation finishes).
+    const tkObjCtrlCode = tkControlBlock ? tkControlBlock.objectControlTrigger?.code : (!execCtx.gamepadStates ? "MouseLeft" : null);
+    const blockedByInitialPickup = Boolean(activePickupLockCode && tkObjCtrlCode && activePickupLockCode === tkObjCtrlCode);
+
+    const isTkObjectControlTriggerDown = !blockedByInitialPickup && Boolean(
+      tkControlBlock
+        ? (tkControlBlock.objectControlTrigger?.code
+            ? isSlotActive(tkControlBlock.objectControlTrigger, "hold", false, tkControlBlock.id, "tk.objectControl")
+            : false)
+        : (!execCtx.gamepadStates && tokens.isDown("MouseLeft"))
+    );
 
     const isTkObjectControlNow = Boolean(
       char.telekineticTarget &&
@@ -269,6 +281,8 @@ export class ModularBlockEvaluator {
       !char.heldObject &&
       !char.grappledTarget
     );
+    const wasTkObjectControlActive = char.isTelekineticObjectControl;
+
     if (isTkObjectControlNow && char.telekineticTarget) {
       if (!char.isTelekineticObjectControl) {
         const freezePos = { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y };
@@ -289,27 +303,10 @@ export class ModularBlockEvaluator {
         (char as any)._pickupPressCode = null;
       }
       isAimingTrajectory = true;
-    } else if (char.isTelekineticObjectControl) {
-      const restorePos = char.telekineticTarget
-        ? { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y }
-        : char.telekineticFrozenPos;
-      if (!execCtx.gamepadStates) {
-        input.endTelekineticObjectControl(restorePos);
-      }
-      char.isTelekineticObjectControl = false;
-      char.telekineticFrozenPos = null;
-      char.isChargingThrow = false;
-      char.isHoldingThrowRelease = false;
-      char.isAimingWallClear = false;
-      char.isTriggerPullThrowing = false;
-      char.throwChargeStartTime = null;
-      char.throwChargeProgress = 0;
-      char.activeTrajectory = null;
-      char.isThrowCancelZone = false;
     }
 
     // Reticle/Aim target position (works seamlessly for mouse, virtual object-control mouse, and gamepad reticle)
-    const baseAim = isTkObjectControlNow
+    const baseAim = (isTkObjectControlNow || wasTkObjectControlActive)
       ? { x: input.actualMousePos.x, y: input.actualMousePos.y }
       : (execCtx.reticleAimPos || execCtx.mouseAimPos || input.actualMousePos || { x: char.position.x + 1, y: char.position.y });
     const targetAimPos = { x: baseAim.x, y: baseAim.y };
@@ -2331,6 +2328,26 @@ export class ModularBlockEvaluator {
     const isAiming = !isEditMode && (isLaserAiming || isVomitAiming || isAimingTrajectory || isGunAimFiring || Boolean(char.isChargingShove));
     const kLaunchVel = isThrow && char.activeTrajectory?.launchVel ? char.activeTrajectory.launchVel : undefined;
     const kLaunchPos = isThrow && char.activeTrajectory?.launchPos ? char.activeTrajectory.launchPos : undefined;
+
+    // Complete Telekinetic Object Control Mode exit AFTER throw block & launch trajectory extraction
+    if (!isTkObjectControlNow && char.isTelekineticObjectControl) {
+      const restorePos = char.telekineticTarget
+        ? { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y }
+        : char.telekineticFrozenPos;
+      if (!execCtx.gamepadStates) {
+        input.endTelekineticObjectControl(restorePos);
+      }
+      char.isTelekineticObjectControl = false;
+      char.telekineticFrozenPos = null;
+      char.isChargingThrow = false;
+      char.isHoldingThrowRelease = false;
+      char.isAimingWallClear = false;
+      char.isTriggerPullThrowing = false;
+      char.throwChargeStartTime = null;
+      char.throwChargeProgress = 0;
+      char.activeTrajectory = null;
+      char.isThrowCancelZone = false;
+    }
 
     const finalAimPos = getEffectiveAimPos();
     const isRawDirectionMode = !isSteerCursorActive && !char.isSteeringCursor && Boolean(execCtx.gamepadStates);
