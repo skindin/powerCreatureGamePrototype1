@@ -439,39 +439,35 @@ export class TrajectoryRenderer {
     // Render active trajectory arc
     drawDottedArc(points, colorOpaque, colorTransparent, false);
 
-    // Direct sightline from held object release position to target land position:
+    // Direct ground sightline from the object's ground position to the target's ground position:
     // Dots share the exact same sizing and layer transparency as the corresponding points along the arc.
     if (traj.launchPos && traj.landPoint && !(traj as any).isGroundShove) {
       const startX = traj.launchPos.x;
       const startY = traj.launchPos.y;
-      const startZ = traj.launchPos.z;
       const endX = traj.landPoint.x;
       const endY = traj.landPoint.y;
-      const endZ = traj.landPoint.z ?? (traj.targetSurfaceHeight ?? 0);
 
       const lineDx = endX - startX;
       const lineDy = endY - startY;
-      const lineDz = endZ - startZ;
-      const lineDist3D = Math.hypot(lineDx, lineDy, lineDz);
+      const lineDist2D = Math.hypot(lineDx, lineDy);
 
-      if (lineDist3D > 0.3) {
+      if (lineDist2D > 0.3) {
         const straightDotSpacing = base3DSpacing * 1.05;
-        const totalStraightDots = Math.floor(lineDist3D / straightDotSpacing);
+        const totalStraightDots = Math.floor(lineDist2D / straightDotSpacing);
 
         for (let d = 1; d <= totalStraightDots; d++) {
           const frac = d / (totalStraightDots + 1);
           const ptX = startX + lineDx * frac;
           const ptY = startY + lineDy * frac;
-          const ptZ = startZ + lineDz * frac;
 
           const ptScreenX = ptX * ppu;
-          const ptScreenY = (ptY - ptZ * hoverScale) * ppu;
+          const ptScreenY = ptY * ppu;
 
           // Sample corresponding arc flight altitude at this fraction
           const flightT = frac * (traj.flightTime ?? 1.0);
           const arcZ = traj.launchVel
             ? Math.max(0, traj.launchPos.z + traj.launchVel.vz * flightT - 0.5 * arena.gravity * flightT * flightT)
-            : ptZ;
+            : 0;
 
           // Transparent where above Layer 1, opaque within Layer 1
           const isLayer2 = arcZ >= layer2Threshold;
