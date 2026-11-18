@@ -28,6 +28,7 @@ import { RollMovementModule } from "../../character/RollMovementModule.js";
 import { LocomotionStanceModule } from "../../character/LocomotionStanceModule.js";
 import { EnergyGrowthModule } from "../../character/EnergyGrowthModule.js";
 import { VomitModule } from "../../character/VomitModule.js";
+import { FlightModule } from "../../character/FlightModule.js";
 import type { DevPanel } from "../DevPanel.js";
 import type { GameObject } from "../../engine/GameObject.js";
 
@@ -130,6 +131,9 @@ export class EntityModuleLifecycle {
         break;
       case "vomit":
         if (char?.vomitModule) char.vomitModule.enabled = !char.vomitModule.enabled;
+        break;
+      case "flight":
+        if (char?.flightModule) char.flightModule.enabled = !char.flightModule.enabled;
         break;
     }
 
@@ -281,6 +285,11 @@ export class EntityModuleLifecycle {
           (e as Character).vomitModule = null;
         }
         break;
+      case "flight":
+        if (e instanceof Character) {
+          (e as Character).flightModule = null;
+        }
+        break;
     }
 
     panel.renderEntityModules();
@@ -370,6 +379,7 @@ export class EntityModuleLifecycle {
           (e as Character).jumpModule = new JumpModule();
           (e as Character).jumpConsumesEnergy = true;
           (e as Character).jumpAllowPartialPower = false;
+          (e as Character).jumpRequireNonPositiveVelocity = true;
         }
         break;
       case "wallEdgeAssist":
@@ -478,6 +488,13 @@ export class EntityModuleLifecycle {
           (e as Character).vomitModule = new VomitModule();
         }
         break;
+      case "flight":
+        if (e instanceof Character) {
+          const char = e as Character;
+          char.flightModule = new FlightModule();
+          char.flightModule.registerProperties(char.properties);
+        }
+        break;
     }
 
     panel.renderEntityModules();
@@ -518,6 +535,7 @@ export class EntityModuleLifecycle {
     "energyPool",
     "energyGrowth",
     "vomit",
+    "flight",
     "damageAura",
     "damageSolver",
   ];
@@ -660,6 +678,7 @@ export class EntityModuleLifecycle {
             }
             destChar.jumpConsumesEnergy = srcChar.jumpConsumesEnergy;
             destChar.jumpAllowPartialPower = srcChar.jumpAllowPartialPower;
+            destChar.jumpRequireNonPositiveVelocity = srcChar.jumpRequireNonPositiveVelocity;
           } else {
             destChar.jumpModule = null;
           }
@@ -1020,6 +1039,27 @@ export class EntityModuleLifecycle {
             destChar.vomitModule = new VomitModule(srcChar.vomitModule.toConfig(srcChar.properties));
           } else {
             destChar.vomitModule = null;
+          }
+        }
+        break;
+
+      case "flight":
+        if (destChar) {
+          if (srcChar?.flightModule) {
+            if (!destChar.flightModule) destChar.flightModule = new FlightModule();
+            destChar.flightModule.enabled = srcChar.flightModule.enabled;
+            destChar.flightModule.maxPowerProp.set(srcChar.flightModule.getMaxPower(srcChar.properties), destChar.properties);
+            destChar.flightModule.maxHorizontalSpeedProp.set(srcChar.flightModule.getMaxHorizontalSpeed(srcChar.properties), destChar.properties);
+            destChar.flightModule.maxAscentSpeedProp.set(srcChar.flightModule.getMaxAscentSpeed(srcChar.properties), destChar.properties);
+            destChar.flightModule.maxSinkSpeedProp.set(srcChar.flightModule.getMaxSinkSpeed(srcChar.properties), destChar.properties);
+            destChar.flightModule.maxFlightAltitudeProp.set(srcChar.flightModule.getMaxFlightAltitude(srcChar.properties), destChar.properties);
+            destChar.flightModule.groundAnchorRangeProp.set(srcChar.flightModule.getGroundAnchorRange(srcChar.properties), destChar.properties);
+            destChar.flightModule.stabilityProp.set(srcChar.flightModule.getStability(srcChar.properties), destChar.properties);
+            destChar.flightModule.consumesEnergy = srcChar.flightModule.consumesEnergy;
+            destChar.flightModule.allowPartialPower = srcChar.flightModule.allowPartialPower;
+            destChar.flightModule.registerProperties(destChar.properties);
+          } else {
+            destChar.flightModule = null;
           }
         }
         break;

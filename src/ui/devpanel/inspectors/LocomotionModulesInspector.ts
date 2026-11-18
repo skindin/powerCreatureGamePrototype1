@@ -311,6 +311,14 @@ export class LocomotionModulesInspector {
       });
       jumpPowerCapSocketEl.appendChild(jpCtrl.element);
     }
+    const checkJumpRequireVzLteZero = container.querySelector("#check-jump-require-vz-lte-zero") as HTMLInputElement;
+    checkJumpRequireVzLteZero?.addEventListener("change", () => {
+      char.jumpRequireNonPositiveVelocity = checkJumpRequireVzLteZero.checked;
+    });
+    bindToggleSave("check-jump-require-vz-lte-zero", char, "jumpModule.jumpRequireNonPositiveVelocity", "Require Vz <= 0", (v) => {
+      char.jumpRequireNonPositiveVelocity = v;
+    });
+
     const checkJumpEnergy = container.querySelector("#check-jump-energy") as HTMLInputElement;
     const fieldJumpPartialPower = container.querySelector("#field-jump-partial-power") as HTMLElement;
     const checkJumpPartialPower = container.querySelector("#check-jump-partial-power") as HTMLInputElement;
@@ -462,6 +470,42 @@ export class LocomotionModulesInspector {
       }
       bindToggleSave("check-stance-walk-while-rolling", char, "locomotionStanceModule.canWalkWhileRolling", "Allow Walking While Rolling", (v) => {
         if (char.locomotionStanceModule) char.locomotionStanceModule.canWalkWhileRolling = v;
+      });
+    }
+
+    // Flight & Hover Module
+    if (char.flightModule) {
+      const fm = char.flightModule;
+      const attachFlightSocket = (selector: string, prop: any, label: string, step: number) => {
+        const el = container.querySelector(selector);
+        if (el) {
+          const ctrl = new PropertyControl({ property: prop, owner: char, label, step });
+          el.appendChild(ctrl.element);
+        }
+      };
+
+      attachFlightSocket("#prop-socket-flight-max-power", fm.maxPowerProp, "Max Flight Power (Watts)", 50.0);
+      attachFlightSocket("#prop-socket-flight-horiz-speed", fm.maxHorizontalSpeedProp, "Max Horizontal Speed (u/s)", 0.5);
+      attachFlightSocket("#prop-socket-flight-ascent-speed", fm.maxAscentSpeedProp, "Max Ascent Speed (u/s)", 0.5);
+      attachFlightSocket("#prop-socket-flight-sink-speed", fm.maxSinkSpeedProp, "Max Sink Speed (u/s)", 0.2);
+      attachFlightSocket("#prop-socket-flight-max-alt", fm.maxFlightAltitudeProp, "Max Flight Altitude (u)", 0.5);
+      attachFlightSocket("#prop-socket-flight-anchor-range", fm.groundAnchorRangeProp, "Ground Anchor Range (u)", 0.5);
+      attachFlightSocket("#prop-socket-flight-stability", fm.stabilityProp, "Telekinetic Stability (0-1)", 0.05);
+
+      const checkFlightEnergy = container.querySelector("#check-flight-consumes-energy") as HTMLInputElement | null;
+      checkFlightEnergy?.addEventListener("change", () => {
+        if (char.flightModule) char.flightModule.consumesEnergy = checkFlightEnergy.checked;
+      });
+      bindToggleSave("check-flight-consumes-energy", char, "flightModule.consumesEnergy", "Flight Consumes Energy", (v) => {
+        if (char.flightModule) char.flightModule.consumesEnergy = v;
+      });
+
+      const checkFlightPartial = container.querySelector("#check-flight-partial-power") as HTMLInputElement | null;
+      checkFlightPartial?.addEventListener("change", () => {
+        if (char.flightModule) char.flightModule.allowPartialPower = checkFlightPartial.checked;
+      });
+      bindToggleSave("check-flight-partial-power", char, "flightModule.allowPartialPower", "Flight Partial Power", (v) => {
+        if (char.flightModule) char.flightModule.allowPartialPower = v;
       });
     }
   }

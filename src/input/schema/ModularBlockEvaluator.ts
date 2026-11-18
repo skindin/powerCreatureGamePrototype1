@@ -764,6 +764,21 @@ export class ModularBlockEvaluator {
         case "jump": {
           const b = block as JumpControlBlock;
           const slot = b.jumpTrigger || b.jump;
+          if (b.flightToggleTrigger?.code && char.flightModule) {
+            if (isSlotActive(b.flightToggleTrigger, "down", true, b.id, "flight.toggle")) {
+              char.flightModule.enabled = !char.flightModule.enabled;
+              claimSlot(b.flightToggleTrigger, b.id, "flight.toggle", true);
+            }
+          }
+          const descendSlot = b.descendTrigger;
+          if (descendSlot && descendSlot.code) {
+            char.isFlightDescendHeld = isSlotActive(descendSlot, "hold", false, b.id, "flight.descend");
+            if (char.isFlightDescendHeld) {
+              claimSlot(descendSlot, b.id, "flight.descend", false);
+            }
+          } else {
+            char.isFlightDescendHeld = false;
+          }
           if (isVomitAiming || (char as any).isChargingVomit || isVomitRequested) {
             const chargeSlotCode = vomitBlock?.chargeTrigger?.code;
             const aimSlotCode = vomitBlock?.aimTrigger?.code;
@@ -779,7 +794,7 @@ export class ModularBlockEvaluator {
               break;
             }
           }
-          const jumpRequiresClean = slot?.requireCleanPress === true || b.requireCleanPress === true;
+          const jumpRequiresClean = !char.hasFlight && (slot?.requireCleanPress === true || b.requireCleanPress === true);
           if (jumpRequiresClean) {
             if (isSlotActive(slot, "down", true, b.id, "jump")) {
               isJumpHeld = true;

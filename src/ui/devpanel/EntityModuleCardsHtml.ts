@@ -104,6 +104,9 @@ export class EntityModuleCardsHtml {
     const hasVomitModule = isChar && Boolean(char?.vomitModule);
     const vomitEnabled = isChar && Boolean(char?.vomitModule?.enabled);
 
+    const hasFlightModule = isChar && Boolean(char?.flightModule);
+    const flightEnabled = isChar && Boolean(char?.flightModule?.enabled);
+
     const hasSpawnerModule = Boolean(e.spawnerModule);
     const spawnerEnabled = Boolean(e.spawnerModule?.enabled);
 
@@ -535,6 +538,7 @@ export class EntityModuleCardsHtml {
             <div id="prop-socket-jump-strength"></div>
             <div id="prop-socket-jump-max-speed"></div>
             <div id="prop-socket-jump-power-cap"></div>
+            ${renderToggleRow("check-jump-require-vz-lte-zero", "Require Vz <= 0", Boolean(char.jumpRequireNonPositiveVelocity), "Save Jump Require Vz <= 0 to project")}
             ${renderToggleRow("check-jump-energy", "Consumes Energy", Boolean(char.jumpConsumesEnergy), "Save Jump Consumes Energy to project")}
             <div id="field-jump-partial-power" style="display: ${char.jumpConsumesEnergy ? "block" : "none"}; padding-left: 8px;">
               ${renderToggleRow("check-jump-partial-power", "Allow Partial Power", Boolean(char.jumpAllowPartialPower), "Save Jump Partial Power to project")}
@@ -1005,6 +1009,33 @@ export class EntityModuleCardsHtml {
       `;
     }
 
+    // Flight & Hover Module
+    if (hasFlightModule && char?.flightModule) {
+      attachedCount++;
+      const fm = char.flightModule;
+      html += `
+        <div class="module-card ${!flightEnabled ? "module-disabled" : ""}" data-module-id="flight">
+          ${panel.renderModuleHeader("flight", "🦅 Flight & Hover", renderToggleBtn("flight", flightEnabled))}
+          <div id="collapse-body-mod-flight" style="display: ${isCollapsed("mod-flight") ? "none" : "block"};">
+            ${!flightEnabled ? `<div class="module-dep-warning">⚠️ Inactive: Flight & Hover is disabled</div>` : ""}
+            ${!hasVertPosModule ? `<div class="module-dep-warning">⚠️ Requires Vertical Position behavior</div>` : ""}
+            <div style="font-size: 0.76rem; color: #94a3b8; margin: 4px 0 6px 0;">
+              Combines 0-energy momentum transfer/redirection (braking & glide) with minimal-energy Equivalence-Principle hover and 3D thrust.
+            </div>
+            <div id="prop-socket-flight-max-power"></div>
+            <div id="prop-socket-flight-horiz-speed"></div>
+            <div id="prop-socket-flight-ascent-speed"></div>
+            <div id="prop-socket-flight-sink-speed"></div>
+            <div id="prop-socket-flight-max-alt"></div>
+            <div id="prop-socket-flight-anchor-range"></div>
+            <div id="prop-socket-flight-stability"></div>
+            ${renderToggleRow("check-flight-consumes-energy", "Consumes Energy", fm.consumesEnergy, "Save Flight Consumes Energy to project")}
+            ${renderToggleRow("check-flight-partial-power", "Allow Partial Power", fm.allowPartialPower, "Save Flight Allow Partial Power to project")}
+          </div>
+        </div>
+      `;
+    }
+
     if (attachedCount === 0) {
       html = `
         <div class="empty-behaviors-msg">
@@ -1057,7 +1088,8 @@ export class EntityModuleCardsHtml {
         { id: "melee", name: "Melee Attack", icon: "🥊", description: "Physical punch with knockback, recoil, and force-based shock damage", isAttached: hasMeleeModule },
         { id: "energyPool", name: "Energy Pool & Stamina", icon: "⚡", description: "Consolidated biochemical energy reservoir (Joules) and burst stamina", isAttached: hasEnergyPool },
         { id: "energyGrowth", name: "Scale With Energy", icon: "📈", description: "Scales mass, collider, sprite, and connected ability properties with stored energy", isAttached: hasEnergyGrowthModule },
-        { id: "vomit", name: "Projectile Vomit", icon: "🤮", description: "Expels stored energy as a ballistic consumable glob, shrinking the character", isAttached: hasVomitModule }
+        { id: "vomit", name: "Projectile Vomit", icon: "🤮", description: "Expels stored energy as a ballistic consumable glob, shrinking the character", isAttached: hasVomitModule },
+        { id: "flight", name: "Flight & Hover", icon: "🦅", description: "Equivalence-principle hover, 0-energy momentum transfer/glide, and 3D flight", isAttached: hasFlightModule }
       );
     }
 

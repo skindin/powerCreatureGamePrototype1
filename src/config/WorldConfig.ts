@@ -26,6 +26,7 @@ import { DamageAuraModule } from "../engine/DamageAuraModule.js";
 import { DamageSolverModule } from "../engine/DamageSolverModule.js";
 import { EnergyGrowthModule, type EnergyGrowthConfig } from "../character/EnergyGrowthModule.js";
 import { VomitModule, type VomitModuleConfig } from "../character/VomitModule.js";
+import { FlightModule } from "../character/FlightModule.js";
 import { quarryPreset, createQuarryStones } from "../engine/maps/QuarryMap.js";
 import { Character } from "../character/Character.js";
 import type { ControlSchema } from "../input/schema/ControlSchemaTypes.js";
@@ -230,6 +231,7 @@ export interface SerializedCharacterConfig {
     jumpPowerCapacity?: number;
     jumpConsumesEnergy?: boolean;
     jumpAllowPartialPower?: boolean;
+    jumpRequireNonPositiveVelocity?: boolean;
   };
 
   hasThrow?: boolean;
@@ -408,6 +410,20 @@ export interface SerializedCharacterConfig {
   hasVomit?: boolean;
   vomitModule?: VomitModuleConfig | null;
 
+  hasFlight?: boolean;
+  flightModule?: {
+    enabled?: boolean;
+    maxPower?: number;
+    maxHorizontalSpeed?: number;
+    maxAscentSpeed?: number;
+    maxSinkSpeed?: number;
+    maxFlightAltitude?: number;
+    groundAnchorRange?: number;
+    stability?: number;
+    consumesEnergy?: boolean;
+    allowPartialPower?: boolean;
+  } | null;
+
   controlSchema?: ControlSchema;
 }
 
@@ -517,6 +533,7 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
       jumpPowerCapacity: char.jumpPowerCapacityProp ? char.jumpPowerCapacityProp.get(char.properties) : undefined,
       jumpConsumesEnergy: char.jumpConsumesEnergy,
       jumpAllowPartialPower: char.jumpAllowPartialPower,
+      jumpRequireNonPositiveVelocity: char.jumpRequireNonPositiveVelocity,
     };
   } else {
     result.hasJump = false;
@@ -820,6 +837,24 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
     result.hasVomit = false;
   }
 
+  if (char.flightModule) {
+    result.hasFlight = true;
+    result.flightModule = {
+      enabled: char.flightModule.enabled,
+      maxPower: char.flightModule.getMaxPower(char.properties),
+      maxHorizontalSpeed: char.flightModule.getMaxHorizontalSpeed(char.properties),
+      maxAscentSpeed: char.flightModule.getMaxAscentSpeed(char.properties),
+      maxSinkSpeed: char.flightModule.getMaxSinkSpeed(char.properties),
+      maxFlightAltitude: char.flightModule.getMaxFlightAltitude(char.properties),
+      groundAnchorRange: char.flightModule.getGroundAnchorRange(char.properties),
+      stability: char.flightModule.getStability(char.properties),
+      consumesEnergy: char.flightModule.consumesEnergy,
+      allowPartialPower: char.flightModule.allowPartialPower,
+    };
+  } else {
+    result.hasFlight = false;
+  }
+
   return result;
 }
 
@@ -927,6 +962,9 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
         }
         if (config.jumpModule.jumpConsumesEnergy !== undefined) char.jumpConsumesEnergy = config.jumpModule.jumpConsumesEnergy;
         if (config.jumpModule.jumpAllowPartialPower !== undefined) char.jumpAllowPartialPower = config.jumpModule.jumpAllowPartialPower;
+        if (config.jumpModule.jumpRequireNonPositiveVelocity !== undefined) {
+          char.jumpRequireNonPositiveVelocity = config.jumpModule.jumpRequireNonPositiveVelocity;
+        }
       }
     }
   }
@@ -1499,6 +1537,26 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
     char.vomitModule = null;
   } else if (config.vomitModule || config.hasVomit === true) {
     char.vomitModule = new VomitModule(config.vomitModule ?? { enabled: true });
+  }
+
+  if (config.hasFlight === false) {
+    char.flightModule = null;
+  } else if (config.flightModule || config.hasFlight === true) {
+    if (!char.flightModule) {
+      char.flightModule = new FlightModule(config.flightModule ?? { enabled: true });
+    } else if (config.flightModule) {
+      if (config.flightModule.enabled !== undefined) char.flightModule.enabled = config.flightModule.enabled;
+      if (config.flightModule.maxPower !== undefined) char.flightModule.maxPowerProp.set(config.flightModule.maxPower, char.properties);
+      if (config.flightModule.maxHorizontalSpeed !== undefined) char.flightModule.maxHorizontalSpeedProp.set(config.flightModule.maxHorizontalSpeed, char.properties);
+      if (config.flightModule.maxAscentSpeed !== undefined) char.flightModule.maxAscentSpeedProp.set(config.flightModule.maxAscentSpeed, char.properties);
+      if (config.flightModule.maxSinkSpeed !== undefined) char.flightModule.maxSinkSpeedProp.set(config.flightModule.maxSinkSpeed, char.properties);
+      if (config.flightModule.maxFlightAltitude !== undefined) char.flightModule.maxFlightAltitudeProp.set(config.flightModule.maxFlightAltitude, char.properties);
+      if (config.flightModule.groundAnchorRange !== undefined) char.flightModule.groundAnchorRangeProp.set(config.flightModule.groundAnchorRange, char.properties);
+      if (config.flightModule.stability !== undefined) char.flightModule.stabilityProp.set(config.flightModule.stability, char.properties);
+      if (config.flightModule.consumesEnergy !== undefined) char.flightModule.consumesEnergy = config.flightModule.consumesEnergy;
+      if (config.flightModule.allowPartialPower !== undefined) char.flightModule.allowPartialPower = config.flightModule.allowPartialPower;
+    }
+    char.flightModule.registerProperties(char.properties);
   }
 }
 

@@ -7,6 +7,7 @@ import { WalkingModule } from "../../character/WalkingModule.js";
 import { LocomotionStanceModule } from "../../character/LocomotionStanceModule.js";
 import { EnergyGrowthModule } from "../../character/EnergyGrowthModule.js";
 import { VomitModule } from "../../character/VomitModule.js";
+import { FlightModule } from "../../character/FlightModule.js";
 import { Prefab } from "./Prefab.js";
 import { Arena } from "../Arena.js";
 import { Character } from "../../character/Character.js";
@@ -392,6 +393,74 @@ export class PrefabManager {
       controlSchema: JSON.parse(JSON.stringify(growerSchema)),
     });
     this.prefabs.set(growerPrefab.id, growerPrefab);
+
+    // 🦅 Default "Sky Kestrel" Flying Telekinetic Bird prefab
+    const flyerArchetype = new Character({
+      id: "archetype_flyer_character",
+      name: "Sky Kestrel",
+      color: "#a855f7",
+      colliderRadius: 0.38,
+      mass: 0.75,
+      strength: 1.0,
+    });
+    flyerArchetype.bounceMod = 0.15;
+    flyerArchetype.climbingModule = null;
+    flyerArchetype.jumpModule = null;
+    if (flyerArchetype.walkingModule) {
+      flyerArchetype.walkingModule.walkInAir = false;
+      flyerArchetype.walkingModule.maxWalkSpeedProp.set(4.5, flyerArchetype.properties);
+    }
+    if (flyerArchetype.energyPool) {
+      flyerArchetype.energyPool.maxEnergyProp.set(15000, flyerArchetype.properties);
+      flyerArchetype.energyPool.currentEnergyProp.set(15000, flyerArchetype.properties);
+      flyerArchetype.energyPool.maxStaminaProp.set(8000, flyerArchetype.properties);
+      flyerArchetype.energyPool.staminaRegenRateProp.set(900, flyerArchetype.properties);
+      flyerArchetype.energyPool.currentStaminaProp.set(8000, flyerArchetype.properties);
+    }
+    flyerArchetype.flightModule = new FlightModule({
+      enabled: true,
+      maxPower: 3000.0,
+      maxHorizontalSpeed: 8.5,
+      maxAscentSpeed: 5.5,
+      maxSinkSpeed: 2.2,
+      maxFlightAltitude: 5.0,
+      groundAnchorRange: 5.0,
+      stability: 0.9,
+      consumesEnergy: true,
+      allowPartialPower: true,
+    });
+    flyerArchetype.flightModule.registerProperties(flyerArchetype.properties);
+    flyerArchetype.prefabId = "prefab_flyer_character";
+
+    const flyerSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
+    if (flyerSchema.keyboardMouse?.blocks) {
+      for (const b of flyerSchema.keyboardMouse.blocks) {
+        if (b.type === "jump") {
+          b.descendTrigger = { code: "KeyC", requireCleanPress: false };
+          b.flightToggleTrigger = { code: "KeyG", requireCleanPress: true };
+          b.requireCleanPress = false;
+        }
+      }
+    }
+    if (flyerSchema.gamepad?.blocks) {
+      for (const b of flyerSchema.gamepad.blocks) {
+        if (b.type === "jump") {
+          b.descendTrigger = { code: "GamepadB", requireCleanPress: false };
+          b.flightToggleTrigger = { code: "GamepadDpadDown", requireCleanPress: true };
+          b.requireCleanPress = false;
+        }
+      }
+    }
+    flyerArchetype.controlSchema = flyerSchema;
+
+    const flyerPrefab = new Prefab({
+      id: "prefab_flyer_character",
+      name: "Sky Kestrel",
+      icon: "🦅",
+      archetype: flyerArchetype,
+      controlSchema: JSON.parse(JSON.stringify(flyerSchema)),
+    });
+    this.prefabs.set(flyerPrefab.id, flyerPrefab);
   }
 
   public getAll(): Prefab[] {
@@ -418,7 +487,8 @@ export class PrefabManager {
         cfg.id === "prefab_hunter" ||
         cfg.id === "prefab_fighter" ||
         cfg.id === "prefab_grower_character" ||
-        Boolean(arc.walkingModule || arc.jumpModule || arc.rollMovementModule || arc.energyGrowthModule || arc.vomitModule || arc.isCharacter);
+        cfg.id === "prefab_flyer_character" ||
+        Boolean(arc.walkingModule || arc.jumpModule || arc.rollMovementModule || arc.energyGrowthModule || arc.vomitModule || arc.flightModule || arc.isCharacter);
 
       let archetype: GameObject;
       if (isCharacterConfig) {

@@ -35,20 +35,22 @@ export interface ActivePowerAllocation {
 }
 
 export const ABILITY_METADATA: Record<string, { name: string; color: string }> = {
-  sprint: { name: "Sprint", color: "#6366f1" },
-  walk: { name: "Walk", color: "#38bdf8" },
-  roll: { name: "Roll", color: "#38bdf8" },
-  brake: { name: "Brake", color: "#ef4444" },
-  jump: { name: "Jump", color: "#ec4899" },
-  climb: { name: "Climb", color: "#a855f7" },
-  health_regen: { name: "Heal", color: "#22c55e" },
-  pickup: { name: "Pickup", color: "#14b8a6" },
-  throw: { name: "Throw", color: "#f43f5e" },
+  sprint: { name: "🏃", color: "#6366f1" },
+  walk: { name: "🚶", color: "#38bdf8" },
+  roll: { name: "⚽", color: "#38bdf8" },
+  brake: { name: "🛑", color: "#ef4444" },
+  jump: { name: "🦘", color: "#ec4899" },
+  climb: { name: "🪜", color: "#a855f7" },
+  health_regen: { name: "❤️‍🩹", color: "#22c55e" },
+  pickup: { name: "✊", color: "#14b8a6" },
+  throw: { name: "🎯", color: "#f43f5e" },
   instant_burst: { name: "Burst", color: "#ec4899" },
-  laser_blast: { name: "Laser", color: "#06b6d4" },
-  melee: { name: "Melee", color: "#f97316" },
-  grapple: { name: "Shove", color: "#f97316" },
-  vomit: { name: "Throw Up", color: "#84cc16" },
+  laser_blast: { name: "☀️", color: "#06b6d4" },
+  melee: { name: "🥊", color: "#f97316" },
+  grapple: { name: "🥌", color: "#f97316" },
+  vomit: { name: "🤮", color: "#84cc16" },
+  flight: { name: "🦅", color: "#38bdf8" },
+  telekinesis: { name: "🔮", color: "#a855f7" },
 };
 
 /**

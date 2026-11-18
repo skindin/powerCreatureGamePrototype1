@@ -55,6 +55,10 @@ export class LocomotionCapability {
       }
     }
 
+    if (char.hasFlight && !char.isRestingOnSurface) {
+      return false;
+    }
+
     return Boolean(
       char.walkingModule &&
       char.walkingModule.enabled &&

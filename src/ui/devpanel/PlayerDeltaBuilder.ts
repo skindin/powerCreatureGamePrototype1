@@ -110,6 +110,15 @@ export class PlayerDeltaBuilder {
         if (prop === char.vomitModule.cooldownSecondsProp) return "vomitModule.cooldownSeconds";
         if (prop === char.vomitModule.recoilMultiplierProp) return "vomitModule.recoilMultiplier";
       }
+      if (char.flightModule) {
+        if (prop === char.flightModule.maxPowerProp) return "flightModule.maxPower";
+        if (prop === char.flightModule.maxHorizontalSpeedProp) return "flightModule.maxHorizontalSpeed";
+        if (prop === char.flightModule.maxAscentSpeedProp) return "flightModule.maxAscentSpeed";
+        if (prop === char.flightModule.maxSinkSpeedProp) return "flightModule.maxSinkSpeed";
+        if (prop === char.flightModule.maxFlightAltitudeProp) return "flightModule.maxFlightAltitude";
+        if (prop === char.flightModule.groundAnchorRangeProp) return "flightModule.groundAnchorRange";
+        if (prop === char.flightModule.stabilityProp) return "flightModule.stability";
+      }
       if (char.colliderModule && prop === char.colliderModule.radiusProp) return "colliderRadius";
       if (char.rigidbodyModule && prop === char.rigidbodyModule.massProp) return "mass";
     }
@@ -257,6 +266,7 @@ export class PlayerDeltaBuilder {
       "Max Jump Power (Watts)": "jumpModule.jumpPowerCapacity",
       jumpConsumesEnergy: "jumpModule.jumpConsumesEnergy",
       jumpAllowPartialPower: "jumpModule.jumpAllowPartialPower",
+      jumpRequireNonPositiveVelocity: "jumpModule.jumpRequireNonPositiveVelocity",
       throwForce: "throwModule.maxThrowSpeed",
       maxThrowSpeed: "throwModule.maxThrowSpeed",
       "Max Throw Speed (u/s)": "throwModule.maxThrowSpeed",

@@ -13,6 +13,7 @@ const CREATURE_CHOICES = [
   "prefab_player",
   "prefab_speed_ball",
   "prefab_grower_character",
+  "prefab_flyer_character",
 ] as const;
 
 export class CharacterSelectModal {
@@ -76,7 +77,7 @@ export class CharacterSelectModal {
         </p>
       </div>
 
-      <div style="display: flex; gap: 18px; max-width: 980px; width: 94%; justify-content: center;">
+      <div style="display: flex; gap: 14px; max-width: 1180px; width: 96%; justify-content: center;">
         <!-- Card 1: Laser Goat -->
         <div class="creature-card" data-index="0" data-prefab-id="prefab_player" style="
           flex: 1;
@@ -214,6 +215,52 @@ export class CharacterSelectModal {
             transition: background 0.15s ease;
           ">Choose Bio-Grower</button>
         </div>
+
+        <!-- Card 4: Sky Kestrel -->
+        <div class="creature-card" data-index="3" data-prefab-id="prefab_flyer_character" style="
+          flex: 1;
+          background: rgba(46, 16, 101, 0.55);
+          border: 2px solid rgba(168, 85, 247, 0.35);
+          border-radius: 12px;
+          padding: 20px;
+          cursor: pointer;
+          transition: all 0.18s ease;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+        ">
+          <div style="font-size: 3.5rem; margin-bottom: 8px; filter: drop-shadow(0 2px 8px rgba(168, 85, 247, 0.45));">🦅</div>
+          <h3 style="margin: 0 0 6px; font-size: 1.35rem; color: #c084fc; font-weight: 700;">Sky Kestrel</h3>
+          <div style="font-size: 0.76rem; color: #cbd5e1; margin-bottom: 14px; line-height: 1.35;">
+            Telekinetic flyer combining Equivalence-Principle hover with 0 W gravity-powered gliding and braking.
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: auto; font-size: 0.75rem; text-align: left;">
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 5px 8px; border-radius: 6px; color: #e9d5ff;">
+              <span style="font-weight: 600;">Ascend / Hover:</span> Space (Costs Power)
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 5px 8px; border-radius: 6px; color: #e9d5ff;">
+              <span style="font-weight: 600;">Glide / Descend:</span> C (0 W Braking)
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 5px 8px; border-radius: 6px; color: #e9d5ff;">
+              <span style="font-weight: 600;">Toggle Flight:</span> G (On / Off)
+            </div>
+          </div>
+          <button class="select-btn" style="
+            margin-top: 16px;
+            width: 100%;
+            padding: 8px 12px;
+            background: #9333ea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.88rem;
+            cursor: pointer;
+            transition: background 0.15s ease;
+          ">Choose Sky Kestrel</button>
+        </div>
       </div>
 
       <div style="margin-top: 24px; color: #64748b; font-size: 0.78rem; display: flex; gap: 16px; align-items: center;">
@@ -316,11 +363,18 @@ export class CharacterSelectModal {
           ? "0 0 25px rgba(56, 189, 248, 0.45), inset 0 0 15px rgba(56, 189, 248, 0.15)"
           : "0 4px 20px rgba(0, 0, 0, 0.35)";
         el.style.transform = isSelected ? "translateY(-4px) scale(1.02)" : "translateY(0) scale(1.0)";
-      } else {
+      } else if (idx === 2) {
         // Bio-Grower
         el.style.borderColor = isSelected ? "#10b981" : "rgba(16, 185, 129, 0.25)";
         el.style.boxShadow = isSelected
           ? "0 0 25px rgba(16, 185, 129, 0.45), inset 0 0 15px rgba(16, 185, 129, 0.15)"
+          : "0 4px 20px rgba(0, 0, 0, 0.35)";
+        el.style.transform = isSelected ? "translateY(-4px) scale(1.02)" : "translateY(0) scale(1.0)";
+      } else {
+        // Sky Kestrel
+        el.style.borderColor = isSelected ? "#a855f7" : "rgba(168, 85, 247, 0.25)";
+        el.style.boxShadow = isSelected
+          ? "0 0 25px rgba(168, 85, 247, 0.45), inset 0 0 15px rgba(168, 85, 247, 0.15)"
           : "0 4px 20px rgba(0, 0, 0, 0.35)";
         el.style.transform = isSelected ? "translateY(-4px) scale(1.02)" : "translateY(0) scale(1.0)";
       }

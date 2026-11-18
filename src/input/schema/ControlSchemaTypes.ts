@@ -366,6 +366,8 @@ export interface JumpControlBlock {
   enabled: boolean;
   jump?: BlockInputSlot;
   jumpTrigger?: BlockInputSlot; // Alias for jump slot
+  descendTrigger?: BlockInputSlot; // Optional hold slot to descend/glide when flying
+  flightToggleTrigger?: BlockInputSlot; // Optional press slot to toggle FlightModule on/off
   requireCleanPress?: boolean;  // When false (default), holding button continuously auto-jumps on touching ground
 }
 

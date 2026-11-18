@@ -31,6 +31,8 @@ import { VomitModule } from "./VomitModule.js";
 import { VomitCapability } from "./capabilities/VomitCapability.js";
 import { GrappleModule } from "./GrappleModule.js";
 import { GrappleCapability } from "./capabilities/GrappleCapability.js";
+import { FlightModule } from "./FlightModule.js";
+import { FlightCapability } from "./capabilities/FlightCapability.js";
 import type { ControlSchema } from "../input/schema/ControlSchemaTypes.js";
 
 export type CharacterControllerType = "local" | "ai" | "remote" | "none";
@@ -183,6 +185,8 @@ export class Character extends GameObject {
   public jumpConsumesEnergy: boolean = true;
   /** Whether jumping is allowed to run at partial impulse when pool power cannot provide 100% */
   public jumpAllowPartialPower: boolean = false;
+  /** Require verticalVelocity <= 0 (at apex, falling, or resting) before jump can trigger again */
+  public jumpRequireNonPositiveVelocity: boolean = true;
   public jumpMaxPowerProp: DynamicProperty;
 
   // Backwards-compatible aliases
@@ -246,6 +250,11 @@ export class Character extends GameObject {
   public vomitModule: VomitModule | null = null;
   public isVomitAiming: boolean = false;
   public isVomitRequested: boolean = false;
+  public flightModule: FlightModule | null = null;
+  public isFlightDescendHeld: boolean = false;
+  public get hasFlight(): boolean {
+    return Boolean(this.flightModule && this.flightModule.enabled);
+  }
   public visualSpriteRadius?: number = 0.4;
   public onSpawnWorldObject?: (obj: GameObject) => void;
 
@@ -850,11 +859,22 @@ export class Character extends GameObject {
     }
     HealthRegenCapability.registerDemand(this);
     const canClimb = ClimbingCapability.registerDemand(this, isClimbInput, arena);
+    const canFly = FlightCapability.canFly(this);
+    const flightVertIntent = canFly
+      ? FlightCapability.getVerticalIntent(this, isClimbInput, this.isFlightDescendHeld || this.isBraking)
+      : 0;
+    if (canFly) {
+      FlightCapability.registerDemand(this, movementInput, flightVertIntent, dt, arena);
+    }
 
     // Phase 2: Actuate movement & vertical capabilities
     ClimbingCapability.actuate(this, canClimb, movementInput, isClimbInput, dt, arena);
 
-    const canJump = JumpCapability.canJump(this);
+    if (canFly) {
+      FlightCapability.actuate(this, movementInput, flightVertIntent, dt, arena);
+    }
+
+    const canJump = !canFly && JumpCapability.canJump(this);
     if (isClimbInput && !this.isClimbing && canJump) {
       this.jump(arena, movementInput);
     }
