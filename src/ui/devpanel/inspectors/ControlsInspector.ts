@@ -100,6 +100,8 @@ export class ControlsInspector {
         } else if (blk && blk.type === "itemInteraction") {
           if (blk.pickupAndConsume === undefined) {
             blk.pickupAndConsume = { code: "KeyE", requireCleanPress: true };
+          } else if (blk.pickupAndConsume.requireCleanPress === undefined) {
+            blk.pickupAndConsume.requireCleanPress = true;
           }
           if (blk.pickupAndConsumeWhenEmpty === undefined) {
             blk.pickupAndConsumeWhenEmpty = true;
@@ -114,6 +116,8 @@ export class ControlsInspector {
         if (blk && blk.type === "itemInteraction") {
           if (blk.pickupAndConsume === undefined) {
             blk.pickupAndConsume = { code: "GamepadRB", requireCleanPress: true };
+          } else if (blk.pickupAndConsume.requireCleanPress === undefined) {
+            blk.pickupAndConsume.requireCleanPress = true;
           }
           if (blk.pickupAndConsumeWhenEmpty === undefined) {
             blk.pickupAndConsumeWhenEmpty = true;
@@ -3765,6 +3769,7 @@ export class ControlsInspector {
             } else {
               (block as any)[slotName] = { code: null, requireCleanPress: checked };
             }
+            ControlsInspector.syncLiveWorkingSchema();
             this.renderActiveView();
           }
         });

@@ -1586,10 +1586,13 @@ export class PlayerManager {
         grabState.useItemSuppressed = false;
       }
 
+      const fromBlocks = Boolean((pkt as any).fromBlocks);
       const isDeviceSuppressed = grabState.grabSuppressed || (
-        isKeyboardPlayer
-          ? (grabState.mouseGrabSuppressed && grabState.keyEGrabSuppressed)
-          : (grabState.rtGrabSuppressed && grabState.bGrabSuppressed)
+        !fromBlocks && (
+          isKeyboardPlayer
+            ? (grabState.mouseGrabSuppressed && grabState.keyEGrabSuppressed)
+            : (grabState.rtGrabSuppressed && grabState.bGrabSuppressed)
+        )
       );
 
       // Dedicated Swap Action: drops current item (or releases grappled/telekinetic target), excludes it, and grabs selected item

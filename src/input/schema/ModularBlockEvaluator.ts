@@ -2094,16 +2094,21 @@ export class ModularBlockEvaluator {
             const isConsumeJustPressed = isConsumeActive && !wasConsumeActive;
 
             if (isConsumeJustPressed) {
+              let consumedAction = false;
               if ((char as any)._isConsumeToggledOn) {
                 // Pressing again while eating toggles eating OFF
                 (char as any)._isConsumeToggledOn = false;
                 (char as any)._toggledConsumeItemId = null;
+                consumedAction = true;
               } else if (canConsumeHeld && currentHeldItemId) {
                 // Pressing while holding an edible/primary ability item toggles eating ON
                 (char as any)._isConsumeToggledOn = true;
                 (char as any)._toggledConsumeItemId = currentHeldItemId;
+                consumedAction = true;
               }
-              if (consumeCode) {
+              // Only consume the press token if consume toggled or hand wasn't empty;
+              // if hand is empty with no food in reach yet, keep the token clean so holding E picks up food on contact!
+              if (consumeCode && (consumedAction || !isHandEmptyForEatGrab)) {
                 tokens.consume(consumeCode, b.id, "consume.toggle");
               }
             }
@@ -2547,6 +2552,7 @@ export class ModularBlockEvaluator {
     return {
       playerId: execCtx.gamepadStates ? `gamepad-${execCtx.gamepadStates.slotIndex}` : "keyboard",
       playerName: char.name,
+      fromBlocks: true,
       moveX,
       moveY,
       isSprinting: isSprinting,
