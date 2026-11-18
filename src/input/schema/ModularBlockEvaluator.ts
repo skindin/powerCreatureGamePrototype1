@@ -293,6 +293,20 @@ export class ModularBlockEvaluator {
         const freezeVisualPos = { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y };
         char.telekineticFrozenPos = freezeCenter;
         char.isTelekineticObjectControl = true;
+        if (!execCtx.gamepadStates && input.keyboardViewport) {
+          const vp = input.keyboardViewport;
+          (char as any)._tkObjectControlScreenAnchor = {
+            px: freezeCenter.x * vp.scale + vp.offsetX,
+            py: freezeCenter.y * vp.scale + vp.offsetY,
+          };
+          (char as any)._tkObjectControlCharOffset = null;
+        } else {
+          (char as any)._tkObjectControlScreenAnchor = null;
+          (char as any)._tkObjectControlCharOffset = {
+            dx: freezeCenter.x - char.position.x,
+            dy: freezeCenter.y - char.position.y,
+          };
+        }
         if (!execCtx.gamepadStates) {
           input.beginTelekineticObjectControl(freezeVisualPos);
         }
@@ -306,6 +320,34 @@ export class ModularBlockEvaluator {
         (char as any)._throwRequiresFreshPress = false;
         (char as any)._fireRequiresFreshPress = false;
         (char as any)._pickupPressCode = null;
+      } else {
+        // Keep the telekinetic hold target locked to the same spot on screen / relative to the camera even as the player moves
+        const prevFrozenX = char.telekineticFrozenPos?.x ?? char.telekineticTarget.position.x;
+        const prevFrozenY = char.telekineticFrozenPos?.y ?? char.telekineticTarget.position.y;
+        let nextFrozenX = prevFrozenX;
+        let nextFrozenY = prevFrozenY;
+        const screenAnchor = (char as any)._tkObjectControlScreenAnchor as { px: number; py: number } | null | undefined;
+        const charOffset = (char as any)._tkObjectControlCharOffset as { dx: number; dy: number } | null | undefined;
+        if (!execCtx.gamepadStates && screenAnchor && input.keyboardViewport) {
+          const vp = input.keyboardViewport;
+          const invScale = 1.0 / Math.max(0.0001, vp.scale);
+          nextFrozenX = (screenAnchor.px - vp.offsetX) * invScale;
+          nextFrozenY = (screenAnchor.py - vp.offsetY) * invScale;
+        } else if (charOffset) {
+          nextFrozenX = char.position.x + charOffset.dx;
+          nextFrozenY = char.position.y + charOffset.dy;
+        }
+        const deltaFrozenX = nextFrozenX - prevFrozenX;
+        const deltaFrozenY = nextFrozenY - prevFrozenY;
+        char.telekineticFrozenPos = { x: nextFrozenX, y: nextFrozenY };
+        if (!execCtx.gamepadStates && (Math.abs(deltaFrozenX) > 1e-9 || Math.abs(deltaFrozenY) > 1e-9)) {
+          const maxW = execCtx.arena ? execCtx.arena.width - 0.05 : 1e6;
+          const maxH = execCtx.arena ? execCtx.arena.height - 0.05 : 1e6;
+          input.actualMousePos.x = Math.max(0.05, Math.min(maxW, input.actualMousePos.x + deltaFrozenX));
+          input.actualMousePos.y = Math.max(0.05, Math.min(maxH, input.actualMousePos.y + deltaFrozenY));
+          input.mousePos.x = input.actualMousePos.x;
+          input.mousePos.y = input.actualMousePos.y;
+        }
       }
       isAimingTrajectory = true;
     }
@@ -2289,12 +2331,45 @@ export class ModularBlockEvaluator {
             (isFireSlotHeldRaw || isTkObjectControlNow)
           );
           (char as any).isHoldingTkGunFire = isHoldingTkGunTrigger;
-          if (isHoldingTkGunTrigger && activeGunObj && !char.telekineticFrozenPos) {
-            const tkMod = char.telekinesisModule;
-            char.telekineticFrozenPos = {
-              x: activeGunObj.position.x - (tkMod?.appliedWaveOffsetX ?? 0),
-              y: activeGunObj.position.y - (tkMod?.appliedWaveOffsetY ?? 0),
-            };
+          if (isHoldingTkGunTrigger && activeGunObj && !isTkObjectControlNow && !isTkElevationControlNow) {
+            if (!char.telekineticFrozenPos) {
+              const tkMod = char.telekinesisModule;
+              const gunFreezeCenter = {
+                x: activeGunObj.position.x - (tkMod?.appliedWaveOffsetX ?? 0),
+                y: activeGunObj.position.y - (tkMod?.appliedWaveOffsetY ?? 0),
+              };
+              char.telekineticFrozenPos = gunFreezeCenter;
+              if (!execCtx.gamepadStates && input.keyboardViewport) {
+                const vp = input.keyboardViewport;
+                (char as any)._tkObjectControlScreenAnchor = {
+                  px: gunFreezeCenter.x * vp.scale + vp.offsetX,
+                  py: gunFreezeCenter.y * vp.scale + vp.offsetY,
+                };
+                (char as any)._tkObjectControlCharOffset = null;
+              } else {
+                (char as any)._tkObjectControlScreenAnchor = null;
+                (char as any)._tkObjectControlCharOffset = {
+                  dx: gunFreezeCenter.x - char.position.x,
+                  dy: gunFreezeCenter.y - char.position.y,
+                };
+              }
+            } else {
+              const screenAnchor = (char as any)._tkObjectControlScreenAnchor as { px: number; py: number } | null | undefined;
+              const charOffset = (char as any)._tkObjectControlCharOffset as { dx: number; dy: number } | null | undefined;
+              if (!execCtx.gamepadStates && screenAnchor && input.keyboardViewport) {
+                const vp = input.keyboardViewport;
+                const invScale = 1.0 / Math.max(0.0001, vp.scale);
+                char.telekineticFrozenPos = {
+                  x: (screenAnchor.px - vp.offsetX) * invScale,
+                  y: (screenAnchor.py - vp.offsetY) * invScale,
+                };
+              } else if (charOffset) {
+                char.telekineticFrozenPos = {
+                  x: char.position.x + charOffset.dx,
+                  y: char.position.y + charOffset.dy,
+                };
+              }
+            }
           }
 
           // In Telekinetic Object Control Mode (or while holding a telekinetic gun trigger), continuously orient the floating gun toward aim
@@ -2624,6 +2699,10 @@ export class ModularBlockEvaluator {
         targetAimPos.y = restorePos.y;
       }
       char.isTelekineticObjectControl = false;
+      if (!((char as any).isHoldingTkGunFire)) {
+        (char as any)._tkObjectControlScreenAnchor = null;
+        (char as any)._tkObjectControlCharOffset = null;
+      }
       if (!isTkElevationControlNow && !(char as any).isHoldingTkGunFire) {
         char.telekineticFrozenPos = null;
       }
@@ -2673,6 +2752,8 @@ export class ModularBlockEvaluator {
       !(char as any).isHoldingTkGunFire
     ) {
       char.telekineticFrozenPos = null;
+      (char as any)._tkObjectControlScreenAnchor = null;
+      (char as any)._tkObjectControlCharOffset = null;
     }
 
     const finalAimPos = getEffectiveAimPos();
