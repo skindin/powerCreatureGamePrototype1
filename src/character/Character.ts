@@ -748,6 +748,27 @@ export class Character extends GameObject {
     movementInput?: Vector2D,
     hasAuthoredFacingAngle = false
   ): void {
+    if (this.telekineticTarget) {
+      const tkDx = this.telekineticTarget.position.x - this.position.x;
+      const tkDy = this.telekineticTarget.position.y - this.position.y;
+      if (Math.hypot(tkDx, tkDy) > 0.05) {
+        this.facingAngle = Math.atan2(tkDy, tkDx);
+        return;
+      }
+    }
+
+    if (this.hasFlight && !this.isLaserAiming && !this.isLaserFiring) {
+      if (movementInput && Math.hypot(movementInput.x, movementInput.y) > 0.05) {
+        this.lastMovementInputAngle = Math.atan2(movementInput.y, movementInput.x);
+        this.facingAngle = this.lastMovementInputAngle;
+        return;
+      }
+      if (!this.isRestingOnSurface && Math.hypot(this.velocity.x, this.velocity.y) > 0.15) {
+        this.facingAngle = Math.atan2(this.velocity.y, this.velocity.x);
+        return;
+      }
+    }
+
     if (hasAuthoredFacingAngle || this.isSteeringCursor) return;
     if ((this.isLaserAiming || this.isLaserFiring) && this.laserAimTarget) {
       const dx = this.laserAimTarget.x - this.position.x;

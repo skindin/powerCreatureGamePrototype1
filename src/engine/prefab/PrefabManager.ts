@@ -414,11 +414,13 @@ export class PrefabManager {
       flyerArchetype.walkingModule.maxWalkSpeedProp.set(4.5, flyerArchetype.properties);
     }
     if (flyerArchetype.energyPool) {
-      flyerArchetype.energyPool.maxEnergyProp.set(15000, flyerArchetype.properties);
-      flyerArchetype.energyPool.currentEnergyProp.set(15000, flyerArchetype.properties);
-      flyerArchetype.energyPool.maxStaminaProp.set(8000, flyerArchetype.properties);
-      flyerArchetype.energyPool.staminaRegenRateProp.set(900, flyerArchetype.properties);
-      flyerArchetype.energyPool.currentStaminaProp.set(8000, flyerArchetype.properties);
+      flyerArchetype.energyPool.baseMaxEnergyProp.set(75000, flyerArchetype.properties);
+      flyerArchetype.energyPool.maxEnergyProp.set(75000, flyerArchetype.properties);
+      flyerArchetype.energyPool.currentEnergyProp.set(75000, flyerArchetype.properties);
+      flyerArchetype.energyPool.baseMaxStaminaProp.set(40000, flyerArchetype.properties);
+      flyerArchetype.energyPool.maxStaminaProp.set(40000, flyerArchetype.properties);
+      flyerArchetype.energyPool.staminaRegenRateProp.set(4500, flyerArchetype.properties);
+      flyerArchetype.energyPool.currentStaminaProp.set(40000, flyerArchetype.properties);
     }
     flyerArchetype.flightModule = new FlightModule({
       enabled: true,
@@ -454,6 +456,8 @@ export class PrefabManager {
           b.descendTrigger = { code: "KeyC", requireCleanPress: false };
           b.flightToggleTrigger = { code: "KeyG", requireCleanPress: true };
           b.requireCleanPress = false;
+        } else if (b.type === "facing") {
+          b.mode = "fromMovement";
         }
       }
     }

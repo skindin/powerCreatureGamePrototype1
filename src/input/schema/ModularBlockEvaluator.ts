@@ -19,6 +19,7 @@ import type { PlayerInputPacket } from "../../engine/physics/StateHistoryBuffer.
 import { ThrowCapability } from "../../character/capabilities/ThrowCapability.js";
 import { VomitCapability } from "../../character/capabilities/VomitCapability.js";
 import { GrappleCapability } from "../../character/capabilities/GrappleCapability.js";
+import { TelekinesisCapability } from "../../character/capabilities/TelekinesisCapability.js";
 import { ControlSchemaArbiter } from "./ControlSchemaArbiter.js";
 import { BulletManager } from "../../engine/bullet/BulletManager.js";
 
@@ -1175,6 +1176,46 @@ export class ModularBlockEvaluator {
             break;
           }
           if (!char.heldObject) {
+            if (char.telekineticTarget && !char.grappledTarget) {
+              const pickupCode = (char as any)._pickupPressCode;
+              if (pickupCode && !tokens.isDown(pickupCode) && !isButtonCodePhysicallyDown(pickupCode)) {
+                (char as any)._pickupPressCode = null;
+                (char as any)._throwRequiresFreshPress = false;
+              }
+              const isStillHoldingInitialPickup = Boolean(
+                (char as any)._pickupPressCode &&
+                (tokens.isDown((char as any)._pickupPressCode) || isButtonCodePhysicallyDown((char as any)._pickupPressCode))
+              );
+              const isTkGun = Boolean(char.telekineticTarget.gunModule && char.telekineticTarget.gunModule.enabled);
+              const isOverrideActive = isTkGun && Boolean(
+                b.throwOverrideTrigger &&
+                b.throwOverrideTrigger.code &&
+                (isSlotActive(b.throwOverrideTrigger, "hold", false, b.id, "check") ||
+                  isSlotActive(b.throwOverrideTrigger, "down", false, b.id, "check") ||
+                  getSlotAnalogValue(b.throwOverrideTrigger) > 0.15)
+              );
+              if (isTkGun && !isOverrideActive) {
+                break;
+              }
+              const flingTrigger = b.chargeTrigger ?? b.quickTrigger ?? b.fireTrigger ?? b.aimTrigger;
+              if ((char as any)._throwRequiresFreshPress && !isStillHoldingInitialPickup && flingTrigger) {
+                const isHeldNow = Boolean(
+                  getSlotAnalogValue(flingTrigger) > 0.05 ||
+                  isSlotActive(flingTrigger, "down", false, b.id, "check") ||
+                  isSlotActive(flingTrigger, "hold", false, b.id, "check")
+                );
+                if (!isHeldNow) {
+                  (char as any)._throwRequiresFreshPress = false;
+                }
+              }
+              if (!isStillHoldingInitialPickup && !(char as any)._throwRequiresFreshPress && flingTrigger) {
+                if (isSlotActive(flingTrigger, "down", true, b.id, "throw.tkFling")) {
+                  isThrow = true;
+                  claimSlot(flingTrigger, b.id, "throw.tkFling", true);
+                }
+              }
+              break;
+            }
             if (char.grappledTarget) {
               const shoveTrigger = b.chargeTrigger ?? b.quickTrigger ?? b.aimTrigger ?? b.fireTrigger;
               const pickupCode = (char as any)._pickupPressCode;
@@ -1644,7 +1685,7 @@ export class ModularBlockEvaluator {
 
           // Pickup
           if (isSlotActive(b.pickup, "down", true, b.id, "pickup.grab")) {
-            if (!execCtx.isHoldingItem && !char.grappledTarget && grabTargetObjectId) {
+            if (!execCtx.isHoldingItem && !char.grappledTarget && !char.telekineticTarget && grabTargetObjectId) {
               isGrabHeld = true;
               if (b.pickup?.code) {
                 (char as any)._pickupPressCode = b.pickup.code;
@@ -1657,7 +1698,7 @@ export class ModularBlockEvaluator {
 
           // Additional Pickup
           if (b.additionalPickup && isSlotActive(b.additionalPickup, "down", true, b.id, "pickup.grab")) {
-            if (!execCtx.isHoldingItem && !char.grappledTarget && grabTargetObjectId) {
+            if (!execCtx.isHoldingItem && !char.grappledTarget && !char.telekineticTarget && grabTargetObjectId) {
               isGrabHeld = true;
               if (b.additionalPickup?.code) {
                 (char as any)._pickupPressCode = b.additionalPickup.code;
@@ -1669,8 +1710,16 @@ export class ModularBlockEvaluator {
           }
 
           // Drop
-          if ((execCtx.isHoldingItem || char.grappledTarget) && isSlotActive(b.drop, "down", true, b.id, "pickup.drop")) {
-            if (char.grappledTarget) {
+          if ((execCtx.isHoldingItem || char.grappledTarget || char.telekineticTarget) && isSlotActive(b.drop, "down", true, b.id, "pickup.drop")) {
+            if (char.telekineticTarget) {
+              TelekinesisCapability.releaseTarget(char);
+              (char as any)._pickupPressCode = null;
+              (char as any)._throwRequiresFreshPress = false;
+              (char as any)._fireRequiresFreshPress = false;
+              (char as any)._isConsumeToggledOn = false;
+              (char as any)._toggledConsumeItemId = null;
+              claimSlot(b.drop, b.id, "pickup.drop", true);
+            } else if (char.grappledTarget) {
               GrappleCapability.releaseGrapple(char);
               (char as any)._pickupPressCode = null;
               (char as any)._throwRequiresFreshPress = false;
@@ -1691,9 +1740,9 @@ export class ModularBlockEvaluator {
 
           // Swap
           if (isSlotActive(b.swap, "down", true, b.id, "pickup.swap")) {
-            if (b.swapRequiresHolding && !execCtx.isHoldingItem) {
+            if (b.swapRequiresHolding && !execCtx.isHoldingItem && !char.telekineticTarget) {
               // Denied: user configured swap to require holding an item
-            } else if (execCtx.isHoldingItem) {
+            } else if (execCtx.isHoldingItem || char.telekineticTarget) {
               // Swap key must NOT drop or trigger unless another object is near enough to swap it with!
               if (grabTargetObjectId) {
                 isSwap = true;
@@ -1720,10 +1769,8 @@ export class ModularBlockEvaluator {
             }
           }
 
-          // Unify held (lifting/grabbing) and grappled (dragging) targets for consume toggle state:
-          // Transitioning between dragging and grabbing the same item keeps the eating toggle active;
-          // only reset if the item is completely released or replaced by a different item.
-          const activeConsumableTarget = char.heldObject || char.grappledTarget;
+          // Unify held (lifting/grabbing), grappled (dragging), and telekinetic targets for consume toggle state
+          const activeConsumableTarget = char.heldObject || char.grappledTarget || char.telekineticTarget;
           const currentHeldItemId = activeConsumableTarget?.id ?? null;
           if ((char as any)._isConsumeToggledOn) {
             if (
@@ -1743,7 +1790,7 @@ export class ModularBlockEvaluator {
           // Consume / Eat / Primary Item Ability (Default: "toggle" mode; can be configured to "hold")
           const isToggleMode = b.consumeMode !== "hold" && (b.consume as any)?.mode !== "hold";
           const canConsumeHeld = Boolean(
-            (execCtx.isHoldingItem || Boolean(char.grappledTarget)) &&
+            (execCtx.isHoldingItem || Boolean(char.grappledTarget) || Boolean(char.telekineticTarget)) &&
             (execCtx.heldItemIsEdible ||
               execCtx.heldItemHasPrimaryAbility ||
               (activeConsumableTarget && char.hasPrimaryItemAbility?.()))
@@ -1793,8 +1840,11 @@ export class ModularBlockEvaluator {
             }
           }
 
-          // Fire Weapon / Shoot Gun
-          const isHoldingGunItem = Boolean(char.heldObject?.gunModule && char.heldObject.gunModule.enabled);
+          // Fire Weapon / Shoot Gun (supports both hand-held guns and telekinetically held guns!)
+          const activeGunObj =
+            (char.heldObject?.gunModule && char.heldObject.gunModule.enabled ? char.heldObject : null) ||
+            (char.telekineticTarget?.gunModule && char.telekineticTarget.gunModule.enabled ? char.telekineticTarget : null);
+          const isHoldingGunItem = Boolean(activeGunObj);
           const throwBlock = blocks.find((blk) => blk.enabled && blk.type === "throw") as ThrowControlBlock | undefined;
           const isThrowOverrideActive = isHoldingGunItem && Boolean(
             throwBlock?.throwOverrideTrigger &&
@@ -1833,7 +1883,7 @@ export class ModularBlockEvaluator {
             }
           }
 
-          const isGunOverheated = Boolean(char.heldObject?.gunModule?.isOverheated);
+          const isGunOverheated = Boolean(activeGunObj?.gunModule?.isOverheated);
           const isFireSlotActive = Boolean(
             !isThrowOverrideActive &&
             !isFireBlockedByCleaning &&
@@ -1845,26 +1895,29 @@ export class ModularBlockEvaluator {
             )
           );
 
-          if (isHoldingGunItem && isFireSlotActive && execCtx.arena) {
+          if (isHoldingGunItem && activeGunObj && isFireSlotActive && execCtx.arena) {
             isGunAimFiring = true;
-            const gun = char.heldObject!.gunModule!;
+            const gun = activeGunObj.gunModule!;
             const effAim = getEffectiveAimPos();
+            const isRemoteGun = activeGunObj !== char.heldObject;
             const aimDx = effAim.x - char.position.x;
             const aimDy = effAim.y - char.position.y;
             const targetAimAngle = Math.hypot(aimDx, aimDy) > 0.05
               ? Math.atan2(aimDy, aimDx)
               : (char.facingAngle ?? 0);
 
-            // Immediately snap character facing direction to target and fire
-            char.facingAngle = targetAimAngle;
-            const heldPos = char.calculateHeldObjectPosition(execCtx.arena);
-            char.heldObject!.position.x = heldPos.x;
-            char.heldObject!.position.y = heldPos.y;
-            char.heldObject!.position.z = heldPos.z;
+            if (!isRemoteGun) {
+              // Immediately snap character facing direction to target and sync hand gun position
+              char.facingAngle = targetAimAngle;
+              const heldPos = char.calculateHeldObjectPosition(execCtx.arena);
+              activeGunObj.position.x = heldPos.x;
+              activeGunObj.position.y = heldPos.y;
+              activeGunObj.position.z = heldPos.z;
+            }
 
             isUsingItem = true;
             (char as any).isFiringWeapon = true;
-            BulletManager.getInstance().fireBullet(char, gun, effAim, execCtx.arena);
+            BulletManager.getInstance().fireBullet(char, gun, effAim, execCtx.arena, activeGunObj);
             claimSlot(b.fireWeapon, b.id, "gun.fire", false);
           } else {
             (char as any).isFiringWeapon = false;
@@ -1874,8 +1927,26 @@ export class ModularBlockEvaluator {
 
         case "facing": {
           const b = block as FacingControlBlock;
-          // When actively aiming and shooting a gun, preserve the gun aim facing angle
+          // If floating an object with telekinesis, face the floating object directly
+          if (char.telekineticTarget) {
+            const tkDx = char.telekineticTarget.position.x - char.position.x;
+            const tkDy = char.telekineticTarget.position.y - char.position.y;
+            if (Math.hypot(tkDx, tkDy) > 0.05) {
+              char.facingAngle = Math.atan2(tkDy, tkDx);
+              break;
+            }
+          }
+          // When actively aiming and shooting a hand-held gun, preserve the gun aim facing angle
           if (isGunAimFiring) {
+            break;
+          }
+          // Flying characters face the direction they are flying (input first, then air velocity)
+          if (char.hasFlight) {
+            if (Math.hypot(moveX, moveY) > 0.05) {
+              char.facingAngle = Math.atan2(moveY, moveX);
+            } else if (!char.isRestingOnSurface && Math.hypot(char.velocity.x, char.velocity.y) > 0.15) {
+              char.facingAngle = Math.atan2(char.velocity.y, char.velocity.x);
+            }
             break;
           }
           // Right stick MUST NOT control direction anywhere
@@ -1994,12 +2065,18 @@ export class ModularBlockEvaluator {
     // In Cursor Mode (or Mouse/Keyboard): character faces towards cursor.
     // In Raw Direction Mode on Gamepad: character strictly maintains stick-directed facing angle.
     if (isLaserAiming || isLaserFiring || isVomitAiming || isMeleeRequested || isAimingTrajectory || isGunAimFiring || char.isChargingShove) {
-      if (isGunAimFiring) {
+      if (isGunAimFiring && !char.telekineticTarget) {
         const effAim = getEffectiveAimPos();
         const aimDx = effAim.x - char.position.x;
         const aimDy = effAim.y - char.position.y;
         if (Math.hypot(aimDx, aimDy) > 0.05) {
           char.facingAngle = Math.atan2(aimDy, aimDx);
+        }
+      } else if (char.telekineticTarget) {
+        const tkDx = char.telekineticTarget.position.x - char.position.x;
+        const tkDy = char.telekineticTarget.position.y - char.position.y;
+        if (Math.hypot(tkDx, tkDy) > 0.05) {
+          char.facingAngle = Math.atan2(tkDy, tkDx);
         }
       } else if (isSteerCursorActive || char.isSteeringCursor) {
         const aimDx = targetAimPos.x - char.position.x;
@@ -2056,7 +2133,7 @@ export class ModularBlockEvaluator {
       meleeAimDirY = meleeDy / meleeDist;
     }
 
-    if (isDrop || isThrow || isSwap || (!char.heldObject && !char.grappledTarget)) {
+    if (isDrop || isThrow || isSwap || (!char.heldObject && !char.grappledTarget && !char.telekineticTarget)) {
       (char as any)._isConsumeToggledOn = false;
       (char as any)._toggledConsumeItemId = null;
       isUsingItem = false;
