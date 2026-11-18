@@ -905,7 +905,7 @@ export class ModularBlockEvaluator {
             (char as any)._toggledConsumeItemId = null;
             claimSlot(b.releaseTrigger, b.id, "tk.release", true);
           }
-          if (b.flingTrigger?.code && char.telekineticTarget && !char.heldObject && !char.grappledTarget) {
+          if (b.flingTrigger?.code && b.flingTrigger.code !== tkObjCtrlCode && char.telekineticTarget && !char.heldObject && !char.grappledTarget) {
             if (isSlotActive(b.flingTrigger, "down", true, b.id, "tk.fling")) {
               isThrow = true;
               claimSlot(b.flingTrigger, b.id, "tk.fling", true);
@@ -1358,7 +1358,13 @@ export class ModularBlockEvaluator {
             (char as any)._throwRequiresFreshPress = true;
             break;
           }
-          if (!char.heldObject) {
+          const isTkControlSession = Boolean(
+            char.telekineticTarget &&
+            !char.heldObject &&
+            !char.grappledTarget &&
+            (isTkObjectControlNow || wasTkObjectControlActive || char.isTelekineticObjectControl)
+          );
+          if (!char.heldObject && !isTkControlSession) {
             if (char.telekineticTarget && !char.grappledTarget && !char.isTelekineticObjectControl) {
               // Normal floating mode (Alt not held): direct quick fling on flingTrigger if pressed cleanly
               const pickupCode = (char as any)._pickupPressCode;
@@ -1524,13 +1530,13 @@ export class ModularBlockEvaluator {
           char.shoveChargeProgress = 0;
 
           // Origin for throw proximity cancel checks (character hand vs floating telekinetic object)
-          const throwOriginObj = (char.telekineticTarget && char.isTelekineticObjectControl)
+          const throwOriginObj = (char.telekineticTarget && isTkControlSession)
             ? char.telekineticTarget
             : char;
 
           // Gun Wielding: If holding (or telekinetically controlling) a gun, check if throw override trigger is active.
           // If not active, show gun aiming reticle and suppress physical throwing.
-          const controlledGunTarget = char.heldObject || (char.isTelekineticObjectControl ? char.telekineticTarget : null);
+          const controlledGunTarget = char.heldObject || (isTkControlSession ? char.telekineticTarget : null);
           const isHoldingGun = Boolean(controlledGunTarget?.gunModule && controlledGunTarget.gunModule.enabled);
           const isThrowOverrideActive = isHoldingGun && Boolean(
             b.throwOverrideTrigger &&
@@ -1557,7 +1563,7 @@ export class ModularBlockEvaluator {
           // If the button pressed to pick up or swap this item is STILL held down or releasing,
           // throw charging/aiming is strictly locked out until that button is fully released!
           const pickupCode = (char as any)._pickupPressCode;
-          if (pickupCode) {
+          if (!isTkControlSession && pickupCode) {
             const isDown = tokens.isDown(pickupCode);
             let analogVal = 0;
             if (pickupCode.startsWith("Gamepad")) {
@@ -1587,7 +1593,7 @@ export class ModularBlockEvaluator {
             }
           }
 
-          if ((char as any)._throwRequiresFreshPress) {
+          if (!isTkControlSession && (char as any)._throwRequiresFreshPress) {
             const slotsToCheck = [b.chargeTrigger, b.aimTrigger, b.fireTrigger, b.quickTrigger].filter(Boolean);
             const anyHeld = slotsToCheck.some((slot) => {
               const triggerVal = getSlotAnalogValue(slot);
@@ -1668,8 +1674,7 @@ export class ModularBlockEvaluator {
                 isTkObjectControlNow &&
                 char.telekineticTarget &&
                 !char.heldObject &&
-                !char.grappledTarget &&
-                (!b.chargeTrigger?.code || b.chargeTrigger.code === tkObjCtrlCode)
+                !char.grappledTarget
               );
               if (isChargingTkControl || isSlotActive(b.chargeTrigger, "hold", false, b.id, "throw.chargeBow")) {
                 isAimingTrajectory = true;
@@ -1686,14 +1691,15 @@ export class ModularBlockEvaluator {
                 !isTkObjectControlNow &&
                 char.telekineticTarget &&
                 !char.heldObject &&
-                !char.grappledTarget &&
-                (!b.chargeTrigger?.code || b.chargeTrigger.code === tkObjCtrlCode)
+                !char.grappledTarget
               );
               if ((releasedTkThrow || isSlotAnyJustReleased(b.chargeTrigger)) && char.isChargingThrow) {
                 const aimDx = effAim.x - throwOriginObj.position.x;
                 const aimDy = effAim.y - throwOriginObj.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
-                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (throwOriginObj.colliderRadius ?? 0.35) + 0.65);
+                const cancelDistance = isTkControlSession
+                  ? Math.max(0.55, (throwOriginObj.colliderRadius ?? 0.25) + 0.3)
+                  : (b.cancelRadius ?? Math.max(1.0, (throwOriginObj.colliderRadius ?? 0.35) + 0.65));
 
                 if (b.enableProximityCancel && distToAim < cancelDistance) {
                   isThrow = false;
@@ -1720,8 +1726,7 @@ export class ModularBlockEvaluator {
                 isTkObjectControlNow &&
                 char.telekineticTarget &&
                 !char.heldObject &&
-                !char.grappledTarget &&
-                (!b.chargeTrigger?.code || b.chargeTrigger.code === tkObjCtrlCode)
+                !char.grappledTarget
               );
               if (isHoldingTkControl || isSlotActive(b.chargeTrigger, "hold", false, b.id, "throw.holdAndRelease")) {
                 isAimingTrajectory = true;
@@ -1738,14 +1743,15 @@ export class ModularBlockEvaluator {
                 !isTkObjectControlNow &&
                 char.telekineticTarget &&
                 !char.heldObject &&
-                !char.grappledTarget &&
-                (!b.chargeTrigger?.code || b.chargeTrigger.code === tkObjCtrlCode)
+                !char.grappledTarget
               );
               if ((releasedTkHoldThrow || isSlotAnyJustReleased(b.chargeTrigger)) && char.isHoldingThrowRelease) {
                 const aimDx = effAim.x - throwOriginObj.position.x;
                 const aimDy = effAim.y - throwOriginObj.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
-                const cancelDistance = b.cancelRadius ?? Math.max(1.0, (throwOriginObj.colliderRadius ?? 0.35) + 0.65);
+                const cancelDistance = isTkControlSession
+                  ? Math.max(0.55, (throwOriginObj.colliderRadius ?? 0.25) + 0.3)
+                  : (b.cancelRadius ?? Math.max(1.0, (throwOriginObj.colliderRadius ?? 0.35) + 0.65));
 
                 if (b.enableProximityCancel && distToAim < cancelDistance) {
                   isThrow = false;
@@ -2383,6 +2389,52 @@ export class ModularBlockEvaluator {
     if (moveLen < 0.05) {
       isSprinting = false;
       char.isSprinting = false;
+    }
+
+    // Direct guarantee for Telekinetic Object Control charge-and-release throw (even if Throw block is absent or in another mode)
+    const isTkNonGunTarget = Boolean(
+      char.telekineticTarget &&
+      !char.heldObject &&
+      !char.grappledTarget &&
+      !(char.telekineticTarget.gunModule && char.telekineticTarget.gunModule.enabled)
+    );
+    if (isTkObjectControlNow && isTkNonGunTarget && !char.isChargingThrow && !char.isHoldingThrowRelease) {
+      isAimingTrajectory = true;
+      char.isAimingTrajectory = true;
+      char.isChargingThrow = true;
+      if (!char.throwChargeStartTime) {
+        char.throwChargeStartTime = now;
+      }
+    } else if (wasTkObjectControlActive && !isTkObjectControlNow && isTkNonGunTarget && !isThrow) {
+      const tkObj = char.telekineticTarget!;
+      const effAim = getEffectiveAimPos();
+      const distToAim = Math.hypot(effAim.x - tkObj.position.x, effAim.y - tkObj.position.y);
+      const cancelDist = Math.max(0.55, (tkObj.colliderRadius ?? 0.25) + 0.3);
+      if (distToAim >= cancelDist && !char.isThrowCancelZone) {
+        isThrow = true;
+      }
+    }
+
+    if (
+      isThrow &&
+      char.telekineticTarget &&
+      !char.heldObject &&
+      !char.grappledTarget &&
+      !char.activeTrajectory?.launchVel &&
+      execCtx.arena
+    ) {
+      const prevCtrl = char.isTelekineticObjectControl;
+      char.isTelekineticObjectControl = true;
+      ThrowCapability.updateTrajectoryPreview(
+        char,
+        true,
+        getEffectiveAimPos(),
+        true,
+        false,
+        execCtx.arena,
+        execCtx.arena.entities
+      );
+      char.isTelekineticObjectControl = prevCtrl;
     }
 
     const isAiming = !isEditMode && (isLaserAiming || isVomitAiming || isAimingTrajectory || isGunAimFiring || Boolean(char.isChargingShove));

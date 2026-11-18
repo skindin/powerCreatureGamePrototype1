@@ -107,11 +107,7 @@ export class ThrowCapability {
       );
 
       if (!isLaserModeActive && (!isTkGun || isTkThrowOverride) && canAimThrow && isAimingInput && aimTargetPos) {
-        const throwBlock = (char.controlSchema?.gamepad?.blocks || char.controlSchema?.keyboardMouse?.blocks)?.find(
-          (b) => b.type === "throw"
-        ) as ThrowControlBlock | undefined;
-
-        const cancelRadius = throwBlock?.cancelRadius ?? Math.max(0.8, (tkObj.colliderRadius ?? 0.26) + 0.55);
+        const cancelRadius = Math.max(0.55, (tkObj.colliderRadius ?? 0.25) + 0.3);
         const aimDx = aimTargetPos.x - tkObj.position.x;
         const aimDy = aimTargetPos.y - tkObj.position.y;
         const distToAim = Math.hypot(aimDx, aimDy);

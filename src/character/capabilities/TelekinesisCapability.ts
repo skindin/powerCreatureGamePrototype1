@@ -200,10 +200,7 @@ export class TelekinesisCapability {
 
     // Max burst energy allowed scales comparably with ThrowModule burst capacity
     const maxBurstJoules = Math.max(400, capWatts * 0.75);
-    let requestedJoules = demandedJoules;
-    if (requestedJoules > maxBurstJoules) {
-      requestedJoules = mod.allowPartialPower ? maxBurstJoules : 0;
-    }
+    const requestedJoules = Math.min(demandedJoules, maxBurstJoules);
 
     let speedScale = 1.0;
     if (mod.consumesEnergy && char.energyPool && char.energyPool.enabled) {
@@ -220,10 +217,10 @@ export class TelekinesisCapability {
       const res = char.energyPool.requestInstantBurst({
         abilityId: "telekinesis",
         demandedJoules: requestedJoules,
-        allowPartialPower: mod.allowPartialPower,
+        allowPartialPower: true,
         registry: reg,
       });
-      if (!res.granted || res.grantedJoules <= 0.001 || (!mod.allowPartialPower && res.fraction < 1.0)) {
+      if (!res.granted || res.grantedJoules <= 0.001) {
         return null;
       }
       speedScale = Math.sqrt(Math.max(0, res.grantedJoules / Math.max(1, demandedJoules)));
