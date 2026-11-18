@@ -1,6 +1,6 @@
 {
-  "version": 391,
-  "lastSaved": "2026-11-05T22:25:53.233Z",
+  "version": 401,
+  "lastSaved": "2026-11-18T10:15:19.678Z",
   "arena": {
     "width": 30,
     "height": 30,
@@ -7620,7 +7620,8 @@
           "maxInitialSpeed": 9.67,
           "jumpPowerCapacity": 1200,
           "jumpConsumesEnergy": true,
-          "jumpAllowPartialPower": false
+          "jumpAllowPartialPower": false,
+          "jumpRequireNonPositiveVelocity": true
         },
         "hasThrow": true,
         "throwModule": {
@@ -7765,7 +7766,9 @@
         "hasRollMovement": false,
         "hasLocomotionStance": false,
         "hasEnergyGrowth": false,
-        "hasVomit": false
+        "hasVomit": false,
+        "hasFlight": false,
+        "hasTelekinesis": false
       },
       "controlSchema": {
         "id": "default",
@@ -11376,7 +11379,8 @@
           "maxInitialSpeed": 9.67,
           "jumpPowerCapacity": 1200,
           "jumpConsumesEnergy": true,
-          "jumpAllowPartialPower": false
+          "jumpAllowPartialPower": false,
+          "jumpRequireNonPositiveVelocity": true
         },
         "hasThrow": true,
         "throwModule": {
@@ -11518,6 +11522,7 @@
           "brakeDeceleration": 55,
           "freeRollResistance": 0.08,
           "brakeRollResistance": 5,
+          "antiDriftResistance": 5,
           "rollPowerCapacity": 800,
           "sprintPowerCapacity": 1800,
           "brakePowerCapacity": 400,
@@ -11541,7 +11546,9 @@
           "canWalkWhileRolling": false
         },
         "hasEnergyGrowth": false,
-        "hasVomit": false
+        "hasVomit": false,
+        "hasFlight": false,
+        "hasTelekinesis": false
       },
       "controlSchema": {
         "id": "speed-ball",
@@ -13430,7 +13437,8 @@
           "maxInitialSpeed": 9.67,
           "jumpPowerCapacity": 1200,
           "jumpConsumesEnergy": true,
-          "jumpAllowPartialPower": true
+          "jumpAllowPartialPower": true,
+          "jumpRequireNonPositiveVelocity": true
         },
         "hasThrow": true,
         "throwModule": {
@@ -13566,7 +13574,9 @@
         "hasRollMovement": false,
         "hasLocomotionStance": false,
         "hasEnergyGrowth": false,
-        "hasVomit": false
+        "hasVomit": false,
+        "hasFlight": false,
+        "hasTelekinesis": false
       },
       "controlSchema": {
         "id": "hunter-mouse-drive",
@@ -15255,7 +15265,8 @@
           "maxInitialSpeed": 9.67,
           "jumpPowerCapacity": 1200,
           "jumpConsumesEnergy": true,
-          "jumpAllowPartialPower": true
+          "jumpAllowPartialPower": true,
+          "jumpRequireNonPositiveVelocity": true
         },
         "hasThrow": true,
         "throwModule": {
@@ -15391,7 +15402,9 @@
         "hasRollMovement": false,
         "hasLocomotionStance": false,
         "hasEnergyGrowth": false,
-        "hasVomit": false
+        "hasVomit": false,
+        "hasFlight": false,
+        "hasTelekinesis": false
       },
       "controlSchema": {
         "id": "gamepad-hybrid-cursor",
@@ -18865,7 +18878,8 @@
           "maxInitialSpeed": 9.67,
           "jumpPowerCapacity": 1200,
           "jumpConsumesEnergy": true,
-          "jumpAllowPartialPower": false
+          "jumpAllowPartialPower": false,
+          "jumpRequireNonPositiveVelocity": true
         },
         "hasThrow": true,
         "throwModule": {
@@ -19166,7 +19180,9 @@
           "globColor": "#84cc16",
           "consumableTag": "food",
           "consumeRateWatts": 900
-        }
+        },
+        "hasFlight": false,
+        "hasTelekinesis": false
       },
       "controlSchema": {
         "id": "grower-controls",
@@ -21590,6 +21606,2252 @@
               "claimOnFire": true
             },
             "target": "throw.chargeBow"
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefab_flyer_character",
+      "name": "Sky Kestrel",
+      "icon": "🦅",
+      "archetype": {
+        "id": "archetype_flyer_character",
+        "name": "Sky Kestrel",
+        "prefabId": "prefab_flyer_character",
+        "color": "#a855f7",
+        "mass": 0.75,
+        "colliderRadius": 0.38,
+        "controlSchema": {
+          "id": "sky-kestrel",
+          "name": "Sky Kestrel (Flight & Telekinesis)",
+          "description": "Telekinetic flight with Space/Shift altitude control, G glide toggle, and LMB-hold Object Control Mode.",
+          "activeDevice": "keyboardMouse",
+          "stages": [
+            "none",
+            "throw",
+            "melee"
+          ],
+          "stageGroups": [
+            {
+              "name": "default",
+              "stages": [
+                "none",
+                "throw",
+                "melee"
+              ]
+            }
+          ],
+          "keyboardMouse": {
+            "blocks": [
+              {
+                "type": "walkSprint",
+                "id": "block-kestrel-walk",
+                "name": "Air & Ground Movement",
+                "enabled": true,
+                "mode": "wasd",
+                "moveKeys": {
+                  "upKey": "KeyW",
+                  "downKey": "KeyS",
+                  "leftKey": "KeyA",
+                  "rightKey": "KeyD",
+                  "requireCleanPress": false
+                },
+                "forwardTrigger": {
+                  "code": "MouseRight",
+                  "requireCleanPress": false
+                },
+                "reverseKey": "KeyS",
+                "strafeLeftKey": "KeyA",
+                "strafeRightKey": "KeyD",
+                "sprint": {
+                  "code": null,
+                  "mode": "hold",
+                  "requireCleanPress": false
+                },
+                "cursorSteerTrigger": {
+                  "code": "GamepadLB"
+                },
+                "cursorSteerMode": "whenHoldingButton"
+              },
+              {
+                "type": "flight",
+                "id": "block-kestrel-flight",
+                "name": "Flight & Glide",
+                "enabled": true,
+                "ascendTrigger": {
+                  "code": "Space",
+                  "requireCleanPress": false
+                },
+                "descendTrigger": {
+                  "code": "ShiftLeft",
+                  "requireCleanPress": false
+                },
+                "flightToggleTrigger": {
+                  "code": "KeyG",
+                  "requireCleanPress": true
+                },
+                "requireCleanAscendPress": false,
+                "faceFlightDirection": true
+              },
+              {
+                "type": "telekinesis",
+                "id": "block-kestrel-tk",
+                "name": "Telekinesis & Object Control",
+                "enabled": true,
+                "objectControlTrigger": {
+                  "code": "MouseLeft",
+                  "requireCleanPress": false
+                },
+                "grabTrigger": {
+                  "code": null,
+                  "requireCleanPress": true
+                },
+                "releaseTrigger": {
+                  "code": null,
+                  "requireCleanPress": true
+                },
+                "flingTrigger": {
+                  "code": null,
+                  "requireCleanPress": true
+                },
+                "faceHeldObject": true
+              },
+              {
+                "type": "itemInteraction",
+                "id": "block-kestrel-items",
+                "name": "Item Interaction",
+                "enabled": true,
+                "pickup": {
+                  "code": null,
+                  "requireCleanPress": true
+                },
+                "drop": {
+                  "code": "KeyQ",
+                  "requireCleanPress": true
+                },
+                "swap": {
+                  "code": "KeyF",
+                  "requireCleanPress": true
+                },
+                "consume": {
+                  "code": "KeyE",
+                  "requireCleanPress": false,
+                  "mode": "toggle"
+                },
+                "consumeMode": "toggle",
+                "fireWeapon": {
+                  "code": "MouseRight",
+                  "requireCleanPress": false
+                },
+                "swapRequiresHolding": false,
+                "triggerPickupWhenEmptyHanded": true,
+                "additionalPickup": {
+                  "code": "MouseLeft"
+                }
+              },
+              {
+                "type": "throw",
+                "id": "block-kestrel-throw",
+                "name": "Throwing & Ballistics",
+                "enabled": true,
+                "mode": "chargeAndRelease",
+                "chargeTrigger": {
+                  "code": "MouseLeft",
+                  "requireCleanPress": true
+                },
+                "aimTrigger": {
+                  "code": "MouseRight",
+                  "requireCleanPress": false
+                },
+                "fireTrigger": {
+                  "code": "MouseLeft",
+                  "requireCleanPress": true
+                },
+                "quickTrigger": {
+                  "code": "MouseLeft",
+                  "requireCleanPress": true
+                },
+                "cancelTrigger": {
+                  "code": "KeyX",
+                  "requireCleanPress": true
+                },
+                "throwOverrideTrigger": {
+                  "code": "KeyT",
+                  "requireCleanPress": false
+                },
+                "arcModulation": {
+                  "source": "mouseDeltaY",
+                  "autoCursorLock": true,
+                  "sensitivity": 0.005
+                },
+                "enableProximityCancel": true,
+                "cancelRadius": 1.5,
+                "triggerMargin": 0.15
+              },
+              {
+                "type": "facing",
+                "id": "block-kestrel-facing",
+                "name": "Aim / Heading Facing",
+                "enabled": true,
+                "mode": "fromMovement"
+              }
+            ],
+            "aiming": {
+              "mode": "faceMouseCursor"
+            },
+            "locomotion": {
+              "mode": "directVector",
+              "moveForwardKey": "KeyW",
+              "reverseKey": "KeyS",
+              "strafeLeftKey": "KeyA",
+              "strafeRightKey": "KeyD"
+            },
+            "rules": [],
+            "pipeline": [
+              {
+                "id": "pipe-facing",
+                "name": "Aim / Facing Heading",
+                "enabled": true,
+                "source": {
+                  "type": "2d_vector",
+                  "source": "mouseWorldPos"
+                },
+                "processor": {
+                  "type": "facing",
+                  "mode": "fromMousePos"
+                },
+                "target": "character.facing"
+              },
+              {
+                "id": "pipe-loco-move",
+                "name": "WASD Movement Vector",
+                "enabled": true,
+                "source": {
+                  "type": "composite_4key",
+                  "upKey": "KeyW",
+                  "downKey": "KeyS",
+                  "leftKey": "KeyA",
+                  "rightKey": "KeyD"
+                },
+                "processor": {
+                  "type": "2d_vector",
+                  "mode": "direct"
+                },
+                "target": "locomotion.moveVector"
+              },
+              {
+                "id": "pipe-loco-sprint",
+                "name": "Sprint",
+                "enabled": true,
+                "source": {
+                  "type": "button",
+                  "device": "keyboard",
+                  "code": "ShiftLeft"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold"
+                },
+                "target": "locomotion.sprint"
+              },
+              {
+                "id": "pipe-loco-jump",
+                "name": "Jump / Hop",
+                "enabled": true,
+                "source": {
+                  "type": "button",
+                  "device": "keyboard",
+                  "code": "Space"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold",
+                  "requireCleanPress": false,
+                  "claimOnFire": false
+                },
+                "target": "locomotion.jump"
+              },
+              {
+                "id": "pipe-throw-aim",
+                "name": "Throw Aim Arc",
+                "enabled": true,
+                "condition": "holdingItem",
+                "source": {
+                  "type": "button",
+                  "device": "mouse",
+                  "code": "MouseRight"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold"
+                },
+                "target": "throw.aim"
+              },
+              {
+                "id": "pipe-throw-arc",
+                "name": "Throw Arc Height Modulation",
+                "enabled": true,
+                "condition": "holdingItem",
+                "source": {
+                  "type": "1d_scalar",
+                  "source": "mouseDeltaY"
+                },
+                "processor": {
+                  "type": "1d_scalar",
+                  "mode": "accumulator",
+                  "sensitivity": 0.005,
+                  "clampMin": 0,
+                  "clampMax": 1,
+                  "initialValue": 0.5,
+                  "gateButton": {
+                    "device": "mouse",
+                    "code": "MouseLeft",
+                    "mode": "hold"
+                  },
+                  "autoCursorLock": true
+                },
+                "target": "throw.arcHeight"
+              },
+              {
+                "id": "pipe-throw-fire",
+                "name": "Throw Fire Release",
+                "enabled": true,
+                "condition": "holdingItem",
+                "source": {
+                  "type": "button",
+                  "device": "mouse",
+                  "code": "MouseLeft"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "up",
+                  "requireCleanPress": false,
+                  "claimOnFire": true
+                },
+                "target": "throw.fire"
+              },
+              {
+                "id": "pipe-pickup-grab",
+                "name": "Grab Ground Item",
+                "enabled": true,
+                "condition": "emptyHanded",
+                "source": {
+                  "type": "button",
+                  "device": "mouse",
+                  "code": "MouseLeft"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "down",
+                  "requireCleanPress": true,
+                  "claimOnFire": true
+                },
+                "target": "pickup.grab"
+              },
+              {
+                "id": "pipe-pickup-drop",
+                "name": "Drop Held Item",
+                "enabled": true,
+                "condition": "holdingItem",
+                "source": {
+                  "type": "button",
+                  "device": "keyboard",
+                  "code": "KeyQ"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "down",
+                  "requireCleanPress": true,
+                  "claimOnFire": true
+                },
+                "target": "pickup.drop"
+              },
+              {
+                "id": "pipe-consume-bite",
+                "name": "Bite / Eat Held Item",
+                "enabled": true,
+                "condition": "holdingConsumable",
+                "source": {
+                  "type": "button",
+                  "device": "keyboard",
+                  "code": "KeyE"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold",
+                  "requireCleanPress": true,
+                  "claimOnFire": true
+                },
+                "target": "consume.bite"
+              },
+              {
+                "id": "pipe-melee-punch",
+                "name": "Melee Punch",
+                "enabled": true,
+                "source": {
+                  "type": "button",
+                  "device": "keyboard",
+                  "code": "KeyF"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "down",
+                  "requireCleanPress": true,
+                  "claimOnFire": true
+                },
+                "target": "melee.punch"
+              },
+              {
+                "id": "pipe-laser-aim",
+                "name": "Laser Aim Chord",
+                "enabled": true,
+                "source": {
+                  "type": "button",
+                  "device": "mouse",
+                  "code": "MouseRight",
+                  "additionalCodes": [
+                    "AltLeft"
+                  ]
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold"
+                },
+                "target": "laser.aim"
+              },
+              {
+                "id": "pipe-laser-fire",
+                "name": "Laser Fire",
+                "enabled": true,
+                "source": {
+                  "type": "button",
+                  "device": "mouse",
+                  "code": "MouseLeft"
+                },
+                "processor": {
+                  "type": "button",
+                  "triggerMode": "hold"
+                },
+                "target": "laser.fire"
+              },
+              {
+                "id": "pipe-laser-power",
+                "name": "Laser Power Modulation",
+                "enabled": true,
+                "source": {
+                  "type": "1d_scalar",
+                  "source": "mouseWheel"
+                },
+                "processor": {
+                  "type": "1d_scalar",
+                  "mode": "accumulator",
+                  "sensitivity": 0.05,
+                  "clampMin": 0,
+                  "clampMax": 1,
+                  "initialValue": 0.5,
+                  "autoCursorLock": false
+                },
+                "target": "laser.power"
+              }
+            ],
+            "channels": {
+              "locomotion": {
+                "mode": "directVector",
+                "upKeys": [
+                  "KeyW",
+                  "ArrowUp"
+                ],
+                "downKeys": [
+                  "KeyS",
+                  "ArrowDown"
+                ],
+                "leftKeys": [
+                  "KeyA",
+                  "ArrowLeft"
+                ],
+                "rightKeys": [
+                  "KeyD",
+                  "ArrowRight"
+                ],
+                "sprintKey": "ShiftLeft",
+                "sprintMode": "hold",
+                "jumpKey": "Space"
+              },
+              "aiming": {
+                "mode": "faceMouseCursor",
+                "rawMouseDragEnabled": true
+              },
+              "interaction": {
+                "enabled": true,
+                "trigger": {
+                  "device": "mouse",
+                  "code": "MouseLeft",
+                  "mode": "press"
+                },
+                "claimPolicy": "requireCleanPress",
+                "allowSwapWhenHolding": true
+              },
+              "throw": {
+                "enabled": true,
+                "aimTrigger": {
+                  "device": "mouse",
+                  "code": "MouseRight",
+                  "mode": "hold"
+                },
+                "fireTrigger": {
+                  "device": "mouse",
+                  "code": "MouseLeft",
+                  "mode": "press"
+                },
+                "fireOnReleaseAim": false,
+                "arcModulationSource": "mouseDragY",
+                "arcDragHoldThresholdMs": 200,
+                "claimPolicy": "requireCleanPress"
+              },
+              "consume": {
+                "enabled": true,
+                "trigger": {
+                  "device": "keyboard",
+                  "code": "KeyE",
+                  "mode": "hold"
+                },
+                "claimPolicy": "requireCleanPress"
+              },
+              "melee": {
+                "enabled": true,
+                "trigger": {
+                  "device": "keyboard",
+                  "code": "KeyF",
+                  "mode": "press"
+                },
+                "claimPolicy": "requireCleanPress"
+              },
+              "laser": {
+                "enabled": true,
+                "aimTrigger": {
+                  "device": "mouse",
+                  "code": "MouseRight",
+                  "chordModifiers": [
+                    "AltLeft"
+                  ],
+                  "mode": "hold"
+                },
+                "fireTrigger": {
+                  "device": "mouse",
+                  "code": "MouseLeft",
+                  "mode": "hold"
+                },
+                "powerModulationSource": "mouseWheel"
+              }
+            },
+            "tags": [
+              {
+                "id": "tag-kbm-action",
+                "name": "Action",
+                "trigger": {
+                  "device": "mouse",
+                  "code": "MouseRight",
+                  "mode": "hold"
+                }
+              }
+            ]
+          },
+          "gamepad": {
+            "blocks": [
+              {
+                "type": "walkSprint",
+                "id": "block-kestrel-walk-gp",
+                "name": "Air & Ground Movement",
+                "enabled": true,
+                "mode": "stickDirectionDriveButton",
+                "moveKeys": {
+                  "upKey": "GamepadDpadUp",
+                  "downKey": "GamepadDpadDown",
+                  "leftKey": "GamepadDpadLeft",
+                  "rightKey": "GamepadDpadRight",
+                  "requireCleanPress": false
+                },
+                "sprint": {
+                  "code": "GamepadLS",
+                  "mode": "hold",
+                  "requireCleanPress": false
+                },
+                "forwardTrigger": {
+                  "code": "GamepadRT"
+                },
+                "cursorSteerTrigger": {
+                  "code": "GamepadLB"
+                },
+                "cursorSteerMode": "toggleButton",
+                "rawDirectionWhileWalking": true
+              },
+              {
+                "type": "flight",
+                "id": "block-kestrel-flight-gp",
+                "name": "Flight & Glide",
+                "enabled": true,
+                "ascendTrigger": {
+                  "code": "GamepadA",
+                  "requireCleanPress": false
+                },
+                "descendTrigger": {
+                  "code": "GamepadB",
+                  "requireCleanPress": false
+                },
+                "flightToggleTrigger": {
+                  "code": "GamepadDpadDown",
+                  "requireCleanPress": true
+                },
+                "requireCleanAscendPress": false,
+                "faceFlightDirection": true
+              },
+              {
+                "type": "telekinesis",
+                "id": "block-kestrel-tk-gp",
+                "name": "Telekinesis & Object Control",
+                "enabled": true,
+                "objectControlTrigger": {
+                  "code": "GamepadRT",
+                  "requireCleanPress": false
+                },
+                "grabTrigger": {
+                  "code": null,
+                  "requireCleanPress": true
+                },
+                "releaseTrigger": {
+                  "code": null,
+                  "requireCleanPress": true
+                },
+                "flingTrigger": {
+                  "code": null,
+                  "requireCleanPress": true
+                },
+                "faceHeldObject": true
+              },
+              {
+                "type": "itemInteraction",
+                "id": "block-kestrel-items-gp",
+                "name": "Item Interaction",
+                "enabled": true,
+                "pickup": {
+                  "code": "GamepadX",
+                  "requireCleanPress": true
+                },
+                "drop": {
+                  "code": "GamepadY",
+                  "requireCleanPress": true
+                },
+                "swap": {
+                  "code": "GamepadB",
+                  "requireCleanPress": true
+                },
+                "consume": {
+                  "code": "GamepadRB",
+                  "requireCleanPress": false,
+                  "mode": "toggle"
+                },
+                "consumeMode": "toggle",
+                "fireWeapon": {
+                  "code": "GamepadRT",
+                  "requireCleanPress": false
+                },
+                "swapRequiresHolding": false,
+                "triggerPickupWhenEmptyHanded": true
+              },
+              {
+                "type": "throw",
+                "id": "block-kestrel-throw-gp",
+                "name": "Throwing & Ballistics",
+                "enabled": true,
+                "mode": "chargeAndRelease",
+                "chargeTrigger": {
+                  "code": "GamepadRT",
+                  "requireCleanPress": true
+                },
+                "aimTrigger": {
+                  "code": "GamepadLT",
+                  "requireCleanPress": false
+                },
+                "fireTrigger": {
+                  "code": "GamepadRT",
+                  "requireCleanPress": true
+                },
+                "quickTrigger": {
+                  "code": "GamepadRT",
+                  "requireCleanPress": true
+                },
+                "cancelTrigger": {
+                  "code": null,
+                  "requireCleanPress": true
+                },
+                "throwOverrideTrigger": {
+                  "code": null,
+                  "requireCleanPress": false
+                },
+                "triggerMargin": 0.15,
+                "arcModulation": {
+                  "source": "none",
+                  "autoCursorLock": false,
+                  "sensitivity": 0.005
+                },
+                "enableProximityCancel": true,
+                "cancelRadius": 1.5
+              },
+              {
+                "type": "melee",
+                "id": "block-kestrel-melee-gp",
+                "name": "Melee Combat",
+                "enabled": true,
+                "punch": {
+                  "code": "GamepadB",
+                  "requireCleanPress": true
+                }
+              },
+              {
+                "type": "facing",
+                "id": "block-kestrel-facing-gp",
+                "name": "Aim / Heading Facing",
+                "enabled": true,
+                "mode": "fromMovement"
+              }
+            ],
+            "leftStick": {
+              "primaryMode": "directLocomotion",
+              "cursorSteerSpeed": 14,
+              "cursorClampRadius": 7.5
+            },
+            "rightStick": {
+              "mode": "twinStickAim"
+            },
+            "rules": [],
+            "tags": [
+              {
+                "id": "tag-pad-action",
+                "name": "Action",
+                "trigger": {
+                  "device": "gamepad",
+                  "code": "GamepadRT",
+                  "mode": "hold"
+                }
+              }
+            ]
+          },
+          "touch": {
+            "widgets": [
+              {
+                "id": "touch-move-stick",
+                "type": "joystick",
+                "label": "Move",
+                "anchor": "bottomLeft",
+                "offset": {
+                  "x": 90,
+                  "y": 90
+                },
+                "radius": 65,
+                "centering": "floating",
+                "snapBackOnRelease": true,
+                "rings": [
+                  {
+                    "id": "deadzone",
+                    "minDeflection": 0,
+                    "maxDeflection": 0.15,
+                    "signalId": "idle"
+                  },
+                  {
+                    "id": "walk",
+                    "minDeflection": 0.15,
+                    "maxDeflection": 0.65,
+                    "signalId": "walk"
+                  },
+                  {
+                    "id": "sprint",
+                    "minDeflection": 0.65,
+                    "maxDeflection": 1,
+                    "signalId": "sprint"
+                  }
+                ]
+              },
+              {
+                "id": "touch-aim-stick",
+                "type": "joystick",
+                "label": "Aim",
+                "anchor": "bottomRight",
+                "offset": {
+                  "x": -90,
+                  "y": 90
+                },
+                "radius": 65,
+                "centering": "floating",
+                "snapBackOnRelease": true,
+                "rings": []
+              },
+              {
+                "id": "touch-jump-btn",
+                "type": "actionButton",
+                "label": "JUMP",
+                "anchor": "bottomRight",
+                "offset": {
+                  "x": -80,
+                  "y": 190
+                },
+                "radius": 35,
+                "centering": "fixed",
+                "snapBackOnRelease": true,
+                "rings": [],
+                "tapAction": "jump"
+              }
+            ],
+            "rules": [],
+            "tags": []
+          },
+          "pipeline": [
+            {
+              "id": "pipe-facing",
+              "name": "Aim / Facing Heading",
+              "enabled": true,
+              "source": {
+                "type": "2d_vector",
+                "source": "mouseWorldPos"
+              },
+              "processor": {
+                "type": "facing",
+                "mode": "fromMousePos"
+              },
+              "target": "character.facing"
+            },
+            {
+              "id": "pipe-loco-move",
+              "name": "WASD Movement Vector",
+              "enabled": true,
+              "source": {
+                "type": "composite_4key",
+                "upKey": "KeyW",
+                "downKey": "KeyS",
+                "leftKey": "KeyA",
+                "rightKey": "KeyD"
+              },
+              "processor": {
+                "type": "2d_vector",
+                "mode": "direct"
+              },
+              "target": "locomotion.moveVector"
+            },
+            {
+              "id": "pipe-loco-sprint",
+              "name": "Sprint",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "ShiftLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "locomotion.sprint"
+            },
+            {
+              "id": "pipe-loco-jump",
+              "name": "Jump / Hop",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "Space"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold",
+                "requireCleanPress": false,
+                "claimOnFire": false
+              },
+              "target": "locomotion.jump"
+            },
+            {
+              "id": "pipe-throw-aim",
+              "name": "Throw Aim Arc",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseRight"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "throw.aim"
+            },
+            {
+              "id": "pipe-throw-arc",
+              "name": "Throw Arc Height Modulation",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "1d_scalar",
+                "source": "mouseDeltaY"
+              },
+              "processor": {
+                "type": "1d_scalar",
+                "mode": "accumulator",
+                "sensitivity": 0.005,
+                "clampMin": 0,
+                "clampMax": 1,
+                "initialValue": 0.5,
+                "gateButton": {
+                  "device": "mouse",
+                  "code": "MouseLeft",
+                  "mode": "hold"
+                },
+                "autoCursorLock": true
+              },
+              "target": "throw.arcHeight"
+            },
+            {
+              "id": "pipe-throw-fire",
+              "name": "Throw Fire Release",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "up",
+                "requireCleanPress": false,
+                "claimOnFire": true
+              },
+              "target": "throw.fire"
+            },
+            {
+              "id": "pipe-pickup-grab",
+              "name": "Grab Ground Item",
+              "enabled": true,
+              "condition": "emptyHanded",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "pickup.grab"
+            },
+            {
+              "id": "pipe-pickup-drop",
+              "name": "Drop Held Item",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyQ"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "pickup.drop"
+            },
+            {
+              "id": "pipe-consume-bite",
+              "name": "Bite / Eat Held Item",
+              "enabled": true,
+              "condition": "holdingConsumable",
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyE"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "consume.bite"
+            },
+            {
+              "id": "pipe-melee-punch",
+              "name": "Melee Punch",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyF"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "melee.punch"
+            },
+            {
+              "id": "pipe-laser-aim",
+              "name": "Laser Aim Chord",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseRight",
+                "additionalCodes": [
+                  "AltLeft"
+                ]
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "laser.aim"
+            },
+            {
+              "id": "pipe-laser-fire",
+              "name": "Laser Fire",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "laser.fire"
+            },
+            {
+              "id": "pipe-laser-power",
+              "name": "Laser Power Modulation",
+              "enabled": true,
+              "source": {
+                "type": "1d_scalar",
+                "source": "mouseWheel"
+              },
+              "processor": {
+                "type": "1d_scalar",
+                "mode": "accumulator",
+                "sensitivity": 0.05,
+                "clampMin": 0,
+                "clampMax": 1,
+                "initialValue": 0.5,
+                "autoCursorLock": false
+              },
+              "target": "laser.power"
+            }
+          ]
+        },
+        "hasWalking": true,
+        "walkingModule": {
+          "enabled": false,
+          "maxWalkForce": 35,
+          "maxWalkSpeed": 4.5,
+          "sprintSpeed": 8.06,
+          "canSprint": true,
+          "walkInAir": false,
+          "walkConsumesEnergy": true,
+          "walkAllowPartialPower": false,
+          "sprintConsumesEnergy": true,
+          "sprintAllowPartialPower": true,
+          "maxWalkPower": 300,
+          "maxSprintPower": 500,
+          "airFriction": 1
+        },
+        "hasJump": false,
+        "hasThrow": true,
+        "throwModule": {
+          "enabled": true,
+          "throwForce": 100,
+          "throwPowerCapacity": 1000,
+          "maxPower": 1000,
+          "maxThrowSpeed": 100,
+          "maxThrowHeight": 5,
+          "consumesEnergy": true
+        },
+        "hasPickup": false,
+        "hasGrapple": false,
+        "hasClimbing": false,
+        "hasHealth": true,
+        "healthModule": {
+          "enabled": true,
+          "maxHp": 100,
+          "currentHp": 100,
+          "naturalHealRate": 5,
+          "joulesPerHp": 25,
+          "hpPerJoule": 25,
+          "maxPower": 300,
+          "consumesEnergy": true,
+          "allowPartialPower": true
+        },
+        "hasConsume": true,
+        "consumeModule": {
+          "enabled": true,
+          "consumptionSpeedMultiplier": 1,
+          "acceptedTags": [
+            "food"
+          ]
+        },
+        "hasLaser": false,
+        "hasMelee": true,
+        "meleeModule": {
+          "enabled": false,
+          "impactForce": 350,
+          "maxPower": 2000,
+          "punchFrequency": 4,
+          "reach": 1.2,
+          "width": 0.8,
+          "allowPartialPower": true
+        },
+        "hasEnergyPool": true,
+        "energyPool": {
+          "enabled": true,
+          "staminaCapacity": 200000,
+          "staminaRegenRate": 4500,
+          "energyPoolCapacity": 75000,
+          "currentStamina": 100000,
+          "currentEnergy": 75000,
+          "muscleEfficiency": 0.25,
+          "infiniteEnergy": false,
+          "debugAutoRefillOnEmpty": false
+        },
+        "hasWallEdgeAssist": true,
+        "wallEdgeAssistModule": {
+          "enabled": true,
+          "hangDistance": 0.1,
+          "preventWalkOff": false
+        },
+        "hasDamageAuraModule": false,
+        "hasDamageSolverModule": true,
+        "damageSolverModule": {
+          "enabled": true,
+          "impactSusceptibility": 1,
+          "piercingMultiplier": 1,
+          "minShockThreshold": 5,
+          "selfImpactWeight": 0
+        },
+        "hasBounce": true,
+        "bounceMod": 0.15,
+        "verticalBounce": true,
+        "bounceModule": {
+          "enabled": true,
+          "bounceMod": 0.15,
+          "verticalBounce": true
+        },
+        "hasRigidbody": true,
+        "rigidbodyModule": {
+          "enabled": true,
+          "mass": 0.75,
+          "collisionMode": "dynamic",
+          "hasVerticalVelocity": true
+        },
+        "hasCollider": true,
+        "colliderModule": {
+          "enabled": true,
+          "radius": 0.38
+        },
+        "hasFriction": true,
+        "frictionModule": {
+          "enabled": true,
+          "staticFrictionMod": 2,
+          "dynamicFrictionMod": 2
+        },
+        "hasVerticalPosition": true,
+        "verticalPositionModule": {
+          "enabled": true,
+          "z": 0
+        },
+        "hasGravity": true,
+        "gravityModule": {
+          "enabled": true
+        },
+        "hasRollModule": false,
+        "hasRollMovement": false,
+        "hasLocomotionStance": false,
+        "hasEnergyGrowth": false,
+        "hasVomit": false,
+        "hasFlight": true,
+        "flightModule": {
+          "enabled": true,
+          "maxPower": 3000,
+          "maxHorizontalSpeed": 8.5,
+          "maxAscentSpeed": 5.5,
+          "maxSinkSpeed": 5.5,
+          "maxFlightAltitude": 5,
+          "groundAnchorRange": 5,
+          "stability": 0.9,
+          "consumesEnergy": true,
+          "allowPartialPower": true
+        },
+        "hasTelekinesis": true,
+        "telekinesisModule": {
+          "enabled": true,
+          "maxPower": 2400,
+          "telekinesisReach": 6.5,
+          "maxMoveSpeed": 12,
+          "holdHoverHeight": 0.65,
+          "groundAnchorRange": 5,
+          "stability": 0.85,
+          "consumesEnergy": true,
+          "allowPartialPower": true
+        }
+      },
+      "controlSchema": {
+        "id": "sky-kestrel",
+        "name": "Sky Kestrel (Flight & Telekinesis)",
+        "description": "Telekinetic flight with Space/Shift altitude control, G glide toggle, and LMB-hold Object Control Mode.",
+        "activeDevice": "keyboardMouse",
+        "stages": [
+          "none",
+          "throw",
+          "melee"
+        ],
+        "stageGroups": [
+          {
+            "name": "default",
+            "stages": [
+              "none",
+              "throw",
+              "melee"
+            ]
+          }
+        ],
+        "keyboardMouse": {
+          "blocks": [
+            {
+              "type": "walkSprint",
+              "id": "block-kestrel-walk",
+              "name": "Air & Ground Movement",
+              "enabled": true,
+              "mode": "wasd",
+              "moveKeys": {
+                "upKey": "KeyW",
+                "downKey": "KeyS",
+                "leftKey": "KeyA",
+                "rightKey": "KeyD",
+                "requireCleanPress": false
+              },
+              "forwardTrigger": {
+                "code": "MouseRight",
+                "requireCleanPress": false
+              },
+              "reverseKey": "KeyS",
+              "strafeLeftKey": "KeyA",
+              "strafeRightKey": "KeyD",
+              "sprint": {
+                "code": null,
+                "mode": "hold",
+                "requireCleanPress": false
+              },
+              "cursorSteerTrigger": {
+                "code": "GamepadLB"
+              },
+              "cursorSteerMode": "whenHoldingButton"
+            },
+            {
+              "type": "flight",
+              "id": "block-kestrel-flight",
+              "name": "Flight & Glide",
+              "enabled": true,
+              "ascendTrigger": {
+                "code": "Space",
+                "requireCleanPress": false
+              },
+              "descendTrigger": {
+                "code": "ShiftLeft",
+                "requireCleanPress": false
+              },
+              "flightToggleTrigger": {
+                "code": "KeyG",
+                "requireCleanPress": true
+              },
+              "requireCleanAscendPress": false,
+              "faceFlightDirection": true
+            },
+            {
+              "type": "telekinesis",
+              "id": "block-kestrel-tk",
+              "name": "Telekinesis & Object Control",
+              "enabled": true,
+              "objectControlTrigger": {
+                "code": "MouseLeft",
+                "requireCleanPress": false
+              },
+              "grabTrigger": {
+                "code": null,
+                "requireCleanPress": true
+              },
+              "releaseTrigger": {
+                "code": null,
+                "requireCleanPress": true
+              },
+              "flingTrigger": {
+                "code": null,
+                "requireCleanPress": true
+              },
+              "faceHeldObject": true,
+              "elevationControlTrigger": {
+                "code": "MouseRight",
+                "requireCleanPress": false
+              }
+            },
+            {
+              "type": "itemInteraction",
+              "id": "block-kestrel-items",
+              "name": "Item Interaction",
+              "enabled": true,
+              "pickup": {
+                "code": null,
+                "requireCleanPress": true
+              },
+              "drop": {
+                "code": "KeyQ",
+                "requireCleanPress": true
+              },
+              "swap": {
+                "code": "KeyF",
+                "requireCleanPress": true
+              },
+              "consume": {
+                "code": "KeyE",
+                "requireCleanPress": false,
+                "mode": "toggle"
+              },
+              "consumeMode": "toggle",
+              "fireWeapon": {
+                "code": "MouseRight",
+                "requireCleanPress": false
+              },
+              "swapRequiresHolding": false,
+              "triggerPickupWhenEmptyHanded": true,
+              "additionalPickup": {
+                "code": "MouseLeft"
+              },
+              "pickupAndConsume": {
+                "code": "KeyE",
+                "requireCleanPress": true
+              },
+              "pickupAndConsumeWhenEmpty": true
+            },
+            {
+              "type": "throw",
+              "id": "block-kestrel-throw",
+              "name": "Throwing & Ballistics",
+              "enabled": true,
+              "mode": "chargeAndRelease",
+              "chargeTrigger": {
+                "code": "MouseLeft",
+                "requireCleanPress": true
+              },
+              "aimTrigger": {
+                "code": "MouseRight",
+                "requireCleanPress": false
+              },
+              "fireTrigger": {
+                "code": "MouseLeft",
+                "requireCleanPress": true
+              },
+              "quickTrigger": {
+                "code": "MouseLeft",
+                "requireCleanPress": true
+              },
+              "cancelTrigger": {
+                "code": "KeyX",
+                "requireCleanPress": true
+              },
+              "throwOverrideTrigger": {
+                "code": "KeyR",
+                "requireCleanPress": false
+              },
+              "arcModulation": {
+                "source": "mouseDeltaY",
+                "autoCursorLock": true,
+                "sensitivity": 0.005
+              },
+              "enableProximityCancel": true,
+              "cancelRadius": 1.5,
+              "triggerMargin": 0.15
+            },
+            {
+              "type": "facing",
+              "id": "block-kestrel-facing",
+              "name": "Aim / Heading Facing",
+              "enabled": true,
+              "mode": "fromMovement"
+            }
+          ],
+          "aiming": {
+            "mode": "faceMouseCursor"
+          },
+          "locomotion": {
+            "mode": "directVector",
+            "moveForwardKey": "KeyW",
+            "reverseKey": "KeyS",
+            "strafeLeftKey": "KeyA",
+            "strafeRightKey": "KeyD"
+          },
+          "rules": [],
+          "pipeline": [
+            {
+              "id": "pipe-facing",
+              "name": "Aim / Facing Heading",
+              "enabled": true,
+              "source": {
+                "type": "2d_vector",
+                "source": "mouseWorldPos"
+              },
+              "processor": {
+                "type": "facing",
+                "mode": "fromMousePos"
+              },
+              "target": "character.facing"
+            },
+            {
+              "id": "pipe-loco-move",
+              "name": "WASD Movement Vector",
+              "enabled": true,
+              "source": {
+                "type": "composite_4key",
+                "upKey": "KeyW",
+                "downKey": "KeyS",
+                "leftKey": "KeyA",
+                "rightKey": "KeyD"
+              },
+              "processor": {
+                "type": "2d_vector",
+                "mode": "direct"
+              },
+              "target": "locomotion.moveVector"
+            },
+            {
+              "id": "pipe-loco-sprint",
+              "name": "Sprint",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "ShiftLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "locomotion.sprint"
+            },
+            {
+              "id": "pipe-loco-jump",
+              "name": "Jump / Hop",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "Space"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold",
+                "requireCleanPress": false,
+                "claimOnFire": false
+              },
+              "target": "locomotion.jump"
+            },
+            {
+              "id": "pipe-throw-aim",
+              "name": "Throw Aim Arc",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseRight"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "throw.aim"
+            },
+            {
+              "id": "pipe-throw-arc",
+              "name": "Throw Arc Height Modulation",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "1d_scalar",
+                "source": "mouseDeltaY"
+              },
+              "processor": {
+                "type": "1d_scalar",
+                "mode": "accumulator",
+                "sensitivity": 0.005,
+                "clampMin": 0,
+                "clampMax": 1,
+                "initialValue": 0.5,
+                "gateButton": {
+                  "device": "mouse",
+                  "code": "MouseLeft",
+                  "mode": "hold"
+                },
+                "autoCursorLock": true
+              },
+              "target": "throw.arcHeight"
+            },
+            {
+              "id": "pipe-throw-fire",
+              "name": "Throw Fire Release",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "up",
+                "requireCleanPress": false,
+                "claimOnFire": true
+              },
+              "target": "throw.fire"
+            },
+            {
+              "id": "pipe-pickup-grab",
+              "name": "Grab Ground Item",
+              "enabled": true,
+              "condition": "emptyHanded",
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "pickup.grab"
+            },
+            {
+              "id": "pipe-pickup-drop",
+              "name": "Drop Held Item",
+              "enabled": true,
+              "condition": "holdingItem",
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyQ"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "pickup.drop"
+            },
+            {
+              "id": "pipe-consume-bite",
+              "name": "Bite / Eat Held Item",
+              "enabled": true,
+              "condition": "holdingConsumable",
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyE"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "consume.bite"
+            },
+            {
+              "id": "pipe-melee-punch",
+              "name": "Melee Punch",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "keyboard",
+                "code": "KeyF"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "down",
+                "requireCleanPress": true,
+                "claimOnFire": true
+              },
+              "target": "melee.punch"
+            },
+            {
+              "id": "pipe-laser-aim",
+              "name": "Laser Aim Chord",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseRight",
+                "additionalCodes": [
+                  "AltLeft"
+                ]
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "laser.aim"
+            },
+            {
+              "id": "pipe-laser-fire",
+              "name": "Laser Fire",
+              "enabled": true,
+              "source": {
+                "type": "button",
+                "device": "mouse",
+                "code": "MouseLeft"
+              },
+              "processor": {
+                "type": "button",
+                "triggerMode": "hold"
+              },
+              "target": "laser.fire"
+            },
+            {
+              "id": "pipe-laser-power",
+              "name": "Laser Power Modulation",
+              "enabled": true,
+              "source": {
+                "type": "1d_scalar",
+                "source": "mouseWheel"
+              },
+              "processor": {
+                "type": "1d_scalar",
+                "mode": "accumulator",
+                "sensitivity": 0.05,
+                "clampMin": 0,
+                "clampMax": 1,
+                "initialValue": 0.5,
+                "autoCursorLock": false
+              },
+              "target": "laser.power"
+            }
+          ],
+          "channels": {
+            "locomotion": {
+              "mode": "directVector",
+              "upKeys": [
+                "KeyW",
+                "ArrowUp"
+              ],
+              "downKeys": [
+                "KeyS",
+                "ArrowDown"
+              ],
+              "leftKeys": [
+                "KeyA",
+                "ArrowLeft"
+              ],
+              "rightKeys": [
+                "KeyD",
+                "ArrowRight"
+              ],
+              "sprintKey": "ShiftLeft",
+              "sprintMode": "hold",
+              "jumpKey": "Space"
+            },
+            "aiming": {
+              "mode": "faceMouseCursor",
+              "rawMouseDragEnabled": true
+            },
+            "interaction": {
+              "enabled": true,
+              "trigger": {
+                "device": "mouse",
+                "code": "MouseLeft",
+                "mode": "press"
+              },
+              "claimPolicy": "requireCleanPress",
+              "allowSwapWhenHolding": true
+            },
+            "throw": {
+              "enabled": true,
+              "aimTrigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "hold"
+              },
+              "fireTrigger": {
+                "device": "mouse",
+                "code": "MouseLeft",
+                "mode": "press"
+              },
+              "fireOnReleaseAim": false,
+              "arcModulationSource": "mouseDragY",
+              "arcDragHoldThresholdMs": 200,
+              "claimPolicy": "requireCleanPress"
+            },
+            "consume": {
+              "enabled": true,
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyE",
+                "mode": "hold"
+              },
+              "claimPolicy": "requireCleanPress"
+            },
+            "melee": {
+              "enabled": true,
+              "trigger": {
+                "device": "keyboard",
+                "code": "KeyF",
+                "mode": "press"
+              },
+              "claimPolicy": "requireCleanPress"
+            },
+            "laser": {
+              "enabled": true,
+              "aimTrigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "chordModifiers": [
+                  "AltLeft"
+                ],
+                "mode": "hold"
+              },
+              "fireTrigger": {
+                "device": "mouse",
+                "code": "MouseLeft",
+                "mode": "hold"
+              },
+              "powerModulationSource": "mouseWheel"
+            }
+          },
+          "tags": [
+            {
+              "id": "tag-kbm-action",
+              "name": "Action",
+              "trigger": {
+                "device": "mouse",
+                "code": "MouseRight",
+                "mode": "hold"
+              }
+            }
+          ]
+        },
+        "gamepad": {
+          "blocks": [
+            {
+              "type": "walkSprint",
+              "id": "block-kestrel-walk-gp",
+              "name": "Air & Ground Movement",
+              "enabled": true,
+              "mode": "stickDirectionDriveButton",
+              "moveKeys": {
+                "upKey": "GamepadDpadUp",
+                "downKey": "GamepadDpadDown",
+                "leftKey": "GamepadDpadLeft",
+                "rightKey": "GamepadDpadRight",
+                "requireCleanPress": false
+              },
+              "sprint": {
+                "code": "GamepadLS",
+                "mode": "hold",
+                "requireCleanPress": false
+              },
+              "forwardTrigger": {
+                "code": "GamepadRT"
+              },
+              "cursorSteerTrigger": {
+                "code": "GamepadLB"
+              },
+              "cursorSteerMode": "toggleButton",
+              "rawDirectionWhileWalking": true
+            },
+            {
+              "type": "flight",
+              "id": "block-kestrel-flight-gp",
+              "name": "Flight & Glide",
+              "enabled": true,
+              "ascendTrigger": {
+                "code": "GamepadA",
+                "requireCleanPress": false
+              },
+              "descendTrigger": {
+                "code": "GamepadB",
+                "requireCleanPress": false
+              },
+              "flightToggleTrigger": {
+                "code": "GamepadDpadDown",
+                "requireCleanPress": true
+              },
+              "requireCleanAscendPress": false,
+              "faceFlightDirection": true
+            },
+            {
+              "type": "telekinesis",
+              "id": "block-kestrel-tk-gp",
+              "name": "Telekinesis & Object Control",
+              "enabled": true,
+              "objectControlTrigger": {
+                "code": "GamepadRT",
+                "requireCleanPress": false
+              },
+              "grabTrigger": {
+                "code": null,
+                "requireCleanPress": true
+              },
+              "releaseTrigger": {
+                "code": null,
+                "requireCleanPress": true
+              },
+              "flingTrigger": {
+                "code": null,
+                "requireCleanPress": true
+              },
+              "faceHeldObject": true,
+              "elevationControlTrigger": {
+                "code": "GamepadLT",
+                "requireCleanPress": false
+              }
+            },
+            {
+              "type": "itemInteraction",
+              "id": "block-kestrel-items-gp",
+              "name": "Item Interaction",
+              "enabled": true,
+              "pickup": {
+                "code": "GamepadX",
+                "requireCleanPress": true
+              },
+              "drop": {
+                "code": "GamepadY",
+                "requireCleanPress": true
+              },
+              "swap": {
+                "code": "GamepadB",
+                "requireCleanPress": true
+              },
+              "consume": {
+                "code": "GamepadRB",
+                "requireCleanPress": false,
+                "mode": "toggle"
+              },
+              "consumeMode": "toggle",
+              "fireWeapon": {
+                "code": "GamepadRT",
+                "requireCleanPress": false
+              },
+              "swapRequiresHolding": false,
+              "triggerPickupWhenEmptyHanded": true,
+              "pickupAndConsume": {
+                "code": "GamepadRB",
+                "requireCleanPress": true
+              },
+              "pickupAndConsumeWhenEmpty": true
+            },
+            {
+              "type": "throw",
+              "id": "block-kestrel-throw-gp",
+              "name": "Throwing & Ballistics",
+              "enabled": true,
+              "mode": "chargeAndRelease",
+              "chargeTrigger": {
+                "code": "GamepadRT",
+                "requireCleanPress": true
+              },
+              "aimTrigger": {
+                "code": "GamepadLT",
+                "requireCleanPress": false
+              },
+              "fireTrigger": {
+                "code": "GamepadRT",
+                "requireCleanPress": true
+              },
+              "quickTrigger": {
+                "code": "GamepadRT",
+                "requireCleanPress": true
+              },
+              "cancelTrigger": {
+                "code": null,
+                "requireCleanPress": true
+              },
+              "throwOverrideTrigger": {
+                "code": null,
+                "requireCleanPress": false
+              },
+              "triggerMargin": 0.15,
+              "arcModulation": {
+                "source": "none",
+                "autoCursorLock": false,
+                "sensitivity": 0.005
+              },
+              "enableProximityCancel": true,
+              "cancelRadius": 1.5
+            },
+            {
+              "type": "melee",
+              "id": "block-kestrel-melee-gp",
+              "name": "Melee Combat",
+              "enabled": true,
+              "punch": {
+                "code": "GamepadB",
+                "requireCleanPress": true
+              }
+            },
+            {
+              "type": "facing",
+              "id": "block-kestrel-facing-gp",
+              "name": "Aim / Heading Facing",
+              "enabled": true,
+              "mode": "fromMovement"
+            }
+          ],
+          "leftStick": {
+            "primaryMode": "directLocomotion",
+            "cursorSteerSpeed": 14,
+            "cursorClampRadius": 7.5
+          },
+          "rightStick": {
+            "mode": "twinStickAim"
+          },
+          "rules": [],
+          "tags": [
+            {
+              "id": "tag-pad-action",
+              "name": "Action",
+              "trigger": {
+                "device": "gamepad",
+                "code": "GamepadRT",
+                "mode": "hold"
+              }
+            }
+          ]
+        },
+        "touch": {
+          "widgets": [
+            {
+              "id": "touch-move-stick",
+              "type": "joystick",
+              "label": "Move",
+              "anchor": "bottomLeft",
+              "offset": {
+                "x": 90,
+                "y": 90
+              },
+              "radius": 65,
+              "centering": "floating",
+              "snapBackOnRelease": true,
+              "rings": [
+                {
+                  "id": "deadzone",
+                  "minDeflection": 0,
+                  "maxDeflection": 0.15,
+                  "signalId": "idle"
+                },
+                {
+                  "id": "walk",
+                  "minDeflection": 0.15,
+                  "maxDeflection": 0.65,
+                  "signalId": "walk"
+                },
+                {
+                  "id": "sprint",
+                  "minDeflection": 0.65,
+                  "maxDeflection": 1,
+                  "signalId": "sprint"
+                }
+              ]
+            },
+            {
+              "id": "touch-aim-stick",
+              "type": "joystick",
+              "label": "Aim",
+              "anchor": "bottomRight",
+              "offset": {
+                "x": -90,
+                "y": 90
+              },
+              "radius": 65,
+              "centering": "floating",
+              "snapBackOnRelease": true,
+              "rings": []
+            },
+            {
+              "id": "touch-jump-btn",
+              "type": "actionButton",
+              "label": "JUMP",
+              "anchor": "bottomRight",
+              "offset": {
+                "x": -80,
+                "y": 190
+              },
+              "radius": 35,
+              "centering": "fixed",
+              "snapBackOnRelease": true,
+              "rings": [],
+              "tapAction": "jump"
+            }
+          ],
+          "rules": [],
+          "tags": []
+        },
+        "pipeline": [
+          {
+            "id": "pipe-facing",
+            "name": "Aim / Facing Heading",
+            "enabled": true,
+            "source": {
+              "type": "2d_vector",
+              "source": "mouseWorldPos"
+            },
+            "processor": {
+              "type": "facing",
+              "mode": "fromMousePos"
+            },
+            "target": "character.facing"
+          },
+          {
+            "id": "pipe-loco-move",
+            "name": "WASD Movement Vector",
+            "enabled": true,
+            "source": {
+              "type": "composite_4key",
+              "upKey": "KeyW",
+              "downKey": "KeyS",
+              "leftKey": "KeyA",
+              "rightKey": "KeyD"
+            },
+            "processor": {
+              "type": "2d_vector",
+              "mode": "direct"
+            },
+            "target": "locomotion.moveVector"
+          },
+          {
+            "id": "pipe-loco-sprint",
+            "name": "Sprint",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "ShiftLeft"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold"
+            },
+            "target": "locomotion.sprint"
+          },
+          {
+            "id": "pipe-loco-jump",
+            "name": "Jump / Hop",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "Space"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold",
+              "requireCleanPress": false,
+              "claimOnFire": false
+            },
+            "target": "locomotion.jump"
+          },
+          {
+            "id": "pipe-throw-aim",
+            "name": "Throw Aim Arc",
+            "enabled": true,
+            "condition": "holdingItem",
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseRight"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold"
+            },
+            "target": "throw.aim"
+          },
+          {
+            "id": "pipe-throw-arc",
+            "name": "Throw Arc Height Modulation",
+            "enabled": true,
+            "condition": "holdingItem",
+            "source": {
+              "type": "1d_scalar",
+              "source": "mouseDeltaY"
+            },
+            "processor": {
+              "type": "1d_scalar",
+              "mode": "accumulator",
+              "sensitivity": 0.005,
+              "clampMin": 0,
+              "clampMax": 1,
+              "initialValue": 0.5,
+              "gateButton": {
+                "device": "mouse",
+                "code": "MouseLeft",
+                "mode": "hold"
+              },
+              "autoCursorLock": true
+            },
+            "target": "throw.arcHeight"
+          },
+          {
+            "id": "pipe-throw-fire",
+            "name": "Throw Fire Release",
+            "enabled": true,
+            "condition": "holdingItem",
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseLeft"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "up",
+              "requireCleanPress": false,
+              "claimOnFire": true
+            },
+            "target": "throw.fire"
+          },
+          {
+            "id": "pipe-pickup-grab",
+            "name": "Grab Ground Item",
+            "enabled": true,
+            "condition": "emptyHanded",
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseLeft"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "down",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "pickup.grab"
+          },
+          {
+            "id": "pipe-pickup-drop",
+            "name": "Drop Held Item",
+            "enabled": true,
+            "condition": "holdingItem",
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "KeyQ"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "down",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "pickup.drop"
+          },
+          {
+            "id": "pipe-consume-bite",
+            "name": "Bite / Eat Held Item",
+            "enabled": true,
+            "condition": "holdingConsumable",
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "KeyE"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "consume.bite"
+          },
+          {
+            "id": "pipe-melee-punch",
+            "name": "Melee Punch",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "keyboard",
+              "code": "KeyF"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "down",
+              "requireCleanPress": true,
+              "claimOnFire": true
+            },
+            "target": "melee.punch"
+          },
+          {
+            "id": "pipe-laser-aim",
+            "name": "Laser Aim Chord",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseRight",
+              "additionalCodes": [
+                "AltLeft"
+              ]
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold"
+            },
+            "target": "laser.aim"
+          },
+          {
+            "id": "pipe-laser-fire",
+            "name": "Laser Fire",
+            "enabled": true,
+            "source": {
+              "type": "button",
+              "device": "mouse",
+              "code": "MouseLeft"
+            },
+            "processor": {
+              "type": "button",
+              "triggerMode": "hold"
+            },
+            "target": "laser.fire"
+          },
+          {
+            "id": "pipe-laser-power",
+            "name": "Laser Power Modulation",
+            "enabled": true,
+            "source": {
+              "type": "1d_scalar",
+              "source": "mouseWheel"
+            },
+            "processor": {
+              "type": "1d_scalar",
+              "mode": "accumulator",
+              "sensitivity": 0.05,
+              "clampMin": 0,
+              "clampMax": 1,
+              "initialValue": 0.5,
+              "autoCursorLock": false
+            },
+            "target": "laser.power"
           }
         ]
       }

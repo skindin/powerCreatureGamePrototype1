@@ -199,6 +199,19 @@ export class RollMovementCapability {
         }
       }
 
+      // Anti-Drift: actively damp lateral velocity/torque perpendicular to intended movement direction (0 energy cost)
+      const antiDrift = Math.max(0, mod.antiDriftResistanceProp.get(char.properties));
+      if (antiDrift > 0.0001 && char.isRestingOnSurface) {
+        const perpX = -dirY;
+        const perpY = dirX;
+        const vPerp = char.velocity.x * perpX + char.velocity.y * perpY;
+        const decel = antiDrift * dt;
+        const newVPerp = Math.abs(vPerp) <= decel ? 0 : vPerp - Math.sign(vPerp) * decel;
+        const dvPerp = newVPerp - vPerp;
+        char.velocity.x += perpX * dvPerp;
+        char.velocity.y += perpY * dvPerp;
+      }
+
       if (powerScale > 0.001) {
         const effectiveAccel = accel * powerScale;
         if (enforceMax) {

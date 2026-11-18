@@ -80,6 +80,16 @@ export class LocomotionModulesInspector {
         });
         brakeResEl.appendChild(c.element);
       }
+      const antiDriftEl = container.querySelector("#prop-socket-roll-anti-drift-resistance");
+      if (antiDriftEl) {
+        const c = new PropertyControl({
+          property: char.rollMovementModule.antiDriftResistanceProp,
+          owner: char,
+          label: "Anti-Drift Resistance (u/s²)",
+          step: 0.1,
+        });
+        antiDriftEl.appendChild(c.element);
+      }
       const rollPowerEl = container.querySelector("#prop-socket-roll-power-cap");
       if (rollPowerEl) {
         const c = new PropertyControl({

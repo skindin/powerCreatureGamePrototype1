@@ -37,7 +37,7 @@ export interface ActivePowerAllocation {
 export const ABILITY_METADATA: Record<string, { name: string; color: string }> = {
   sprint: { name: "🏃", color: "#6366f1" },
   walk: { name: "🚶", color: "#38bdf8" },
-  roll: { name: "⚽", color: "#38bdf8" },
+  roll: { name: "🛞", color: "#38bdf8" },
   brake: { name: "🛑", color: "#ef4444" },
   jump: { name: "🦘", color: "#ec4899" },
   climb: { name: "🪜", color: "#a855f7" },

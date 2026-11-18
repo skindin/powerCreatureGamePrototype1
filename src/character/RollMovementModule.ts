@@ -11,6 +11,7 @@ export interface RollMovementModuleOptions {
   brakeDeceleration?: number;
   freeRollResistance?: number;
   brakeRollResistance?: number;
+  antiDriftResistance?: number;
   maxRollPower?: number;
   maxSprintPower?: number;
   maxBrakePower?: number;
@@ -53,6 +54,9 @@ export class RollMovementModule {
   // Braking roll resistance applied to RollModule while holding brake (u/s²)
   public brakeRollResistanceProp: DynamicProperty;
 
+  // Anti-drift deceleration perpendicular to intended movement direction (u/s², consumes 0 energy)
+  public antiDriftResistanceProp: DynamicProperty;
+
   // Maximum continuous power capacity sockets (Watts)
   public maxRollPowerProp: DynamicProperty;
   public maxSprintPowerProp: DynamicProperty;
@@ -86,6 +90,7 @@ export class RollMovementModule {
     this.brakeDecelerationProp = new DynamicProperty(options?.brakeDeceleration ?? 55.0);
     this.freeRollResistanceProp = new DynamicProperty(options?.freeRollResistance ?? 0.08);
     this.brakeRollResistanceProp = new DynamicProperty(options?.brakeRollResistance ?? 2.5);
+    this.antiDriftResistanceProp = new DynamicProperty(options?.antiDriftResistance ?? 5.0);
 
     this.maxRollPowerProp = new DynamicProperty(options?.maxRollPower ?? 800.0);
     this.maxSprintPowerProp = new DynamicProperty(options?.maxSprintPower ?? 1800.0);
@@ -107,6 +112,7 @@ export class RollMovementModule {
     registry.add("rollBrakeDeceleration", this.brakeDecelerationProp.literalValue);
     registry.add("freeRollResistance", this.freeRollResistanceProp.literalValue);
     registry.add("brakeRollResistance", this.brakeRollResistanceProp.literalValue);
+    registry.add("antiDriftResistance", this.antiDriftResistanceProp.literalValue);
     registry.add("maxRollPower", this.maxRollPowerProp.literalValue);
     registry.add("maxSprintRollPower", this.maxSprintPowerProp.literalValue);
     registry.add("maxBrakePower", this.maxBrakePowerProp.literalValue);
@@ -124,6 +130,13 @@ export class RollMovementModule {
   }
   public set brakeRollResistance(val: number) {
     this.brakeRollResistanceProp.literalValue = val;
+  }
+
+  public get antiDriftResistance(): number {
+    return this.antiDriftResistanceProp.literalValue;
+  }
+  public set antiDriftResistance(val: number) {
+    this.antiDriftResistanceProp.literalValue = val;
   }
 
   // Getters and Setters

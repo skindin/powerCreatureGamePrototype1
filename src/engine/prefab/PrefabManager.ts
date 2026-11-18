@@ -218,6 +218,7 @@ export class PrefabManager {
       maxSprintSpeed: 32.0,
       freeRollResistance: 0.08,
       brakeRollResistance: 2.5,
+      antiDriftResistance: 5.0,
       rollConsumesEnergy: true,
       rollAllowPartialPower: true,
     });

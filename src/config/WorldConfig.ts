@@ -384,6 +384,7 @@ export interface SerializedCharacterConfig {
     brakeDeceleration?: number;
     freeRollResistance?: number;
     brakeRollResistance?: number;
+    antiDriftResistance?: number;
     rollPowerCapacity?: number;
     sprintPowerCapacity?: number;
     brakePowerCapacity?: number;
@@ -809,6 +810,7 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
       brakeDeceleration: char.rollMovementModule.brakeDecelerationProp.get(char.properties),
       freeRollResistance: char.rollMovementModule.freeRollResistanceProp.get(char.properties),
       brakeRollResistance: char.rollMovementModule.brakeRollResistanceProp.get(char.properties),
+      antiDriftResistance: char.rollMovementModule.antiDriftResistanceProp.get(char.properties),
       rollPowerCapacity: char.rollMovementModule.maxRollPowerProp.get(char.properties),
       sprintPowerCapacity: char.rollMovementModule.maxSprintPowerProp.get(char.properties),
       brakePowerCapacity: char.rollMovementModule.maxBrakePowerProp.get(char.properties),
@@ -1437,6 +1439,7 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
         brakeDeceleration: config.rollMovementModule?.brakeDeceleration ?? 55.0,
         freeRollResistance: config.rollMovementModule?.freeRollResistance ?? (char.rollModule ? char.rollModule.rollResistanceProp.get(char.properties) : 0.08),
         brakeRollResistance: config.rollMovementModule?.brakeRollResistance ?? 1.5,
+        antiDriftResistance: config.rollMovementModule?.antiDriftResistance ?? 5.0,
         maxRollPower: config.rollMovementModule?.rollPowerCapacity ?? 800.0,
         maxSprintPower: config.rollMovementModule?.sprintPowerCapacity ?? 1800.0,
         maxBrakePower: config.rollMovementModule?.brakePowerCapacity ?? 400.0,
@@ -1476,6 +1479,9 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
         }
         if (config.rollMovementModule.brakeRollResistance !== undefined) {
           char.rollMovementModule.brakeRollResistanceProp.set(config.rollMovementModule.brakeRollResistance, char.properties);
+        }
+        if (config.rollMovementModule.antiDriftResistance !== undefined) {
+          char.rollMovementModule.antiDriftResistanceProp.set(config.rollMovementModule.antiDriftResistance, char.properties);
         }
         if (config.rollMovementModule.rollPowerCapacity !== undefined) {
           char.rollMovementModule.maxRollPowerProp.set(config.rollMovementModule.rollPowerCapacity, char.properties);

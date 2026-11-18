@@ -727,6 +727,7 @@ export class EntityModuleLifecycle {
             destChar.rollMovementModule.brakeDecelerationProp.set(srcChar.rollMovementModule.brakeDecelerationProp.get(src.properties), dest.properties);
             destChar.rollMovementModule.freeRollResistanceProp.set(srcChar.rollMovementModule.freeRollResistanceProp.get(src.properties), dest.properties);
             destChar.rollMovementModule.brakeRollResistanceProp.set(srcChar.rollMovementModule.brakeRollResistanceProp.get(src.properties), dest.properties);
+            destChar.rollMovementModule.antiDriftResistanceProp.set(srcChar.rollMovementModule.antiDriftResistanceProp.get(src.properties), dest.properties);
             destChar.rollMovementModule.maxRollPowerProp.set(srcChar.rollMovementModule.maxRollPowerProp.get(src.properties), dest.properties);
             destChar.rollMovementModule.maxSprintPowerProp.set(srcChar.rollMovementModule.maxSprintPowerProp.get(src.properties), dest.properties);
             destChar.rollMovementModule.maxBrakePowerProp.set(srcChar.rollMovementModule.maxBrakePowerProp.get(src.properties), dest.properties);
