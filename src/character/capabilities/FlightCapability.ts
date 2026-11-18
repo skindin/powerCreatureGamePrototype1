@@ -321,16 +321,41 @@ export class FlightCapability {
     const mod = char.flightModule;
     const reg = char.properties;
     const safeDt = Math.max(dt, 1 / 120);
+    const checksEnergy = mod.consumesEnergy && Boolean(char.energyPool) && char.energyPool!.enabled && !char.energyPool!.infiniteEnergy;
 
-    // 1. Apply Stage 1 (0-Energy Momentum Transfer / Braking / Glide Redirection) immediately
-    char.velocity.x = plan.vxFree;
-    char.velocity.y = plan.vyFree;
-    char.verticalVelocity = plan.vzFree;
+    // Strip previous tick's vertical stability wave offset before resolving this tick
+    if (mod.appliedWaveVz !== 0) {
+      char.verticalVelocity -= mod.appliedWaveVz;
+      mod.appliedWaveVz = 0;
+    }
+    mod.appliedWaveVx = 0;
+    mod.appliedWaveVy = 0;
 
-    // 2. Apply Stage 2 (Active Momentum Creation, scaled by available power)
+    // When out of energy, out of stamina, or exhausted: no flight lift, no 0-energy fall braking/gliding,
+    // and no stability wave — character must fall naturally under gravity.
+    if (
+      checksEnergy &&
+      char.energyPool &&
+      (char.energyPool.isExhausted ||
+        char.energyPool.getCurrentEnergy(reg) <= 0.0001 ||
+        char.energyPool.getCurrentStamina(reg) <= 0.0001)
+    ) {
+      if (plan.isFlyingActive && plan.rawDemandedWatts > 0.01) {
+        char.energyPool.notifyInsufficientEnergy({
+          abilityId: "flight",
+          demandedAmount: plan.rawDemandedWatts,
+          isBurst: false,
+          unit: "W/s",
+          registry: reg,
+        });
+      }
+      return;
+    }
+
+    // Resolve power budget BEFORE Stage 1 braking so powerless flight cannot slow down falling
     let accelScale = 1.0;
     if (plan.rawDemandedWatts > 0.01) {
-      if (mod.consumesEnergy && char.energyPool && char.energyPool.enabled) {
+      if (checksEnergy && char.energyPool) {
         if (plan.requestedWatts <= 0) {
           accelScale = 0;
         } else {
@@ -342,6 +367,14 @@ export class FlightCapability {
             "flight",
             mod.allowPartialPower
           );
+          if (
+            grantedWatts <= 0.0001 ||
+            char.energyPool.isExhausted ||
+            char.energyPool.getCurrentEnergy(reg) <= 0.0001 ||
+            char.energyPool.getCurrentStamina(reg) <= 0.0001
+          ) {
+            return;
+          }
           // Because P = 0.5 * m * a^2 / efficiency, achievable acceleration scales with sqrt(P_granted / P_rawDemanded)
           const powerRatio = Math.max(0, Math.min(1.0, grantedWatts / plan.rawDemandedWatts));
           accelScale = Math.sqrt(powerRatio);
@@ -351,13 +384,19 @@ export class FlightCapability {
       accelScale = 0;
     }
 
+    // 1. Apply Stage 1 (0-Energy Momentum Transfer / Braking / Glide Redirection)
+    char.velocity.x = plan.vxFree;
+    char.velocity.y = plan.vyFree;
+    char.verticalVelocity = plan.vzFree;
+
+    // 2. Apply Stage 2 (Active Momentum Creation, scaled by available power)
     if (accelScale > 0.0001) {
       char.velocity.x += plan.axCreate * accelScale * safeDt;
       char.velocity.y += plan.ayCreate * accelScale * safeDt;
       char.verticalVelocity += plan.azCreate * accelScale * safeDt;
     }
 
-    // 3. Apply Long-Period, High-Amplitude Telekinetic Stability Wave on elevation (Z) strictly while airborne
+    // 3. Apply Long-Period, High-Amplitude Telekinetic Stability Wave on elevation (Z) strictly while powered & airborne
     const stability = mod.getStability(reg);
     const instability = Math.max(0, Math.min(1, 1.0 - stability));
     const surfaceHeight = Math.max(
@@ -380,7 +419,8 @@ export class FlightCapability {
       return;
     }
 
-    if (instability > 0.001 && isAirborne) {
+    const canSustainHover = !checksEnergy || accelScale > 0.0001 || !isAirborne;
+    if (instability > 0.001 && isAirborne && canSustainHover) {
       mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
       const p = mod.oscillationPhase;
       const waveVz = (Math.sin(p * 0.79 + 0.45) * 0.70 + Math.cos(p * 1.47) * 0.30) * instability * 3.0;

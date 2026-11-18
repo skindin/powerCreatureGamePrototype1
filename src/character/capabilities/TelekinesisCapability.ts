@@ -361,27 +361,7 @@ export class TelekinesisCapability {
     const plan = TelekinesisCapability.computePlan(char, target, aimTargetPos, safeDt, arena);
     if (!plan) return;
 
-    const mObj = Math.max(0.2, target.hasMass ? target.mass : 1.0);
-    const vxBefore = target.velocity.x;
-    const vyBefore = target.velocity.y;
-    const vzBefore = target.verticalVelocity;
-
-    // 1. Apply Stage 1 (0-Energy Momentum Transfer / Braking) to target
-    target.velocity.x = plan.vxFree;
-    target.velocity.y = plan.vyFree;
-    if (target.hasVerticalVelocity) {
-      target.verticalVelocity = plan.vzFree;
-    }
-
-    // Reaction from braking transfers into ground anchor (or character if unanchored in mid-air)
-    const freeImpX = mObj * (target.velocity.x - vxBefore);
-    const freeImpY = mObj * (target.velocity.y - vyBefore);
-    const freeImpZ = mObj * (target.verticalVelocity - vzBefore);
-    if (Math.hypot(freeImpX, freeImpY, freeImpZ) > 0.0001) {
-      TelekinesisCapability.applyReactionImpulse(char, freeImpX, freeImpY, freeImpZ, arena);
-    }
-
-    // 2. Apply Stage 2 (Active Momentum Creation, scaled by granted power)
+    // Resolve energy budget BEFORE applying Stage 1 braking so running out of energy never slows a falling object
     let accelScale = 1.0;
     if (plan.rawDemandedWatts > 0.01) {
       if (mod.consumesEnergy && char.energyPool && char.energyPool.enabled) {
@@ -414,6 +394,28 @@ export class TelekinesisCapability {
     } else {
       accelScale = 0;
     }
+
+    const mObj = Math.max(0.2, target.hasMass ? target.mass : 1.0);
+    const vxBefore = target.velocity.x;
+    const vyBefore = target.velocity.y;
+    const vzBefore = target.verticalVelocity;
+
+    // 1. Apply Stage 1 (0-Energy Momentum Transfer / Braking) to target
+    target.velocity.x = plan.vxFree;
+    target.velocity.y = plan.vyFree;
+    if (target.hasVerticalVelocity) {
+      target.verticalVelocity = plan.vzFree;
+    }
+
+    // Apply equal-and-opposite reaction from braking
+    const freeImpX = mObj * (target.velocity.x - vxBefore);
+    const freeImpY = mObj * (target.velocity.y - vyBefore);
+    const freeImpZ = mObj * (target.verticalVelocity - vzBefore);
+    if (Math.hypot(freeImpX, freeImpY, freeImpZ) > 0.0001) {
+      TelekinesisCapability.applyReactionImpulse(char, freeImpX, freeImpY, freeImpZ, arena);
+    }
+
+    // 2. Apply Stage 2 (Active Momentum Creation, scaled by granted power)
 
     if (accelScale > 0.0001) {
       const dvx = plan.axCreate * accelScale * safeDt;
