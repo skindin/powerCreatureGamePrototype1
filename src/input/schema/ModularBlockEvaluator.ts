@@ -1664,7 +1664,14 @@ export class ModularBlockEvaluator {
 
           switch (b.mode) {
             case "chargeAndRelease": {
-              if (isSlotActive(b.chargeTrigger, "hold", false, b.id, "throw.chargeBow")) {
+              const isChargingTkControl = Boolean(
+                isTkObjectControlNow &&
+                char.telekineticTarget &&
+                !char.heldObject &&
+                !char.grappledTarget &&
+                (!b.chargeTrigger?.code || b.chargeTrigger.code === tkObjCtrlCode)
+              );
+              if (isChargingTkControl || isSlotActive(b.chargeTrigger, "hold", false, b.id, "throw.chargeBow")) {
                 isAimingTrajectory = true;
                 char.isChargingThrow = true;
                 if (!char.throwChargeStartTime) {
@@ -1673,8 +1680,16 @@ export class ModularBlockEvaluator {
                 claimSlot(b.chargeTrigger, b.id, "throw.chargeBow", false);
               }
 
-              // Auto-release fire on button / gate release
-              if (isSlotAnyJustReleased(b.chargeTrigger) && char.isChargingThrow) {
+              // Auto-release fire on button / gate release (or when exiting Telekinetic Object Control Mode on throwable)
+              const releasedTkThrow = Boolean(
+                wasTkObjectControlActive &&
+                !isTkObjectControlNow &&
+                char.telekineticTarget &&
+                !char.heldObject &&
+                !char.grappledTarget &&
+                (!b.chargeTrigger?.code || b.chargeTrigger.code === tkObjCtrlCode)
+              );
+              if ((releasedTkThrow || isSlotAnyJustReleased(b.chargeTrigger)) && char.isChargingThrow) {
                 const aimDx = effAim.x - throwOriginObj.position.x;
                 const aimDy = effAim.y - throwOriginObj.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
@@ -1701,7 +1716,14 @@ export class ModularBlockEvaluator {
 
             case "holdAndRelease": {
               // Hold to preview lowest energy trajectory that reaches target without charging, release to fire
-              if (isSlotActive(b.chargeTrigger, "hold", false, b.id, "throw.holdAndRelease")) {
+              const isHoldingTkControl = Boolean(
+                isTkObjectControlNow &&
+                char.telekineticTarget &&
+                !char.heldObject &&
+                !char.grappledTarget &&
+                (!b.chargeTrigger?.code || b.chargeTrigger.code === tkObjCtrlCode)
+              );
+              if (isHoldingTkControl || isSlotActive(b.chargeTrigger, "hold", false, b.id, "throw.holdAndRelease")) {
                 isAimingTrajectory = true;
                 char.isHoldingThrowRelease = true;
                 char.hasUserSetArcRatio = false;
@@ -1711,7 +1733,15 @@ export class ModularBlockEvaluator {
                 claimSlot(b.chargeTrigger, b.id, "throw.holdAndRelease", false);
               }
 
-              if (isSlotAnyJustReleased(b.chargeTrigger) && char.isHoldingThrowRelease) {
+              const releasedTkHoldThrow = Boolean(
+                wasTkObjectControlActive &&
+                !isTkObjectControlNow &&
+                char.telekineticTarget &&
+                !char.heldObject &&
+                !char.grappledTarget &&
+                (!b.chargeTrigger?.code || b.chargeTrigger.code === tkObjCtrlCode)
+              );
+              if ((releasedTkHoldThrow || isSlotAnyJustReleased(b.chargeTrigger)) && char.isHoldingThrowRelease) {
                 const aimDx = effAim.x - throwOriginObj.position.x;
                 const aimDy = effAim.y - throwOriginObj.position.y;
                 const distToAim = Math.hypot(aimDx, aimDy);
