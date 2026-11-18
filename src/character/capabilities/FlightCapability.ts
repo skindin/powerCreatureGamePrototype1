@@ -75,7 +75,8 @@ export class FlightCapability {
     );
     const heightAboveSurface = Math.max(0, char.position.z - surfaceHeight);
     const isAirborne = heightAboveSurface > 0.02;
-    const isAnchored = heightAboveSurface <= mod.getGroundAnchorRange(reg);
+    const anchorRange = mod.getGroundAnchorRange(reg);
+    const isAnchored = heightAboveSurface <= anchorRange;
 
     const rawInputMag = Math.hypot(movementInput.x, movementInput.y);
     const inputMag = Math.min(1.0, rawInputMag);
@@ -87,6 +88,7 @@ export class FlightCapability {
     const maxAscentSpeed = mod.getMaxAscentSpeed(reg);
     const maxSinkSpeed = Math.max(0.1, mod.getMaxSinkSpeed(reg));
     const maxAlt = mod.getMaxFlightAltitude(reg);
+    const effectiveMaxAlt = Math.min(maxAlt, surfaceHeight + anchorRange);
 
     const vWantMag = hasHorizInput ? inputMag * maxHorizSpeed : 0;
 
@@ -94,10 +96,10 @@ export class FlightCapability {
     let vzWant = 0;
     if (verticalIntent > 0.05) {
       vzWant = verticalIntent * maxAscentSpeed;
-      if (char.position.z >= maxAlt) {
+      if (char.position.z >= effectiveMaxAlt) {
         vzWant = 0;
-      } else if (char.position.z + vzWant * 0.25 > maxAlt) {
-        vzWant = Math.max(0, (maxAlt - char.position.z) / 0.25);
+      } else if (char.position.z + vzWant * 0.25 > effectiveMaxAlt) {
+        vzWant = Math.max(0, (effectiveMaxAlt - char.position.z) / 0.25);
       }
     } else if (verticalIntent < -0.05) {
       vzWant = verticalIntent * maxSinkSpeed; // Negative (controlled descent)
@@ -209,34 +211,38 @@ export class FlightCapability {
     let ayCreate = 0;
     let azCreate = 0;
 
-    const maxHorizCreateAccel = 26.0;
-    if (hasHorizInput) {
-      const vParFree = vxFree * ux + vyFree * uy;
-      if (vParFree < vWantMag) {
-        const dvH = vWantMag - vParFree;
-        const aH = Math.min(maxHorizCreateAccel, dvH / safeDt);
-        axCreate = ux * aH;
-        ayCreate = uy * aH;
-      }
-    }
-
     const isActivelyDescending = verticalIntent < -0.05;
-    const isFlyingActive = isAirborne || vzWant > 0.01 || Math.hypot(axCreate, ayCreate) > 0.01;
+    const isFlyingActive = isAnchored && (isAirborne || vzWant > 0.01 || hasHorizInput);
 
-    if (isAirborne || vzWant > 0.01) {
-      if (isActivelyDescending && vzFree <= vzWant + 0.05) {
-        // Player is intentionally descending at sink speed: let gravity pull down and Stage 1 brake excess
-        azCreate = 0;
-      } else if (isActivelyDescending) {
-        // Player wants to descend, and is currently above sink speed: let gravity accelerate them down for 0 W
-        azCreate = 0;
-      } else {
-        // Hovering (vzWant == 0) or Ascending (vzWant > 0):
-        // Must counter gravity g in uncurved space PLUS accelerate vzFree toward vzWant (including carrying telekinetic load)
-        const maxVertCreateAccel = 75.0;
-        const dvZ = vzWant - vzFree;
-        const climbAccel = Math.max(-g, Math.min(maxVertCreateAccel, dvZ / safeDt));
-        azCreate = Math.max(0, g + climbAccel);
+    // Ground-anchored thrust (horizontal & vertical lift) only works while within groundAnchorRange of a surface.
+    // Above groundAnchorRange, the creature cannot maintain hover or steer until gravity brings them back within reach.
+    if (isAnchored) {
+      const maxHorizCreateAccel = 26.0;
+      if (hasHorizInput) {
+        const vParFree = vxFree * ux + vyFree * uy;
+        if (vParFree < vWantMag) {
+          const dvH = vWantMag - vParFree;
+          const aH = Math.min(maxHorizCreateAccel, dvH / safeDt);
+          axCreate = ux * aH;
+          ayCreate = uy * aH;
+        }
+      }
+
+      if (isAirborne || vzWant > 0.01) {
+        if (isActivelyDescending && vzFree <= vzWant + 0.05) {
+          // Player is intentionally descending at sink speed: let gravity pull down and Stage 1 brake excess
+          azCreate = 0;
+        } else if (isActivelyDescending) {
+          // Player wants to descend, and is currently above sink speed: let gravity accelerate them down for 0 W
+          azCreate = 0;
+        } else {
+          // Hovering (vzWant == 0) or Ascending (vzWant > 0):
+          // Must counter gravity g in uncurved space PLUS accelerate vzFree toward vzWant (including carrying telekinetic load)
+          const maxVertCreateAccel = 75.0;
+          const dvZ = vzWant - vzFree;
+          const climbAccel = Math.max(-g, Math.min(maxVertCreateAccel, dvZ / safeDt));
+          azCreate = Math.max(0, g + climbAccel);
+        }
       }
     }
 
@@ -430,7 +436,8 @@ export class FlightCapability {
       return;
     }
 
-    const canSustainHover = !checksEnergy || accelScale > 0.0001 || !isAirborne;
+    const isAnchoredNow = heightAboveSurface <= mod.getGroundAnchorRange(reg);
+    const canSustainHover = isAnchoredNow && (!checksEnergy || accelScale > 0.0001 || !isAirborne);
     if (instability > 0.001 && isAirborne && canSustainHover) {
       mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
       const p = mod.oscillationPhase;
