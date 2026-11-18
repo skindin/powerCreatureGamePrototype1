@@ -74,7 +74,7 @@ export class FlightModule {
   public appliedWaveVz: number = 0;
 
   constructor(options?: FlightModuleOptions) {
-    this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 3000.0);
+    this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 8000.0);
     this.maxHorizontalSpeedProp = new DynamicProperty(options?.maxHorizontalSpeed ?? 7.5);
     this.maxAscentSpeedProp = new DynamicProperty(options?.maxAscentSpeed ?? 5.0);
     this.maxSinkSpeedProp = new DynamicProperty(options?.maxSinkSpeed ?? 5.0);

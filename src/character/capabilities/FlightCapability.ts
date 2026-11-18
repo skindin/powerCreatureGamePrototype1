@@ -232,8 +232,8 @@ export class FlightCapability {
         azCreate = 0;
       } else {
         // Hovering (vzWant == 0) or Ascending (vzWant > 0):
-        // Must counter gravity g in uncurved space PLUS accelerate vzFree toward vzWant
-        const maxVertCreateAccel = 24.0;
+        // Must counter gravity g in uncurved space PLUS accelerate vzFree toward vzWant (including carrying telekinetic load)
+        const maxVertCreateAccel = 75.0;
         const dvZ = vzWant - vzFree;
         const climbAccel = Math.max(-g, Math.min(maxVertCreateAccel, dvZ / safeDt));
         azCreate = Math.max(0, g + climbAccel);
@@ -243,12 +243,23 @@ export class FlightCapability {
     // Equivalence-Principle Power in uncurved space:
     // Accelerating mass m at 3D rate ||aCreate|| requires mechanical power P_mech = 0.5 * m * ||aCreate||^2
     const totalMass = Math.max(0.2, char.hasMass ? char.mass : 1.2) + (char.carriedMass || 0);
+    const efficiency = Math.max(0.01, char.energyPool ? char.energyPool.getMuscleEfficiency(reg) : 0.25);
+    const cap = mod.getMaxPower(reg);
+
+    // Prioritize vertical hover/lift over horizontal acceleration when near power capacity so steering never steals lift and causes unwanted sinking
+    const horizWatts = (0.5 * totalMass * (axCreate * axCreate + ayCreate * ayCreate)) / efficiency;
+    const vertWatts = (0.5 * totalMass * (azCreate * azCreate)) / efficiency;
+    if (!isActivelyDescending && azCreate > 0.01 && horizWatts + vertWatts > cap && mod.allowPartialPower) {
+      const remainingWatts = Math.max(0, cap - vertWatts);
+      const horizScale = horizWatts > 0.0001 ? Math.sqrt(Math.min(1, remainingWatts / horizWatts)) : 0;
+      axCreate *= horizScale;
+      ayCreate *= horizScale;
+    }
+
     const aSq = axCreate * axCreate + ayCreate * ayCreate + azCreate * azCreate;
     const mechWatts = 0.5 * totalMass * aSq;
-    const efficiency = Math.max(0.01, char.energyPool ? char.energyPool.getMuscleEfficiency(reg) : 0.25);
     const rawDemandedWatts = mechWatts / efficiency;
 
-    const cap = mod.getMaxPower(reg);
     let requestedWatts = rawDemandedWatts;
     if (requestedWatts > cap) {
       requestedWatts = mod.allowPartialPower ? cap : 0;

@@ -429,7 +429,7 @@ export class PrefabManager {
     }
     flyerArchetype.flightModule = new FlightModule({
       enabled: true,
-      maxPower: 3000.0,
+      maxPower: 10000.0,
       maxHorizontalSpeed: 8.5,
       maxAscentSpeed: 5.5,
       maxSinkSpeed: 5.5,
@@ -442,7 +442,7 @@ export class PrefabManager {
     flyerArchetype.flightModule.registerProperties(flyerArchetype.properties);
     flyerArchetype.telekinesisModule = new TelekinesisModule({
       enabled: true,
-      maxPower: 2400.0,
+      maxPower: 5000.0,
       telekinesisReach: 6.5,
       maxMoveSpeed: 12.0,
       holdHoverHeight: 0.65,
