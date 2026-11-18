@@ -417,21 +417,11 @@ export class TelekinesisCapability {
       );
     }
 
-    // 3. Apply Telekinetic Stability Harmonic Wobble
+    // 3. Advance Long-Period, High-Amplitude Telekinetic Stability Wave (applied directly to hold goal)
     const stability = mod.getStability(reg);
     const instability = Math.max(0, Math.min(1, 1.0 - stability));
     if (instability > 0.001) {
-      mod.oscillationPhase += safeDt * (5.0 + instability * 7.0);
-      const p = mod.oscillationPhase;
-      const wobbleAx = (Math.sin(p * 1.9) * 0.6 + Math.cos(p * 3.4) * 0.4) * instability * 16.0;
-      const wobbleAy = (Math.cos(p * 2.5) * 0.6 + Math.sin(p * 4.1) * 0.4) * instability * 16.0;
-      const wobbleAz = (Math.sin(p * 3.1) * 0.65 + Math.cos(p * 4.7) * 0.35) * instability * 18.0;
-
-      target.velocity.x += wobbleAx * safeDt;
-      target.velocity.y += wobbleAy * safeDt;
-      if (target.hasVerticalVelocity) {
-        target.verticalVelocity += wobbleAz * safeDt;
-      }
+      mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
     }
 
     // Clamp target within telekinesis reach
@@ -467,6 +457,18 @@ export class TelekinesisCapability {
     // Desired 2D cursor goal clamped within telekinesisReach around the character
     let goalX = aimTargetPos ? aimTargetPos.x : char.position.x + Math.cos(char.facingAngle) * Math.min(2.2, reach * 0.6);
     let goalY = aimTargetPos ? aimTargetPos.y : char.position.y + Math.sin(char.facingAngle) * Math.min(2.2, reach * 0.6);
+
+    // Apply long-period, high-amplitude stability wave to the telekinetic hold target
+    const tkStability = mod.getStability(reg);
+    const tkInstability = Math.max(0, Math.min(1, 1.0 - tkStability));
+    let waveGoalZ = 0;
+    if (tkInstability > 0.001) {
+      const p = mod.oscillationPhase;
+      goalX += (Math.sin(p * 0.71) * 0.68 + Math.cos(p * 1.33) * 0.32) * tkInstability * 2.5;
+      goalY += (Math.cos(p * 0.57 + 0.9) * 0.68 + Math.sin(p * 1.21) * 0.32) * tkInstability * 2.5;
+      waveGoalZ = (Math.sin(p * 0.81 + 0.4) * 0.70 + Math.cos(p * 1.49) * 0.30) * tkInstability * 1.5;
+    }
+
     const gDx = goalX - char.position.x;
     const gDy = goalY - char.position.y;
     const gDist = Math.hypot(gDx, gDy);
@@ -488,7 +490,7 @@ export class TelekinesisCapability {
       wallAtTarget ? wallAtTarget.wallHeight : 0,
       wallAtGoal ? wallAtGoal.wallHeight : 0
     );
-    const goalZ = surfaceZ + hoverOffset;
+    const goalZ = Math.max(surfaceZ + 0.15, surfaceZ + hoverOffset + waveGoalZ);
 
     // Desired velocity toward goal (proportional spring clamped to maxMoveSpeed)
     const errX = goalX - target.position.x;

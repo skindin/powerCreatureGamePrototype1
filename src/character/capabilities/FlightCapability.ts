@@ -113,10 +113,10 @@ export class FlightCapability {
       }
     }
 
-    // Current actual velocities before flight actuation
-    const vx0 = char.velocity.x;
-    const vy0 = char.velocity.y;
-    const vz0 = char.verticalVelocity;
+    // Current actual velocities before flight actuation (strip previous tick's wave bias so Stage 1/2 don't fight it)
+    const vx0 = char.velocity.x - mod.appliedWaveVx;
+    const vy0 = char.velocity.y - mod.appliedWaveVy;
+    const vz0 = char.verticalVelocity - mod.appliedWaveVz;
 
     let vxFree = vx0;
     let vyFree = vy0;
@@ -357,7 +357,7 @@ export class FlightCapability {
       char.verticalVelocity += plan.azCreate * accelScale * safeDt;
     }
 
-    // 3. Apply Telekinetic Stability Oscillation when airborne or actively thrusting
+    // 3. Apply Long-Period, High-Amplitude Telekinetic Stability Wave when airborne or actively thrusting
     const stability = mod.getStability(reg);
     const instability = Math.max(0, Math.min(1, 1.0 - stability));
     const surfaceHeight = Math.max(
@@ -368,17 +368,25 @@ export class FlightCapability {
     const isAirborne = char.position.z - surfaceHeight > 0.02;
 
     if (instability > 0.001 && (isAirborne || accelScale > 0.01)) {
-      mod.oscillationPhase += safeDt * (4.5 + instability * 6.5);
+      mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
       const p = mod.oscillationPhase;
-      const wobbleAx = (Math.sin(p * 1.7) * 0.6 + Math.cos(p * 3.1) * 0.4) * instability * 15.0;
-      const wobbleAy = (Math.cos(p * 2.3) * 0.6 + Math.sin(p * 3.7) * 0.4) * instability * 15.0;
-      const wobbleAz = (Math.sin(p * 2.9) * 0.65 + Math.cos(p * 4.3) * 0.35) * instability * 20.0;
-
-      char.velocity.x += wobbleAx * safeDt;
-      char.velocity.y += wobbleAy * safeDt;
-      if (isAirborne) {
-        char.verticalVelocity += wobbleAz * safeDt;
+      const waveVx = (Math.sin(p * 0.67) * 0.68 + Math.cos(p * 1.29) * 0.32) * instability * 4.4;
+      const waveVy = (Math.cos(p * 0.59 + 1.05) * 0.68 + Math.sin(p * 1.23) * 0.32) * instability * 4.4;
+      let waveVz = (Math.sin(p * 0.79 + 0.45) * 0.70 + Math.cos(p * 1.47) * 0.30) * instability * 3.0;
+      if (!isAirborne && waveVz < 0) {
+        waveVz = 0;
       }
+
+      char.velocity.x += waveVx;
+      char.velocity.y += waveVy;
+      char.verticalVelocity += waveVz;
+      mod.appliedWaveVx = waveVx;
+      mod.appliedWaveVy = waveVy;
+      mod.appliedWaveVz = waveVz;
+    } else {
+      mod.appliedWaveVx = 0;
+      mod.appliedWaveVy = 0;
+      mod.appliedWaveVz = 0;
     }
   }
 }

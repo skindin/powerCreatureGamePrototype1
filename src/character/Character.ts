@@ -915,6 +915,10 @@ export class Character extends GameObject {
 
     if (canFly) {
       FlightCapability.actuate(this, movementInput, flightVertIntent, dt, arena);
+    } else if (this.flightModule) {
+      this.flightModule.appliedWaveVx = 0;
+      this.flightModule.appliedWaveVy = 0;
+      this.flightModule.appliedWaveVz = 0;
     }
 
     const canJump = !canFly && JumpCapability.canJump(this);

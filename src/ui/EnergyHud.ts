@@ -334,7 +334,10 @@ export class SinglePlayerHud {
     }
 
     // 5. Update Gun Fire Time & Overheat Cooldown stat bar on the right
-    const heldGun = char.heldObject?.gunModule;
+    const heldGun = (_charOrGunTarget()?.gunModule);
+    function _charOrGunTarget() {
+      return char.heldObject || char.telekineticTarget;
+    }
     if (this.gunTrackWrapperEl) {
       if (heldGun && heldGun.enabled) {
         this.gunTrackWrapperEl.style.display = "flex";
@@ -535,24 +538,27 @@ export class SinglePlayerHud {
       }
     }
 
-    // Active item consumption (+Watts)
-    const activeConsumable = _char.heldObject || _char.grappledTarget;
-    if (_char.isUsingItem && _char.canConsumeHeldObject() && activeConsumable?.consumableModule) {
-      const cMod = activeConsumable.consumableModule;
-      const consumeWatts = cMod.getConsumeRate(activeConsumable.properties);
-      allocations.push({
-        key: "consumable_nutrition",
-        id: "consumable_nutrition",
-        name: cMod.tag ? `Consumable (${cMod.tag})` : "Consumable",
-        color: "#22c55e",
-        grantedWatts: consumeWatts,
-        allowPartialPower: false,
-        isPositive: true,
-        isBurst: false,
-        order: 999,
-        isAnticipated: false,
-      });
-      activeAbilityKeys.add("consumable_nutrition");
+    // Active item consumption (+Watts) — works for hand-held, grappled, and telekinetically floated items
+    const activeConsumable = _char.heldObject || _char.grappledTarget || _char.telekineticTarget;
+    if (_char.isUsingItem && _char.canConsumeHeldObject() && activeConsumable) {
+      const cMod = activeConsumable.consumableModule || activeConsumable.foodModule;
+      if (cMod) {
+        const speedMult = _char.consumeModule ? _char.consumeModule.getConsumptionSpeedMultiplier(_char.properties) : 1.0;
+        const consumeWatts = cMod.getConsumeRate(activeConsumable.properties) * speedMult;
+        allocations.push({
+          key: "consumable_nutrition",
+          id: "consumable_nutrition",
+          name: "🍎",
+          color: "#22c55e",
+          grantedWatts: consumeWatts,
+          allowPartialPower: false,
+          isPositive: true,
+          isBurst: false,
+          order: 999,
+          isAnticipated: false,
+        });
+        activeAbilityKeys.add("consumable_nutrition");
+      }
     }
 
     // Anticipated Modifiers (Throw preview, laser aiming)
