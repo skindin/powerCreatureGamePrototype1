@@ -257,9 +257,8 @@ export class InputManager {
       this.mousePos.y = restoreWorldPos.y;
       this.actualMousePos.x = restoreWorldPos.x;
       this.actualMousePos.y = restoreWorldPos.y;
-      // Clear cached client coordinates so viewport recomputation preserves restoreWorldPos until mouse moves
-      this.lastClientX = null;
-      this.lastClientY = null;
+      // Keep screen coordinates synced to restoreWorldPos so moving the camera keeps the cursor pinned to screen position
+      this.syncClientPosFromWorldPos(restoreWorldPos);
     }
 
     const wasLocked = Boolean(this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
@@ -298,6 +297,8 @@ export class InputManager {
 
     this.isRawDragging = true;
     this.rawDragConsumer = onDelta || null;
+    this.rawDragLastClientX = this.lastClientX;
+    this.rawDragLastClientY = this.lastClientY;
     this.rawDragDx = 0;
     this.rawDragDy = 0;
     this.aimLockRawDx = 0;
@@ -335,6 +336,7 @@ export class InputManager {
     this.rawDragConsumer = null;
 
     if (this.recordedMousePos) {
+      this.syncClientPosFromWorldPos(this.recordedMousePos);
       this.mousePos.x = this.recordedMousePos.x;
       this.mousePos.y = this.recordedMousePos.y;
       this.actualMousePos.x = this.recordedMousePos.x;
@@ -361,20 +363,12 @@ export class InputManager {
       clearTimeout(this.unlockTimeoutId);
       this.unlockTimeoutId = null;
     }
-    // 1. Mouse has been first unlocked!
-    // 2. AND THEN set game cursor to recorded mouse position:
-    if (this.recordedMousePos) {
-      this.mousePos.x = this.recordedMousePos.x;
-      this.mousePos.y = this.recordedMousePos.y;
-      this.actualMousePos.x = this.recordedMousePos.x;
-      this.actualMousePos.y = this.recordedMousePos.y;
-    }
-    // 3. Make real cursor visible again:
     this.unhideCursor();
-    // 4. And make game cursor follow mouse again:
     this.isAwaitingUnlock = false;
     this.isRawDragging = false;
     this.lockedAimPos = null;
+    this.rawDragLastClientX = null;
+    this.rawDragLastClientY = null;
     this.arcModulationCursor = null;
     this.arcModulationDeltaY = 0;
     this.arcDetentSide = null;
@@ -382,9 +376,20 @@ export class InputManager {
       document.body.classList.remove("pointer-locked");
       this.canvas?.classList.remove("pointer-locked");
     }
+    if (this.lastClientX !== null && this.lastClientY !== null) {
+      this.recomputeMouseWorldPos();
+    } else if (this.recordedMousePos) {
+      this.syncClientPosFromWorldPos(this.recordedMousePos);
+      this.mousePos.x = this.recordedMousePos.x;
+      this.mousePos.y = this.recordedMousePos.y;
+      this.actualMousePos.x = this.recordedMousePos.x;
+      this.actualMousePos.y = this.recordedMousePos.y;
+    }
   }
   public lastClientX: number | null = null;
   public lastClientY: number | null = null;
+  private rawDragLastClientX: number | null = null;
+  private rawDragLastClientY: number | null = null;
   public isKeyboardMeleeRequested: boolean = false;
 
   public isCombatModifierActive(e?: MouseEvent | KeyboardEvent | WheelEvent): boolean {
@@ -822,25 +827,25 @@ export class InputManager {
         }
         return;
       }
-      const prevClientX = this.lastClientX;
-      const prevClientY = this.lastClientY;
-      this.lastClientX = e.clientX;
-      this.lastClientY = e.clientY;
       if (this.isKeyboardSuspended) {
+        this.lastClientX = e.clientX;
+        this.lastClientY = e.clientY;
         return;
       }
       this.lastMouseMoveTime = performance.now();
 
       if (this.isRawDragging || (this.isRightMouseDown && this.lockedAimPos) || this.lockedAimPos) {
-        // While locked, take raw mouse input to increase/decrease arc height
+        // While locked, take raw mouse input to increase/decrease arc height or elevation without corrupting unlocked screen coordinates
+        const prevClientX = this.rawDragLastClientX ?? this.lastClientX;
+        const prevClientY = this.rawDragLastClientY ?? this.lastClientY;
         const movementDy = (e.movementY !== undefined && e.movementY !== 0)
           ? e.movementY
           : (prevClientY !== null ? e.clientY - prevClientY : 0);
         const movementDx = (e.movementX !== undefined && e.movementX !== 0)
           ? e.movementX
           : (prevClientX !== null ? e.clientX - prevClientX : 0);
-        this.lastClientX = e.clientX;
-        this.lastClientY = e.clientY;
+        this.rawDragLastClientX = e.clientX;
+        this.rawDragLastClientY = e.clientY;
 
         this.aimLockRawDx += movementDx;
         this.aimLockRawDy += movementDy;
@@ -852,7 +857,7 @@ export class InputManager {
           this.rawDragConsumer(movementDx, movementDy);
         }
 
-        // Keep game cursor snapped to recorded mouse pos
+        // Keep game cursor snapped to recorded mouse pos while locked
         if (this.recordedMousePos) {
           this.mousePos.x = this.recordedMousePos.x;
           this.mousePos.y = this.recordedMousePos.y;
@@ -862,7 +867,7 @@ export class InputManager {
         return;
       }
 
-      // Do not move game cursor until AFTER unlocked!
+      // While awaiting pointer unlock, do not overwrite synced screen coordinates with locked Chromium center events
       if (this.isAwaitingUnlock || (typeof document !== "undefined" && document.pointerLockElement)) {
         if (this.recordedMousePos) {
           this.mousePos.x = this.recordedMousePos.x;
@@ -879,33 +884,6 @@ export class InputManager {
       }
     });
 
-    const completeUnlock = () => {
-      if (this.unlockTimeoutId) {
-        clearTimeout(this.unlockTimeoutId);
-        this.unlockTimeoutId = null;
-      }
-      // 1. Mouse has been first unlocked!
-      // 2. AND THEN set game cursor to recorded mouse position:
-      if (this.recordedMousePos) {
-        this.mousePos.x = this.recordedMousePos.x;
-        this.mousePos.y = this.recordedMousePos.y;
-        this.actualMousePos.x = this.recordedMousePos.x;
-        this.actualMousePos.y = this.recordedMousePos.y;
-      }
-      // 3. Make it visible:
-      this.unhideCursor();
-      // 4. And make game cursor follow mouse again:
-      this.isAwaitingUnlock = false;
-      this.lockedAimPos = null;
-      this.arcModulationCursor = null;
-      this.arcModulationDeltaY = 0;
-      this.arcDetentSide = null;
-      if (typeof document !== "undefined") {
-        document.body.classList.remove("pointer-locked");
-        this.canvas?.classList.remove("pointer-locked");
-      }
-    };
-
     document.addEventListener("pointerlockchange", () => {
       this.isPointerLocked = (document.pointerLockElement === this.canvas);
       if (this.telekineticVirtualMouseActive) {
@@ -917,7 +895,7 @@ export class InputManager {
       if (!this.isPointerLocked && this.isAwaitingUnlock) {
         // Defer completion to next animation frame so the browser finishes restoring hardware cursor coordinates first
         requestAnimationFrame(() => {
-          completeUnlock();
+          this.completeUnlock();
         });
       }
     });
@@ -928,7 +906,7 @@ export class InputManager {
         // Virtual reticle continues seamlessly via raw clientX/Y deltas even if pointer lock is denied
         return;
       }
-      completeUnlock();
+      this.completeUnlock();
     });
 
     this.canvas.addEventListener("mousedown", (e) => {
@@ -1035,12 +1013,11 @@ export class InputManager {
           // Preserve virtual reticle position and keep pointer lock while Object Control Mode is held
           return;
         }
-        const wasLocked = Boolean(this.lockedAimPos || this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
-        this.lastClientX = null;
-        this.lastClientY = null;
+        const wasLocked = Boolean(this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
 
-        // Move game cursor to recorded position it was at when originally locked
+        // Keep screen coordinates synced to recordedMousePos (instead of clearing lastClientX/Y) so cursor tracks screen position if camera moves
         if (this.recordedMousePos) {
+          this.syncClientPosFromWorldPos(this.recordedMousePos);
           this.mousePos.x = this.recordedMousePos.x;
           this.mousePos.y = this.recordedMousePos.y;
           this.actualMousePos.x = this.recordedMousePos.x;
@@ -1054,11 +1031,11 @@ export class InputManager {
           if (this.unlockTimeoutId) clearTimeout(this.unlockTimeoutId);
           this.unlockTimeoutId = window.setTimeout(() => {
             if (this.isAwaitingUnlock) {
-              completeUnlock();
+              this.completeUnlock();
             }
           }, 80);
         } else {
-          completeUnlock();
+          this.completeUnlock();
         }
         return;
       }
@@ -1192,6 +1169,22 @@ export class InputManager {
   public setKeyboardViewport(vp: CanvasViewport | null): void {
     this.keyboardViewport = vp;
     this.recomputeMouseWorldPos();
+  }
+
+  public syncClientPosFromWorldPos(worldPos: Vector2D): void {
+    if (typeof window === "undefined" || !this.canvas) return;
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    if (this.keyboardViewport) {
+      const vp = this.keyboardViewport;
+      const canvasPixelX = worldPos.x * vp.scale + vp.offsetX;
+      const canvasPixelY = worldPos.y * vp.scale + vp.offsetY;
+      this.lastClientX = rect.left + canvasPixelX * (rect.width / Math.max(1, this.canvas.width));
+      this.lastClientY = rect.top + canvasPixelY * (rect.height / Math.max(1, this.canvas.height));
+    } else {
+      this.lastClientX = rect.left + (worldPos.x / Math.max(0.001, this.arena.width)) * rect.width;
+      this.lastClientY = rect.top + (worldPos.y / Math.max(0.001, this.arena.height)) * rect.height;
+    }
   }
 
   public recomputeMouseWorldPos(): void {

@@ -546,6 +546,7 @@ export class ModularBlockEvaluator {
           if (input.lockedAimPos) {
             input.lockedAimPos = { x: synced.x, y: synced.y };
           }
+          input.syncClientPosFromWorldPos(synced);
           input.mousePos.x = synced.x;
           input.mousePos.y = synced.y;
           input.actualMousePos.x = synced.x;
@@ -2729,8 +2730,7 @@ export class ModularBlockEvaluator {
           input.mousePos.y = restorePos.y;
           input.actualMousePos.x = restorePos.x;
           input.actualMousePos.y = restorePos.y;
-          input.lastClientX = null;
-          input.lastClientY = null;
+          input.syncClientPosFromWorldPos(restorePos);
           targetAimPos.x = restorePos.x;
           targetAimPos.y = restorePos.y;
         }
