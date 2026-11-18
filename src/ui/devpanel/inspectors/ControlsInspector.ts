@@ -91,6 +91,14 @@ export class ControlsInspector {
     if (!schema) return;
     if (!schema.keyboardMouse.blocks) {
       schema.keyboardMouse.blocks = JSON.parse(JSON.stringify(DefaultControlBlocks));
+    } else {
+      for (const blk of schema.keyboardMouse.blocks) {
+        if (blk && blk.type === "throw") {
+          if (!blk.throwOverrideTrigger || blk.throwOverrideTrigger.code === "KeyT") {
+            blk.throwOverrideTrigger = { code: "KeyR", requireCleanPress: false };
+          }
+        }
+      }
     }
     if (!schema.gamepad.blocks) {
       schema.gamepad.blocks = JSON.parse(JSON.stringify(DefaultGamepadControlBlocks));
@@ -135,6 +143,14 @@ export class ControlsInspector {
     }
     if (!schema.keyboardMouse.blocks) {
       schema.keyboardMouse.blocks = JSON.parse(JSON.stringify(DefaultControlBlocks));
+    } else {
+      for (const blk of schema.keyboardMouse.blocks) {
+        if (blk && blk.type === "throw") {
+          if (!blk.throwOverrideTrigger || blk.throwOverrideTrigger.code === "KeyT") {
+            blk.throwOverrideTrigger = { code: "KeyR", requireCleanPress: false };
+          }
+        }
+      }
     }
     return schema.keyboardMouse.blocks!;
   }
@@ -2220,12 +2236,14 @@ export class ControlsInspector {
 
       case "throw": {
         const b = block as ThrowControlBlock;
+        const isGp = this.activeTab === "gamepad";
         b.mode = b.mode || "chargeAndRelease";
         b.chargeTrigger = b.chargeTrigger || { code: "MouseLeft" };
         b.aimTrigger = b.aimTrigger || { code: "MouseRight" };
         b.fireTrigger = b.fireTrigger || { code: "MouseLeft" };
         b.quickTrigger = b.quickTrigger || { code: "MouseLeft" };
         b.cancelTrigger = b.cancelTrigger || { code: null, requireCleanPress: true };
+        b.throwOverrideTrigger = b.throwOverrideTrigger || { code: isGp ? null : "KeyR", requireCleanPress: false };
         b.arcModulation = b.arcModulation || { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 };
         b.enableProximityCancel = Boolean(b.enableProximityCancel);
         b.cancelRadius = b.cancelRadius ?? 1.5;
@@ -3399,7 +3417,7 @@ export class ControlsInspector {
               aimTrigger: { code: "MouseRight" },
               fireTrigger: { code: "MouseLeft" },
               quickTrigger: { code: "MouseLeft" },
-              throwOverrideTrigger: { code: "KeyT", requireCleanPress: false },
+              throwOverrideTrigger: { code: "KeyR", requireCleanPress: false },
               arcModulation: { source: "mouseDeltaY", autoCursorLock: true, sensitivity: 0.005 },
               enableProximityCancel: false,
               cancelRadius: 1.5,
