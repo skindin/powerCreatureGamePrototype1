@@ -2363,7 +2363,7 @@ export class ModularBlockEvaluator {
     const kLaunchPos = isThrow && char.activeTrajectory?.launchPos ? char.activeTrajectory.launchPos : undefined;
 
     // Complete Telekinetic Object Control Mode exit AFTER throw block & launch trajectory extraction
-    if (!isTkObjectControlNow && char.isTelekineticObjectControl) {
+    if (!isTkObjectControlNow && (char.isTelekineticObjectControl || (!execCtx.gamepadStates && input.isTelekineticObjectControl))) {
       const restorePos = char.telekineticTarget
         ? { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y }
         : char.telekineticFrozenPos;

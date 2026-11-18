@@ -151,6 +151,23 @@ export class TelekinesisModule {
     if (!this.enabled || !target || target === character || target.isHeld || target.isImmovable) {
       return false;
     }
+    if (this.consumesEnergy && character.energyPool && character.energyPool.enabled && !character.energyPool.infiniteEnergy) {
+      const reg = character.properties;
+      if (
+        character.energyPool.isExhausted ||
+        character.energyPool.getCurrentEnergy(reg) <= 0.0001 ||
+        character.energyPool.getCurrentStamina(reg) <= 0.0001
+      ) {
+        character.energyPool.notifyInsufficientEnergy({
+          abilityId: "telekinesis",
+          demandedAmount: Math.max(50, this.getMaxPower(reg)),
+          isBurst: false,
+          unit: "W/s",
+          registry: reg,
+        });
+        return false;
+      }
+    }
     if (character.telekineticTarget && character.telekineticTarget !== target) {
       this.release(character);
     }
@@ -169,8 +186,15 @@ export class TelekinesisModule {
     const target = character.telekineticTarget;
     if (!target) return null;
     character.telekineticTarget = null;
+    character.isTelekineticObjectControl = false;
+    character.telekineticFrozenPos = null;
+    character.activeTrajectory = null;
+    character.isThrowCancelZone = false;
     if ((target as any).telekinesedBy === character) {
       (target as any).telekinesedBy = null;
+    }
+    if ((target as any).facingAngle !== undefined) {
+      delete (target as any).facingAngle;
     }
     return target;
   }

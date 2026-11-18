@@ -62,6 +62,25 @@ export class TelekinesisCapability {
     if (!TelekinesisCapability.canUseTelekinesis(char) || !char.telekinesisModule) return false;
     if (!target || target === char || target.isHeld || target.isImmovable) return false;
 
+    const mod = char.telekinesisModule;
+    if (mod.consumesEnergy && char.energyPool && char.energyPool.enabled && !char.energyPool.infiniteEnergy) {
+      const reg = char.properties;
+      if (
+        char.energyPool.isExhausted ||
+        char.energyPool.getCurrentEnergy(reg) <= 0.0001 ||
+        char.energyPool.getCurrentStamina(reg) <= 0.0001
+      ) {
+        char.energyPool.notifyInsufficientEnergy({
+          abilityId: "telekinesis",
+          demandedAmount: Math.max(50, mod.getMaxPower(reg)),
+          isBurst: false,
+          unit: "W/s",
+          registry: reg,
+        });
+        return false;
+      }
+    }
+
     if (char.telekineticTarget && char.telekineticTarget !== target) {
       TelekinesisCapability.releaseTarget(char);
     }
@@ -82,6 +101,10 @@ export class TelekinesisCapability {
     if (!target) return null;
 
     char.telekineticTarget = null;
+    char.isTelekineticObjectControl = false;
+    char.telekineticFrozenPos = null;
+    char.activeTrajectory = null;
+    char.isThrowCancelZone = false;
     if ((target as any).telekinesedBy === char) {
       (target as any).telekinesedBy = null;
     }
@@ -309,11 +332,31 @@ export class TelekinesisCapability {
       return;
     }
 
+    // Break telekinetic connection immediately when character runs out of energy/stamina or enters exhaustion
+    const reg = char.properties;
+    const checksEnergy = mod.consumesEnergy && char.energyPool && char.energyPool.enabled && !char.energyPool.infiniteEnergy;
+    if (
+      checksEnergy &&
+      char.energyPool &&
+      (char.energyPool.isExhausted ||
+        char.energyPool.getCurrentEnergy(reg) <= 0.0001 ||
+        char.energyPool.getCurrentStamina(reg) <= 0.0001)
+    ) {
+      char.energyPool.notifyInsufficientEnergy({
+        abilityId: "telekinesis",
+        demandedAmount: Math.max(50, mod.getMaxPower(reg)),
+        isBurst: false,
+        unit: "W/s",
+        registry: reg,
+      });
+      TelekinesisCapability.releaseTarget(char);
+      return;
+    }
+
     target.wakeUp();
     target.isInFlight = false;
     target.knockbackUntilTime = 0;
 
-    const reg = char.properties;
     const safeDt = Math.max(dt, 1 / 120);
     const plan = TelekinesisCapability.computePlan(char, target, aimTargetPos, safeDt, arena);
     if (!plan) return;
@@ -343,7 +386,8 @@ export class TelekinesisCapability {
     if (plan.rawDemandedWatts > 0.01) {
       if (mod.consumesEnergy && char.energyPool && char.energyPool.enabled) {
         if (plan.requestedWatts <= 0) {
-          accelScale = 0;
+          TelekinesisCapability.releaseTarget(char);
+          return;
         } else {
           const grantedWatts = char.energyPool.requestPower(
             plan.requestedWatts,
@@ -353,6 +397,16 @@ export class TelekinesisCapability {
             "telekinesis",
             mod.allowPartialPower
           );
+          if (
+            !char.energyPool.infiniteEnergy &&
+            (grantedWatts <= 0.0001 ||
+              char.energyPool.isExhausted ||
+              char.energyPool.getCurrentEnergy(reg) <= 0.0001 ||
+              char.energyPool.getCurrentStamina(reg) <= 0.0001)
+          ) {
+            TelekinesisCapability.releaseTarget(char);
+            return;
+          }
           const powerRatio = Math.max(0, Math.min(1.0, grantedWatts / plan.rawDemandedWatts));
           accelScale = Math.sqrt(powerRatio);
         }
