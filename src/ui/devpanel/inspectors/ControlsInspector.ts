@@ -21,6 +21,9 @@ import type {
   WalkSprintControlBlock,
   RollMovementControlBlock,
   JumpControlBlock,
+  FlightControlBlock,
+  TelekinesisControlBlock,
+  GrappleControlBlock,
   MeleeControlBlock,
   LaserControlBlock,
   ThrowControlBlock,
@@ -31,6 +34,7 @@ import type {
 } from "../../../input/schema/ControlSchemaTypes.js";
 import {
   DefaultControlSchema,
+  SkyKestrelControlSchema,
   SpeedBallControlSchema,
   DefaultPrebuiltChannels,
   DefaultPipelineBindings,
@@ -271,7 +275,12 @@ export class ControlsInspector {
     }
 
     // Creature capability tailored baseline
-    const baseSchema = isRollingCreature ? SpeedBallControlSchema : DefaultControlSchema;
+    const isFlyingCreature = Boolean((char.flightModule || char.telekinesisModule) && !char.jumpModule && !isRollingCreature);
+    const baseSchema = isRollingCreature
+      ? SpeedBallControlSchema
+      : isFlyingCreature
+        ? SkyKestrelControlSchema
+        : DefaultControlSchema;
     char.controlSchema = JSON.parse(JSON.stringify(baseSchema));
     if (prefab) {
       prefab.controlSchema = char.controlSchema;
@@ -1841,6 +1850,8 @@ export class ControlsInspector {
       case "jump": {
         const b = block as JumpControlBlock;
         b.jump = b.jump || b.jumpTrigger || { code: "Space", requireCleanPress: false };
+        b.descendTrigger = b.descendTrigger || { code: null, requireCleanPress: false };
+        b.flightToggleTrigger = b.flightToggleTrigger || { code: null, requireCleanPress: true };
         const requireClean = b.jump.requireCleanPress === true || b.requireCleanPress === true;
         return `
           <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -1856,6 +1867,135 @@ export class ControlsInspector {
                 <div style="font-size: 0.60rem; color: #64748b; line-height: 1.25;">
                   When unchecked: holding jump button continuously hops whenever touching ground.<br/>
                   When checked: requires releasing and pressing button again for each jump.
+                </div>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; padding-top: 8px; border-top: 1px dashed rgba(148, 163, 184, 0.2);">
+              <div>
+                ${this.renderInputSlot(b.id, "descendTrigger", b.descendTrigger, "Flight Descend Override (Optional)")}
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "flightToggleTrigger", b.flightToggleTrigger, "Flight Toggle Override (Optional)")}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      case "flight": {
+        const b = block as FlightControlBlock;
+        const isGp = this.activeTab === "gamepad";
+        b.ascendTrigger = b.ascendTrigger || { code: isGp ? "GamepadA" : "Space", requireCleanPress: false };
+        b.descendTrigger = b.descendTrigger || { code: isGp ? "GamepadB" : "KeyC", requireCleanPress: false };
+        b.flightToggleTrigger = b.flightToggleTrigger || { code: isGp ? "GamepadDpadDown" : "KeyG", requireCleanPress: true };
+        const requireClean = b.requireCleanAscendPress === true || b.ascendTrigger.requireCleanPress === true;
+        const faceFlight = b.faceFlightDirection !== false;
+        return `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 12px; align-items: start;">
+              <div>
+                ${this.renderInputSlot(b.id, "ascendTrigger", b.ascendTrigger, "Ascend / Gain Altitude")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  Hold to lift off and climb up to max flight altitude.
+                </div>
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "descendTrigger", b.descendTrigger, "Descend / Dive")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  Hold to lower altitude smoothly at controlled sink rate.
+                </div>
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "flightToggleTrigger", b.flightToggleTrigger, "Toggle Powered Flight On/Off")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  Switches FlightModule on/off (active hover vs free-fall).
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 16px; padding-top: 8px; border-top: 1px dashed rgba(148, 163, 184, 0.2); font-size: 0.68rem; color: #cbd5e1;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                <input type="checkbox" class="block-flight-clean-toggle" data-block-id="${b.id}" ${requireClean ? "checked" : ""} style="cursor: pointer; width: 13px; height: 13px; accent-color: #38bdf8;" />
+                <span>Require Fresh Press to Ascend</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                <input type="checkbox" class="block-flight-face-toggle" data-block-id="${b.id}" ${faceFlight ? "checked" : ""} style="cursor: pointer; width: 13px; height: 13px; accent-color: #38bdf8;" />
+                <span>Auto-Face Flight Direction (unless holding floating object)</span>
+              </label>
+            </div>
+          </div>
+        `;
+      }
+
+      case "telekinesis": {
+        const b = block as TelekinesisControlBlock;
+        const isGp = this.activeTab === "gamepad";
+        b.objectControlTrigger = b.objectControlTrigger || { code: isGp ? "GamepadLB" : "AltLeft", requireCleanPress: false };
+        b.grabTrigger = b.grabTrigger || { code: null, requireCleanPress: true };
+        b.releaseTrigger = b.releaseTrigger || { code: null, requireCleanPress: true };
+        b.flingTrigger = b.flingTrigger || { code: null, requireCleanPress: true };
+        const faceHeld = b.faceHeldObject !== false;
+        return `
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 12px; align-items: start;">
+              <div>
+                ${this.renderInputSlot(b.id, "objectControlTrigger", b.objectControlTrigger, "Object Control Mode (Hold)")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  Hold while floating an object to freeze it and aim throws or floating guns from the object with a virtual cursor.
+                </div>
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "grabTrigger", b.grabTrigger, "Dedicated Remote Grab (Optional)")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  Falls back to Item Interaction Pickup if unassigned.
+                </div>
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "releaseTrigger", b.releaseTrigger, "Dedicated Release (Optional)")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  Falls back to Item Interaction Drop if unassigned.
+                </div>
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "flingTrigger", b.flingTrigger, "Dedicated Quick Fling (Optional)")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  Throws/flings the floating object; Throwing block also flings it.
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 16px; padding-top: 8px; border-top: 1px dashed rgba(148, 163, 184, 0.2); font-size: 0.68rem; color: #cbd5e1;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                <input type="checkbox" class="block-tk-face-toggle" data-block-id="${b.id}" ${faceHeld ? "checked" : ""} style="cursor: pointer; width: 13px; height: 13px; accent-color: #a855f7;" />
+                <span>Auto-Face Floating Object While Telekinesis Is Active</span>
+              </label>
+            </div>
+          </div>
+        `;
+      }
+
+      case "grapple": {
+        const b = block as GrappleControlBlock;
+        b.grabTrigger = b.grabTrigger || { code: null, requireCleanPress: true };
+        b.releaseTrigger = b.releaseTrigger || { code: null, requireCleanPress: true };
+        b.shoveTrigger = b.shoveTrigger || { code: null, requireCleanPress: true };
+        return `
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 12px; align-items: start;">
+              <div>
+                ${this.renderInputSlot(b.id, "grabTrigger", b.grabTrigger, "Dedicated Grapple Grab (Optional)")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  Falls back to Item Interaction Pickup if unassigned.
+                </div>
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "releaseTrigger", b.releaseTrigger, "Dedicated Release Grapple (Optional)")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  Falls back to Item Interaction Drop if unassigned.
+                </div>
+              </div>
+              <div>
+                ${this.renderInputSlot(b.id, "shoveTrigger", b.shoveTrigger, "Dedicated Quick Shove (Optional)")}
+                <div style="font-size: 0.60rem; color: #64748b; margin-top: 3px;">
+                  Charge-and-shove also works via Throwing & Ballistics block.
                 </div>
               </div>
             </div>
@@ -2371,6 +2511,9 @@ export class ControlsInspector {
               <option value="rollMovement">+ Roll Movement & Brake (Spin & Torque)</option>
               <option value="locomotionStance">+ Locomotion Stance Switcher (Walk, Roll, Fly)</option>
               <option value="jump">+ Jump (Vertical Leap)</option>
+              <option value="flight">+ Flight & Glide (Ascend, Descend, Toggle)</option>
+              <option value="telekinesis">+ Telekinesis (Object Control Mode, Grab, Fling)</option>
+              <option value="grapple">+ Grapple & Shove (Tether Grab, Release, Shove)</option>
               <option value="itemInteraction">+ Item Interaction (Pickup, Drop, Swap, Eat)</option>
               <option value="throw">+ Throwing & Ballistics</option>
               <option value="melee">+ Melee Combat</option>
@@ -2394,6 +2537,9 @@ export class ControlsInspector {
               rollMovement: "🌀",
               locomotionStance: "🔄",
               jump: "🦘",
+              flight: "🪽",
+              telekinesis: "🔮",
+              grapple: "🪢",
               itemInteraction: "📦",
               throw: "🏹",
               melee: "🥊",
@@ -3348,6 +3494,60 @@ export class ControlsInspector {
               rollTrigger: { code: "Digit2" },
               flyTrigger: { code: "Digit3" },
             });
+          } else if (type === "flight") {
+            blocks.push(isGamepad ? {
+              type: "flight",
+              id: newId,
+              name: "Flight & Glide",
+              enabled: true,
+              ascendTrigger: { code: "GamepadA", requireCleanPress: false },
+              descendTrigger: { code: "GamepadB", requireCleanPress: false },
+              flightToggleTrigger: { code: "GamepadDpadDown", requireCleanPress: true },
+              requireCleanAscendPress: false,
+              faceFlightDirection: true,
+            } : {
+              type: "flight",
+              id: newId,
+              name: "Flight & Glide",
+              enabled: true,
+              ascendTrigger: { code: "Space", requireCleanPress: false },
+              descendTrigger: { code: "KeyC", requireCleanPress: false },
+              flightToggleTrigger: { code: "KeyG", requireCleanPress: true },
+              requireCleanAscendPress: false,
+              faceFlightDirection: true,
+            });
+          } else if (type === "telekinesis") {
+            blocks.push(isGamepad ? {
+              type: "telekinesis",
+              id: newId,
+              name: "Telekinesis & Object Control",
+              enabled: true,
+              objectControlTrigger: { code: "GamepadLB", requireCleanPress: false },
+              grabTrigger: { code: null, requireCleanPress: true },
+              releaseTrigger: { code: null, requireCleanPress: true },
+              flingTrigger: { code: null, requireCleanPress: true },
+              faceHeldObject: true,
+            } : {
+              type: "telekinesis",
+              id: newId,
+              name: "Telekinesis & Object Control",
+              enabled: true,
+              objectControlTrigger: { code: "AltLeft", requireCleanPress: false },
+              grabTrigger: { code: null, requireCleanPress: true },
+              releaseTrigger: { code: null, requireCleanPress: true },
+              flingTrigger: { code: null, requireCleanPress: true },
+              faceHeldObject: true,
+            });
+          } else if (type === "grapple") {
+            blocks.push({
+              type: "grapple",
+              id: newId,
+              name: "Grapple & Shove",
+              enabled: true,
+              grabTrigger: { code: null, requireCleanPress: true },
+              releaseTrigger: { code: null, requireCleanPress: true },
+              shoveTrigger: { code: null, requireCleanPress: true },
+            });
           }
           this.renderActiveView();
         });
@@ -3551,6 +3751,45 @@ export class ControlsInspector {
             if (block.jumpTrigger) block.jumpTrigger.requireCleanPress = checked;
             ControlsInspector.syncLiveWorkingSchema();
             this.renderActiveView();
+          }
+        });
+      });
+
+      // Flight require clean ascend toggle
+      root.querySelectorAll(".block-flight-clean-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as FlightControlBlock;
+          if (block) {
+            const checked = (e.target as HTMLInputElement).checked;
+            block.requireCleanAscendPress = checked;
+            if (block.ascendTrigger) block.ascendTrigger.requireCleanPress = checked;
+            ControlsInspector.syncLiveWorkingSchema();
+            this.renderActiveView();
+          }
+        });
+      });
+
+      // Flight auto-face direction toggle
+      root.querySelectorAll(".block-flight-face-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as FlightControlBlock;
+          if (block) {
+            block.faceFlightDirection = (e.target as HTMLInputElement).checked;
+            ControlsInspector.syncLiveWorkingSchema();
+          }
+        });
+      });
+
+      // Telekinesis auto-face floating object toggle
+      root.querySelectorAll(".block-tk-face-toggle").forEach((chk) => {
+        chk.addEventListener("change", (e) => {
+          const bId = (chk as HTMLElement).dataset.blockId;
+          const block = blocks.find((b) => b.id === bId) as TelekinesisControlBlock;
+          if (block) {
+            block.faceHeldObject = (e.target as HTMLInputElement).checked;
+            ControlsInspector.syncLiveWorkingSchema();
           }
         });
       });

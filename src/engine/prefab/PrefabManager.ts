@@ -21,6 +21,7 @@ import {
 } from "../../config/WorldConfig.js";
 import {
   DefaultControlSchema,
+  SkyKestrelControlSchema,
   SpeedBallControlSchema,
   HunterControlSchema,
   GamepadHybridSchema,
@@ -449,27 +450,7 @@ export class PrefabManager {
     flyerArchetype.telekinesisModule.registerProperties(flyerArchetype.properties);
     flyerArchetype.prefabId = "prefab_flyer_character";
 
-    const flyerSchema = JSON.parse(JSON.stringify(DefaultControlSchema));
-    if (flyerSchema.keyboardMouse?.blocks) {
-      for (const b of flyerSchema.keyboardMouse.blocks) {
-        if (b.type === "jump") {
-          b.descendTrigger = { code: "KeyC", requireCleanPress: false };
-          b.flightToggleTrigger = { code: "KeyG", requireCleanPress: true };
-          b.requireCleanPress = false;
-        } else if (b.type === "facing") {
-          b.mode = "fromMovement";
-        }
-      }
-    }
-    if (flyerSchema.gamepad?.blocks) {
-      for (const b of flyerSchema.gamepad.blocks) {
-        if (b.type === "jump") {
-          b.descendTrigger = { code: "GamepadB", requireCleanPress: false };
-          b.flightToggleTrigger = { code: "GamepadDpadDown", requireCleanPress: true };
-          b.requireCleanPress = false;
-        }
-      }
-    }
+    const flyerSchema = JSON.parse(JSON.stringify(SkyKestrelControlSchema));
     flyerArchetype.controlSchema = flyerSchema;
 
     const flyerPrefab = new Prefab({

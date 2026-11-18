@@ -5,6 +5,9 @@ import type {
   WalkSprintControlBlock,
   RollMovementControlBlock,
   JumpControlBlock,
+  FlightControlBlock,
+  TelekinesisControlBlock,
+  GrappleControlBlock,
   MeleeControlBlock,
   VomitControlBlock,
   LaserControlBlock,
@@ -245,14 +248,24 @@ export class ModularBlockEvaluator {
     let isGunAimFiring = false;
     let activeRawDragThisFrame = false;
     let isSteerCursorActive = false;
+    char.isFlightDescendHeld = false;
 
-    // Telekinetic Object Control Mode (holding Alt while floating an object):
+    const tkControlBlock = blocks.find((blk) => blk.enabled && blk.type === "telekinesis") as TelekinesisControlBlock | undefined;
+    const flightControlBlock = blocks.find((blk) => blk.enabled && blk.type === "flight") as FlightControlBlock | undefined;
+
+    // Telekinetic Object Control Mode (configurable on TelekinesisControlBlock, defaults to AltLeft):
     // Freezes the floating object at its current world coordinates and switches the mouse
-    // into a virtual reticle anchored from that object, releasing back to the object on Alt up.
-    const isAltDownNow = !execCtx.gamepadStates && (tokens.isDown("AltLeft") || tokens.isDown("AltRight") || Boolean(input.isAltHeld));
+    // into a virtual reticle anchored from that object, releasing back to the object on trigger release.
+    const isTkObjectControlTriggerDown = tkControlBlock
+      ? (tkControlBlock.objectControlTrigger?.code
+          ? (isSlotActive(tkControlBlock.objectControlTrigger, "hold", false, tkControlBlock.id, "tk.objectControl") ||
+             (!execCtx.gamepadStates && tkControlBlock.objectControlTrigger.code === "AltLeft" && (tokens.isDown("AltRight") || Boolean(input.isAltHeld))))
+          : false)
+      : (!execCtx.gamepadStates && (tokens.isDown("AltLeft") || tokens.isDown("AltRight") || Boolean(input.isAltHeld)));
+
     const isTkObjectControlNow = Boolean(
       char.telekineticTarget &&
-      isAltDownNow &&
+      isTkObjectControlTriggerDown &&
       !char.heldObject &&
       !char.grappledTarget
     );
@@ -261,7 +274,9 @@ export class ModularBlockEvaluator {
         const freezePos = { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y };
         char.telekineticFrozenPos = freezePos;
         char.isTelekineticObjectControl = true;
-        input.beginTelekineticObjectControl(freezePos);
+        if (!execCtx.gamepadStates) {
+          input.beginTelekineticObjectControl(freezePos);
+        }
         // Prevent leftover throw state on entry until player initiates charge/throw
         char.isChargingThrow = false;
         char.isHoldingThrowRelease = false;
@@ -277,7 +292,9 @@ export class ModularBlockEvaluator {
       const restorePos = char.telekineticTarget
         ? { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y }
         : char.telekineticFrozenPos;
-      input.endTelekineticObjectControl(restorePos);
+      if (!execCtx.gamepadStates) {
+        input.endTelekineticObjectControl(restorePos);
+      }
       char.isTelekineticObjectControl = false;
       char.telekineticFrozenPos = null;
       char.isChargingThrow = false;
@@ -809,6 +826,109 @@ export class ModularBlockEvaluator {
           break;
         }
 
+        case "flight": {
+          const b = block as FlightControlBlock;
+          if (!char.flightModule) break;
+          if (b.flightToggleTrigger?.code) {
+            if (isSlotActive(b.flightToggleTrigger, "down", true, b.id, "flight.toggle")) {
+              char.flightModule.enabled = !char.flightModule.enabled;
+              claimSlot(b.flightToggleTrigger, b.id, "flight.toggle", true);
+            }
+          }
+          if (b.descendTrigger?.code && isSlotActive(b.descendTrigger, "hold", false, b.id, "flight.descend")) {
+            char.isFlightDescendHeld = true;
+            claimSlot(b.descendTrigger, b.id, "flight.descend", false);
+          }
+          const ascendSlot = b.ascendTrigger;
+          if (ascendSlot?.code && char.hasFlight) {
+            const skipForConflict =
+              ((isVomitAiming || (char as any).isChargingVomit || isVomitRequested) &&
+                (ascendSlot.code === vomitBlock?.chargeTrigger?.code ||
+                 ascendSlot.code === vomitBlock?.aimTrigger?.code ||
+                 ascendSlot.code === vomitBlock?.fireTrigger?.code)) ||
+              ((isLaserAiming || isLaserFiring) &&
+                (ascendSlot.code === laserBlock?.aimTrigger?.code ||
+                 ascendSlot.code === laserBlock?.fireTrigger?.code));
+            if (!skipForConflict) {
+              if (b.requireCleanAscendPress || ascendSlot.requireCleanPress) {
+                if (isSlotActive(ascendSlot, "down", true, b.id, "flight.ascend")) {
+                  isJumpHeld = true;
+                  claimSlot(ascendSlot, b.id, "flight.ascend", true);
+                }
+              } else if (isSlotActive(ascendSlot, "hold", false, b.id, "flight.ascend")) {
+                isJumpHeld = true;
+                claimSlot(ascendSlot, b.id, "flight.ascend", false);
+              }
+            }
+          }
+          break;
+        }
+
+        case "telekinesis": {
+          const b = block as TelekinesisControlBlock;
+          if (!char.telekinesisModule || !char.telekinesisModule.enabled) break;
+          if (b.grabTrigger?.code && isSlotActive(b.grabTrigger, "down", true, b.id, "tk.grab")) {
+            if (!execCtx.isHoldingItem && !char.grappledTarget && !char.telekineticTarget && grabTargetObjectId) {
+              isGrabHeld = true;
+              (char as any)._pickupPressCode = b.grabTrigger.code;
+              (char as any)._throwRequiresFreshPress = true;
+              (char as any)._fireRequiresFreshPress = true;
+              claimSlot(b.grabTrigger, b.id, "tk.grab", true);
+            }
+          }
+          if (b.releaseTrigger?.code && char.telekineticTarget && isSlotActive(b.releaseTrigger, "down", true, b.id, "tk.release")) {
+            TelekinesisCapability.releaseTarget(char);
+            (char as any)._pickupPressCode = null;
+            (char as any)._throwRequiresFreshPress = false;
+            (char as any)._fireRequiresFreshPress = false;
+            (char as any)._isConsumeToggledOn = false;
+            (char as any)._toggledConsumeItemId = null;
+            claimSlot(b.releaseTrigger, b.id, "tk.release", true);
+          }
+          if (b.flingTrigger?.code && char.telekineticTarget && !char.heldObject && !char.grappledTarget) {
+            if (isSlotActive(b.flingTrigger, "down", true, b.id, "tk.fling")) {
+              isThrow = true;
+              claimSlot(b.flingTrigger, b.id, "tk.fling", true);
+            }
+          }
+          break;
+        }
+
+        case "grapple": {
+          const b = block as GrappleControlBlock;
+          if (!char.grappleModule || !char.grappleModule.enabled) break;
+          if (b.grabTrigger?.code && isSlotActive(b.grabTrigger, "down", true, b.id, "grapple.grab")) {
+            if (!execCtx.isHoldingItem && !char.grappledTarget && !char.telekineticTarget && grabTargetObjectId) {
+              isGrabHeld = true;
+              (char as any)._pickupPressCode = b.grabTrigger.code;
+              (char as any)._throwRequiresFreshPress = true;
+              claimSlot(b.grabTrigger, b.id, "grapple.grab", true);
+            }
+          }
+          if (b.releaseTrigger?.code && char.grappledTarget && isSlotActive(b.releaseTrigger, "down", true, b.id, "grapple.release")) {
+            GrappleCapability.releaseGrapple(char);
+            (char as any)._pickupPressCode = null;
+            (char as any)._throwRequiresFreshPress = false;
+            (char as any)._isConsumeToggledOn = false;
+            (char as any)._toggledConsumeItemId = null;
+            claimSlot(b.releaseTrigger, b.id, "grapple.release", true);
+          }
+          if (b.shoveTrigger?.code && char.grappledTarget && !char.heldObject && !char.isTelekineticObjectControl) {
+            if (isSlotActive(b.shoveTrigger, "down", true, b.id, "grapple.shove")) {
+              const effAim = getEffectiveAimPos();
+              const target = char.grappledTarget;
+              const tDx = effAim.x - target.position.x;
+              const tDy = effAim.y - target.position.y;
+              const angle = Math.hypot(tDx, tDy) > 0.05
+                ? Math.atan2(tDy, tDx)
+                : Math.atan2(effAim.y - char.position.y, effAim.x - char.position.x);
+              GrappleCapability.executeShove(char, angle, 1.0);
+              claimSlot(b.shoveTrigger, b.id, "grapple.shove", true);
+            }
+          }
+          break;
+        }
+
         case "jump": {
           const b = block as JumpControlBlock;
           const slot = b.jumpTrigger || b.jump;
@@ -819,13 +939,9 @@ export class ModularBlockEvaluator {
             }
           }
           const descendSlot = b.descendTrigger;
-          if (descendSlot && descendSlot.code) {
-            char.isFlightDescendHeld = isSlotActive(descendSlot, "hold", false, b.id, "flight.descend");
-            if (char.isFlightDescendHeld) {
-              claimSlot(descendSlot, b.id, "flight.descend", false);
-            }
-          } else {
-            char.isFlightDescendHeld = false;
+          if (descendSlot && descendSlot.code && isSlotActive(descendSlot, "hold", false, b.id, "flight.descend")) {
+            char.isFlightDescendHeld = true;
+            claimSlot(descendSlot, b.id, "flight.descend", false);
           }
           if (isVomitAiming || (char as any).isChargingVomit || isVomitRequested) {
             const chargeSlotCode = vomitBlock?.chargeTrigger?.code;
@@ -2010,8 +2126,8 @@ export class ModularBlockEvaluator {
 
         case "facing": {
           const b = block as FacingControlBlock;
-          // If floating an object with telekinesis, face the floating object directly
-          if (char.telekineticTarget) {
+          // If floating an object with telekinesis, face the floating object directly (unless disabled on Telekinesis block)
+          if (char.telekineticTarget && (tkControlBlock?.faceHeldObject ?? true)) {
             const tkDx = char.telekineticTarget.position.x - char.position.x;
             const tkDy = char.telekineticTarget.position.y - char.position.y;
             if (Math.hypot(tkDx, tkDy) > 0.05) {
@@ -2024,7 +2140,7 @@ export class ModularBlockEvaluator {
             break;
           }
           // Flying characters face the direction they are flying (input first, then air velocity)
-          if (char.hasFlight) {
+          if (char.hasFlight && (flightControlBlock?.faceFlightDirection ?? true)) {
             if (Math.hypot(moveX, moveY) > 0.05) {
               char.facingAngle = Math.atan2(moveY, moveX);
             } else if (!char.isRestingOnSurface && Math.hypot(char.velocity.x, char.velocity.y) > 0.15) {

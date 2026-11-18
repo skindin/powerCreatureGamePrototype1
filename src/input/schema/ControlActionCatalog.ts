@@ -3,6 +3,7 @@ import type { Vector2D } from "../../engine/GameObject.js";
 import type { ControlExecutionContext } from "./ControlSchemaTypes.js";
 import { GrabIntentArbiter } from "../../character/capabilities/GrabIntentArbiter.js";
 import { GrappleCapability } from "../../character/capabilities/GrappleCapability.js";
+import { TelekinesisCapability } from "../../character/capabilities/TelekinesisCapability.js";
 
 export interface ActionDefinition {
   id: string; // e.g. "releaseThrow"
@@ -72,6 +73,89 @@ export class ControlActionCatalog {
           execute: (ctx) => {
             if (ctx.character.jumpModule) {
               ctx.character.jump();
+            }
+          },
+        },
+      ],
+    },
+
+    // 2b. Flight & Glide
+    {
+      id: "flight",
+      label: "Flight & Glide",
+      icon: "🪽",
+      requiredModule: "flightModule",
+      isAttached: (char: Character) => Boolean(char.flightModule && char.flightModule.enabled),
+      actions: [
+        {
+          id: "ascendFlight",
+          label: "Ascend / Lift Up",
+          description: "Gains flight altitude while held",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            if (ctx.character.flightModule && ctx.character.flightModule.enabled) {
+              ctx.character.isFlightAscendHeld = true;
+            }
+          },
+          stop: (ctx) => {
+            ctx.character.isFlightAscendHeld = false;
+          },
+        },
+        {
+          id: "descendFlight",
+          label: "Descend / Dive",
+          description: "Controlled vertical descent / glide downward while held",
+          recommendedMode: "hold",
+          execute: (ctx) => {
+            if (ctx.character.flightModule) {
+              ctx.character.isFlightDescendHeld = true;
+            }
+          },
+          stop: (ctx) => {
+            ctx.character.isFlightDescendHeld = false;
+          },
+        },
+        {
+          id: "toggleFlight",
+          label: "Toggle Powered Flight",
+          description: "Switches FlightModule between active powered flight and free-fall",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            if (ctx.character.flightModule) {
+              ctx.character.flightModule.enabled = !ctx.character.flightModule.enabled;
+            }
+          },
+        },
+      ],
+    },
+
+    // 2c. Telekinesis
+    {
+      id: "telekinesis",
+      label: "Telekinesis & Object Control",
+      icon: "🔮",
+      requiredModule: "telekinesisModule",
+      isAttached: (char: Character) => Boolean(char.telekinesisModule && char.telekinesisModule.enabled),
+      actions: [
+        {
+          id: "grabTelekinesis",
+          label: "Remote Telekinetic Grab",
+          description: "Remotely grabs target object within telekinesis reach",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            if (!ctx.character.telekineticTarget && ctx.targetInReach && ctx.character.telekinesisModule?.enabled) {
+              TelekinesisCapability.grabTarget(ctx.character, ctx.targetInReach);
+            }
+          },
+        },
+        {
+          id: "releaseTelekinesis",
+          label: "Release Floating Object",
+          description: "Releases the currently telekinetically held object",
+          recommendedMode: "press",
+          execute: (ctx) => {
+            if (ctx.character.telekineticTarget) {
+              TelekinesisCapability.releaseTarget(ctx.character);
             }
           },
         },

@@ -487,11 +487,48 @@ export interface LocomotionStanceControlBlock {
   availableModes?: ("walk" | "roll" | "fly")[]; // default ["walk", "roll"]
 }
 
+export interface FlightControlBlock {
+  type: "flight";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  ascendTrigger?: BlockInputSlot;       // Hold to ascend / gain altitude (e.g. Space / GamepadA)
+  descendTrigger?: BlockInputSlot;      // Hold to descend / dive while flying (e.g. KeyC / GamepadB)
+  flightToggleTrigger?: BlockInputSlot; // Press to toggle FlightModule on/off (powered flight vs passive free-fall/glide, e.g. KeyG / GamepadDpadDown)
+  requireCleanAscendPress?: boolean;    // When false (default), holding ascend continuously climbs
+  faceFlightDirection?: boolean;        // Default true: automatically face flight movement direction
+}
+
+export interface TelekinesisControlBlock {
+  type: "telekinesis";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  objectControlTrigger?: BlockInputSlot; // Hold to freeze floating object and enter Object Control Mode with virtual cursor (e.g. AltLeft / GamepadLB)
+  grabTrigger?: BlockInputSlot;          // Optional dedicated remote grab trigger (falls back to Item Interaction pickup when empty)
+  releaseTrigger?: BlockInputSlot;       // Optional dedicated release trigger (falls back to Item Interaction drop when empty)
+  flingTrigger?: BlockInputSlot;         // Optional dedicated quick fling trigger (falls back to Throwing block when empty)
+  faceHeldObject?: boolean;              // Default true: automatically face the floating object while holding it
+}
+
+export interface GrappleControlBlock {
+  type: "grapple";
+  id: string;
+  name?: string;
+  enabled: boolean;
+  grabTrigger?: BlockInputSlot;          // Optional dedicated grapple grab trigger (falls back to Item Interaction pickup when empty)
+  releaseTrigger?: BlockInputSlot;       // Optional dedicated release grapple trigger (falls back to Item Interaction drop when empty)
+  shoveTrigger?: BlockInputSlot;         // Optional dedicated quick shove trigger (falls back to Throwing block when empty)
+}
+
 export type ControlBlock =
   | WalkSprintControlBlock
   | RollMovementControlBlock
   | LocomotionStanceControlBlock
   | JumpControlBlock
+  | FlightControlBlock
+  | TelekinesisControlBlock
+  | GrappleControlBlock
   | MeleeControlBlock
   | VomitControlBlock
   | LaserControlBlock

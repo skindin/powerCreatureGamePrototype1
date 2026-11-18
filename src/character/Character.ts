@@ -259,6 +259,7 @@ export class Character extends GameObject {
   public isVomitAiming: boolean = false;
   public isVomitRequested: boolean = false;
   public flightModule: FlightModule | null = null;
+  public isFlightAscendHeld: boolean = false;
   public isFlightDescendHeld: boolean = false;
   public get hasFlight(): boolean {
     return Boolean(this.flightModule && this.flightModule.enabled);
@@ -900,7 +901,7 @@ export class Character extends GameObject {
     TelekinesisCapability.registerDemand(this, tkAim, dt, arena);
     const canFly = FlightCapability.canFly(this);
     const flightVertIntent = canFly
-      ? FlightCapability.getVerticalIntent(this, isClimbInput, this.isFlightDescendHeld || this.isBraking)
+      ? FlightCapability.getVerticalIntent(this, isClimbInput || this.isFlightAscendHeld, this.isFlightDescendHeld || this.isBraking)
       : 0;
     if (canFly) {
       FlightCapability.registerDemand(this, movementInput, flightVertIntent, dt, arena);
