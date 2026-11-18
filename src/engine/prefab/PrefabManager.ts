@@ -410,6 +410,7 @@ export class PrefabManager {
     flyerArchetype.jumpModule = null;
     flyerArchetype.pickupModule = null;
     flyerArchetype.grappleModule = null;
+    flyerArchetype.laserModule = null;
     if (flyerArchetype.walkingModule) {
       flyerArchetype.walkingModule.walkInAir = false;
       flyerArchetype.walkingModule.walkConsumesEnergy = true;
