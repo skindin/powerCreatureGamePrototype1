@@ -445,6 +445,88 @@ export class ModularBlockEvaluator {
       }
     }
 
+    // Telekinetic Elevation Movement Mode (configurable on TelekinesisControlBlock, defaults to MouseRight / GamepadLT):
+    // Locks horizontal X/Y movement of the floating object at its current oscillation center and lets vertical drag
+    // (or gamepad right stick Y) freely raise or lower the target's Z elevation without wall auto-climbing.
+    const tkElevCtrlSlot = tkControlBlock
+      ? tkControlBlock.elevationControlTrigger
+      : (!execCtx.gamepadStates ? { code: "MouseRight", requireCleanPress: false } : null);
+    const tkElevCtrlCode = tkElevCtrlSlot?.code ?? null;
+    const isTkElevationControlNow =
+      !isTkObjectControlNow &&
+      !isLaserAiming &&
+      !isLaserFiring &&
+      !isVomitAiming &&
+      Boolean(
+        char.telekineticTarget &&
+        !char.heldObject &&
+        !char.grappledTarget &&
+        tkElevCtrlCode &&
+        (tkControlBlock
+          ? isSlotActive(tkElevCtrlSlot, "hold", false, tkControlBlock.id, "tk.elevationControl")
+          : (!execCtx.gamepadStates && tokens.isDown("MouseRight")))
+      );
+    const wasTkElevationControlActive = char.isTelekineticElevationControl;
+
+    if (isTkElevationControlNow && char.telekineticTarget) {
+      const tkMod = char.telekinesisModule;
+      if (!char.isTelekineticElevationControl) {
+        const freezeCenter = {
+          x: char.telekineticTarget.position.x - (tkMod?.appliedWaveOffsetX ?? 0),
+          y: char.telekineticTarget.position.y - (tkMod?.appliedWaveOffsetY ?? 0),
+        };
+        char.telekineticFrozenPos = freezeCenter;
+        char.isTelekineticElevationControl = true;
+        if (tkMod && (tkMod.targetHoldZ === null || tkMod.targetHoldZ === undefined)) {
+          tkMod.targetHoldZ = Math.max(0.12, char.telekineticTarget.position.z - (tkMod.appliedWaveOffsetZ ?? 0));
+        }
+        if (!execCtx.gamepadStates) {
+          input.recordedMousePos = { x: freezeCenter.x, y: freezeCenter.y };
+          input.mousePos.x = freezeCenter.x;
+          input.mousePos.y = freezeCenter.y;
+          input.actualMousePos.x = freezeCenter.x;
+          input.actualMousePos.y = freezeCenter.y;
+          targetAimPos.x = freezeCenter.x;
+          targetAimPos.y = freezeCenter.y;
+        }
+      }
+      if (tkElevCtrlSlot && tkControlBlock) {
+        claimSlot(tkElevCtrlSlot, tkControlBlock.id, "tk.elevationControl", false);
+      }
+      if (!execCtx.gamepadStates) {
+        activeRawDragThisFrame = true;
+        ModularBlockEvaluator.activeRawDragBlockId = tkControlBlock?.id || "block-kestrel-tk";
+        input.beginRawDrag((_dx, dy) => {
+          const mod = char.telekinesisModule;
+          const tkObj = char.telekineticTarget;
+          if (!mod || !tkObj) return;
+          const ppu = Math.max(10, input.pixelsPerUnit || 48);
+          const hoverScale = Math.max(0.25, execCtx.arena?.visualAltitudeScale ?? 0.5);
+          const dzPerPx = 1.0 / (ppu * hoverScale);
+          const curMeanZ = mod.targetHoldZ ?? Math.max(0.12, tkObj.position.z - mod.appliedWaveOffsetZ);
+          const checkX = char.telekineticFrozenPos?.x ?? (tkObj.position.x - mod.appliedWaveOffsetX);
+          const checkY = char.telekineticFrozenPos?.y ?? (tkObj.position.y - mod.appliedWaveOffsetY);
+          const wallAtTarget = execCtx.arena?.getWallAt(checkX, checkY);
+          const curObjMeanZ = Math.max(0, tkObj.position.z - mod.appliedWaveOffsetZ);
+          const wallTopFloor = (wallAtTarget && curObjMeanZ >= wallAtTarget.wallHeight - 0.05)
+            ? wallAtTarget.wallHeight
+            : 0;
+          const minZ = Math.max(0.12, (tkObj.supportingSurfaceHeight ?? 0) + 0.12, wallTopFloor + 0.12);
+          const maxZ = char.position.z + Math.max(1.5, mod.getTelekinesisReach(char.properties) * 0.92);
+          mod.targetHoldZ = Math.max(minZ, Math.min(maxZ, curMeanZ - dy * dzPerPx));
+        });
+      } else if (tkMod) {
+        const gpRightStick = (execCtx.gamepadStates as any)?.rightStick ?? execCtx.getGamepadAxis(execCtx.gamepadStates.slotIndex, "RightStick");
+        const ry = gpRightStick?.y ?? 0;
+        if (Math.abs(ry) > 0.12) {
+          const curMeanZ = tkMod.targetHoldZ ?? Math.max(0.12, char.telekineticTarget.position.z - tkMod.appliedWaveOffsetZ);
+          const minZ = Math.max(0.12, (char.telekineticTarget.supportingSurfaceHeight ?? 0) + 0.12);
+          const maxZ = char.position.z + Math.max(1.5, tkMod.getTelekinesisReach(char.properties) * 0.92);
+          tkMod.targetHoldZ = Math.max(minZ, Math.min(maxZ, curMeanZ - ry * 7.5 * execCtx.dt));
+        }
+      }
+    }
+
     // Helper to get effective aim position for abilities:
     // In Raw Direction Mode on Gamepad: abilities aim along the character's raw facing direction.
     // In Cursor Mode (or Mouse/Keyboard): abilities aim at targetAimPos (the cursor).
@@ -685,7 +767,12 @@ export class ModularBlockEvaluator {
               (b.forwardTrigger.code === laserBlock?.aimTrigger?.code ||
                 b.forwardTrigger.code === laserBlock?.fireTrigger?.code)
             );
-            const fwdActive = !isFwdMatchingVomit && !isFwdMatchingLaser && isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forward");
+            const isFwdMatchingTkElev = Boolean(
+              isTkElevationControlNow &&
+              b.forwardTrigger?.code &&
+              b.forwardTrigger.code === tkElevCtrlCode
+            );
+            const fwdActive = !isFwdMatchingVomit && !isFwdMatchingLaser && !isFwdMatchingTkElev && isSlotActive(b.forwardTrigger, "hold", false, b.id, "locomotion.forward");
             if (fwdActive && arrive.driveFactor > 0.001) {
               moveX += Math.cos(char.facingAngle) * arrive.driveFactor;
               moveY += Math.sin(char.facingAngle) * arrive.driveFactor;
@@ -2183,6 +2270,7 @@ export class ModularBlockEvaluator {
 
           const isGunOverheated = Boolean(activeGunObj?.gunModule?.isOverheated);
           const isFireSlotActive = Boolean(
+            !isTkElevationControlNow &&
             !isThrowOverrideActive &&
             !isFireBlockedByCleaning &&
             !isGunOverheated &&
@@ -2515,7 +2603,9 @@ export class ModularBlockEvaluator {
         targetAimPos.y = restorePos.y;
       }
       char.isTelekineticObjectControl = false;
-      char.telekineticFrozenPos = null;
+      if (!isTkElevationControlNow) {
+        char.telekineticFrozenPos = null;
+      }
       char.isChargingThrow = false;
       char.isHoldingThrowRelease = false;
       char.isAimingWallClear = false;
@@ -2524,6 +2614,32 @@ export class ModularBlockEvaluator {
       char.throwChargeProgress = 0;
       char.activeTrajectory = null;
       char.isThrowCancelZone = false;
+    }
+
+    // Complete Telekinetic Elevation Movement Mode exit
+    if (!isTkElevationControlNow && (char.isTelekineticElevationControl || wasTkElevationControlActive)) {
+      const tkMod = char.telekinesisModule;
+      const restorePos = char.telekineticFrozenPos
+        ? { x: char.telekineticFrozenPos.x, y: char.telekineticFrozenPos.y }
+        : (char.telekineticTarget
+            ? {
+                x: char.telekineticTarget.position.x - (tkMod?.appliedWaveOffsetX ?? 0),
+                y: char.telekineticTarget.position.y - (tkMod?.appliedWaveOffsetY ?? 0),
+              }
+            : null);
+      char.isTelekineticElevationControl = false;
+      if (!isTkObjectControlNow && !char.isTelekineticObjectControl) {
+        char.telekineticFrozenPos = null;
+        if (restorePos && !execCtx.gamepadStates) {
+          input.recordedMousePos = { x: restorePos.x, y: restorePos.y };
+          input.mousePos.x = restorePos.x;
+          input.mousePos.y = restorePos.y;
+          input.actualMousePos.x = restorePos.x;
+          input.actualMousePos.y = restorePos.y;
+          targetAimPos.x = restorePos.x;
+          targetAimPos.y = restorePos.y;
+        }
+      }
     }
 
     const finalAimPos = getEffectiveAimPos();

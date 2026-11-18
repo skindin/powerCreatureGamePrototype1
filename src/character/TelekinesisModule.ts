@@ -65,6 +65,9 @@ export class TelekinesisModule {
   /** Internal harmonic phase accumulator for stability wobble */
   public oscillationPhase: number = 0;
 
+  /** Target mean hover elevation (world Z) maintained during movement unless adjusted via Elevation Control Mode */
+  public targetHoldZ: number | null = null;
+
   /** Current zero-cost stability wave position & velocity offsets (excluded from power demand calculation) */
   public appliedWaveOffsetX: number = 0;
   public appliedWaveOffsetY: number = 0;

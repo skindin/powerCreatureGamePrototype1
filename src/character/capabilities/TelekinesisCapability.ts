@@ -97,6 +97,10 @@ export class TelekinesisCapability {
     mod.appliedWaveVx = 0;
     mod.appliedWaveVy = 0;
     mod.appliedWaveVz = 0;
+    mod.targetHoldZ = Math.max(
+      (target.supportingSurfaceHeight ?? 0) + mod.getHoldHoverHeight(char.properties),
+      target.position.z
+    );
 
     char.telekineticTarget = target;
     (target as any).telekinesedBy = char;
@@ -109,6 +113,7 @@ export class TelekinesisCapability {
 
     if (char.telekinesisModule) {
       const mod = char.telekinesisModule;
+      mod.targetHoldZ = null;
       mod.appliedWaveOffsetX = 0;
       mod.appliedWaveOffsetY = 0;
       mod.appliedWaveOffsetZ = 0;
@@ -119,6 +124,7 @@ export class TelekinesisCapability {
 
     char.telekineticTarget = null;
     char.isTelekineticObjectControl = false;
+    char.isTelekineticElevationControl = false;
     char.telekineticFrozenPos = null;
     char.activeTrajectory = null;
     char.isThrowCancelZone = false;
@@ -582,13 +588,22 @@ export class TelekinesisCapability {
     const meanPosZ = Math.max(0, target.position.z - mod.appliedWaveOffsetZ);
 
     const wallAtTarget = arena.getWallAt(meanPosX, meanPosY);
-    const wallAtGoal = arena.getWallAt(goalX, goalY);
     const surfaceZ = Math.max(
       target.supportingSurfaceHeight ?? 0,
-      wallAtTarget ? wallAtTarget.wallHeight : 0,
-      wallAtGoal ? wallAtGoal.wallHeight : 0
+      wallAtTarget ? wallAtTarget.wallHeight : 0
     );
-    const goalZ = Math.max(surfaceZ + 0.15, surfaceZ + hoverOffset);
+    if (mod.targetHoldZ === null || mod.targetHoldZ === undefined) {
+      mod.targetHoldZ = Math.max(
+        (target.supportingSurfaceHeight ?? 0) + hoverOffset,
+        meanPosZ
+      );
+    }
+    const wallTopDirectlyUnderTarget = (wallAtTarget && meanPosZ >= wallAtTarget.wallHeight - 0.05)
+      ? wallAtTarget.wallHeight
+      : 0;
+    const minHoldZ = Math.max(0.12, (target.supportingSurfaceHeight ?? 0) + 0.12, wallTopDirectlyUnderTarget + 0.12);
+    const maxHoldZ = char.position.z + Math.max(1.5, reach * 0.92);
+    const goalZ = Math.max(minHoldZ, Math.min(maxHoldZ, mod.targetHoldZ));
 
     // Desired velocity toward goal in the wave-stripped mean frame (proportional spring clamped to maxMoveSpeed)
     const errX = goalX - meanPosX;

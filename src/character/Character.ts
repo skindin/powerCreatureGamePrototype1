@@ -165,6 +165,7 @@ export class Character extends GameObject {
   public telekinesedBy: Character | null = null;
   public telekineticAimPos: Vector2D | null = null;
   public isTelekineticObjectControl: boolean = false;
+  public isTelekineticElevationControl: boolean = false;
   public telekineticFrozenPos: Vector2D | null = null;
   public throwModule: ThrowModule | null;
   public jumpModule: JumpModule | null;
@@ -729,6 +730,7 @@ export class Character extends GameObject {
       TelekinesisCapability.releaseTarget(this);
     }
     this.isTelekineticObjectControl = false;
+    this.isTelekineticElevationControl = false;
     this.telekineticFrozenPos = null;
     if (this.telekinesedBy) {
       TelekinesisCapability.releaseTarget(this.telekinesedBy);

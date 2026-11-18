@@ -506,7 +506,8 @@ export interface TelekinesisControlBlock {
   id: string;
   name?: string;
   enabled: boolean;
-  objectControlTrigger?: BlockInputSlot; // Hold to freeze floating object and enter Object Control Mode with virtual cursor (e.g. AltLeft / GamepadLB)
+  objectControlTrigger?: BlockInputSlot; // Hold to freeze floating object and enter Object Control Mode with virtual cursor (e.g. MouseLeft / GamepadRT)
+  elevationControlTrigger?: BlockInputSlot; // Hold to lock horizontal movement of floating object and adjust elevation with vertical drag (e.g. MouseRight / GamepadLT)
   grabTrigger?: BlockInputSlot;          // Optional dedicated remote grab trigger (falls back to Item Interaction pickup when empty)
   releaseTrigger?: BlockInputSlot;       // Optional dedicated release trigger (falls back to Item Interaction drop when empty)
   flingTrigger?: BlockInputSlot;         // Optional dedicated quick fling trigger (falls back to Throwing block when empty)

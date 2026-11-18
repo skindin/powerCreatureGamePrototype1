@@ -1399,11 +1399,11 @@ export class PlayerManager {
         char.facingAngle = pkt.facingAngle;
       }
 
-      // Keep telekinetic target frozen at anchor point during Alt Object Control Mode or remote gun firing;
+      // Keep telekinetic target frozen horizontally at anchor point during Object Control Mode, Elevation Control Mode, or remote gun firing;
       // otherwise track aimTarget normally.
       if (char.telekineticTarget) {
         const isFiringTkGun = Boolean((char as any).isFiringWeapon && char.telekineticTarget.gunModule?.enabled);
-        if (char.isTelekineticObjectControl && char.telekineticFrozenPos) {
+        if ((char.isTelekineticObjectControl || char.isTelekineticElevationControl) && char.telekineticFrozenPos) {
           char.telekineticAimPos = { x: char.telekineticFrozenPos.x, y: char.telekineticFrozenPos.y };
         } else if (isFiringTkGun) {
           if (!char.telekineticAimPos) {
