@@ -215,11 +215,13 @@ export class InputManager {
   private telekineticVirtualMouseActive: boolean = false;
   private telekineticLastRawClientX: number | null = null;
   private telekineticLastRawClientY: number | null = null;
+  private telekineticSkipNextLockJump: boolean = false;
 
   public beginTelekineticObjectControl(anchorWorldPos: { x: number; y: number }): void {
     this.isTelekineticObjectControl = true;
     if (!this.telekineticVirtualMouseActive) {
       this.telekineticVirtualMouseActive = true;
+      this.telekineticSkipNextLockJump = false;
       this.isAwaitingUnlock = false;
       if (this.unlockTimeoutId) {
         clearTimeout(this.unlockTimeoutId);
@@ -397,14 +399,22 @@ export class InputManager {
     );
   }
 
-  public syncModifierStates(e: MouseEvent | KeyboardEvent | WheelEvent): void {
+  public syncModifierStates(e: MouseEvent | KeyboardEvent | WheelEvent, fromMouseMove: boolean = false): void {
     if (typeof (e as any).getModifierState !== "function") return;
-    const isAltActive = (e as any).getModifierState("Alt");
-    if (!isAltActive) {
-      if (this.isAltHeld || this.keysPressed.has("AltLeft") || this.keysPressed.has("AltRight")) {
-        this.isAltHeld = false;
-        this.keysPressed.delete("AltLeft");
-        this.keysPressed.delete("AltRight");
+    const isVirtualOrLockedMouseMove = fromMouseMove && (
+      this.telekineticVirtualMouseActive ||
+      Boolean(this.lockedAimPos) ||
+      this.isAwaitingUnlock ||
+      (typeof document !== "undefined" && Boolean(document.pointerLockElement))
+    );
+    if (!isVirtualOrLockedMouseMove) {
+      const isAltActive = (e as any).getModifierState("Alt");
+      if (!isAltActive) {
+        if (this.isAltHeld || this.keysPressed.has("AltLeft") || this.keysPressed.has("AltRight")) {
+          this.isAltHeld = false;
+          this.keysPressed.delete("AltLeft");
+          this.keysPressed.delete("AltRight");
+        }
       }
     }
     const isShiftActive = (e as any).getModifierState("Shift");
@@ -767,12 +777,20 @@ export class InputManager {
     });
 
     window.addEventListener("mousemove", (e) => {
-      this.syncModifierStates(e);
+      this.syncModifierStates(e, true);
       if (this.telekineticVirtualMouseActive) {
         if (this.isKeyboardSuspended) {
           return;
         }
         this.lastMouseMoveTime = performance.now();
+        if (this.telekineticSkipNextLockJump) {
+          this.telekineticSkipNextLockJump = false;
+          this.telekineticLastRawClientX = e.clientX;
+          this.telekineticLastRawClientY = e.clientY;
+          this.lastClientX = e.clientX;
+          this.lastClientY = e.clientY;
+          return;
+        }
         const isLockedNow = Boolean(typeof document !== "undefined" && document.pointerLockElement === this.canvas);
         const movementDx = (isLockedNow || (e.movementX !== undefined && e.movementX !== 0))
           ? e.movementX
@@ -786,9 +804,12 @@ export class InputManager {
         this.lastClientX = e.clientX;
         this.lastClientY = e.clientY;
 
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = rect.width > 0 ? this.canvas.width / rect.width : 1;
+        const scaleY = rect.height > 0 ? this.canvas.height / rect.height : 1;
         const ppu = Math.max(1, this.pixelsPerUnit);
-        const nextX = Math.max(0.05, Math.min(this.arena.width - 0.05, this.actualMousePos.x + movementDx / ppu));
-        const nextY = Math.max(0.05, Math.min(this.arena.height - 0.05, this.actualMousePos.y + movementDy / ppu));
+        const nextX = Math.max(0.05, Math.min(this.arena.width - 0.05, this.actualMousePos.x + (movementDx * scaleX) / ppu));
+        const nextY = Math.max(0.05, Math.min(this.arena.height - 0.05, this.actualMousePos.y + (movementDy * scaleY) / ppu));
         this.actualMousePos.x = nextX;
         this.actualMousePos.y = nextY;
         this.mousePos.x = nextX;
@@ -884,6 +905,12 @@ export class InputManager {
 
     document.addEventListener("pointerlockchange", () => {
       this.isPointerLocked = (document.pointerLockElement === this.canvas);
+      if (this.telekineticVirtualMouseActive) {
+        // Absorb Chromium's single center-snap mousemove event emitted right on lock/unlock transition
+        this.telekineticSkipNextLockJump = true;
+        this.telekineticLastRawClientX = null;
+        this.telekineticLastRawClientY = null;
+      }
       if (!this.isPointerLocked && this.isAwaitingUnlock) {
         // Defer completion to next animation frame so the browser finishes restoring hardware cursor coordinates first
         requestAnimationFrame(() => {
@@ -1645,7 +1672,9 @@ export class InputManager {
       } else {
         this.hoverEntity = null;
         this.draggedEntity = null;
-        this.canvas.style.cursor = "crosshair";
+        if (!this.telekineticVirtualMouseActive && !this.lockedAimPos) {
+          this.canvas.style.cursor = "crosshair";
+        }
       }
     };
 

@@ -354,7 +354,7 @@ export class FlightCapability {
       char.verticalVelocity += plan.azCreate * accelScale * safeDt;
     }
 
-    // 3. Apply Long-Period, High-Amplitude Telekinetic Stability Wave on elevation (Z) when airborne or thrusting
+    // 3. Apply Long-Period, High-Amplitude Telekinetic Stability Wave on elevation (Z) strictly while airborne
     const stability = mod.getStability(reg);
     const instability = Math.max(0, Math.min(1, 1.0 - stability));
     const surfaceHeight = Math.max(
@@ -362,15 +362,24 @@ export class FlightCapability {
       char.supportingSurfaceHeight ?? 0,
       char.standingWall ? arena.wallHeight : 0
     );
-    const isAirborne = char.position.z - surfaceHeight > 0.02;
+    const heightAboveSurface = Math.max(0, char.position.z - surfaceHeight);
+    const isAirborne = heightAboveSurface > 0.02;
 
-    if (instability > 0.001 && (isAirborne || accelScale > 0.01)) {
+    // Auto-disable FlightModule when the player intentionally descends all the way down to the ground
+    if (verticalIntent < -0.05 && heightAboveSurface <= 0.04 && char.verticalVelocity <= 0.05) {
+      mod.enabled = false;
+      mod.appliedWaveVx = 0;
+      mod.appliedWaveVy = 0;
+      mod.appliedWaveVz = 0;
+      char.position.z = surfaceHeight;
+      char.verticalVelocity = 0;
+      return;
+    }
+
+    if (instability > 0.001 && isAirborne) {
       mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
       const p = mod.oscillationPhase;
-      let waveVz = (Math.sin(p * 0.79 + 0.45) * 0.70 + Math.cos(p * 1.47) * 0.30) * instability * 3.0;
-      if (!isAirborne && waveVz < 0) {
-        waveVz = 0;
-      }
+      const waveVz = (Math.sin(p * 0.79 + 0.45) * 0.70 + Math.cos(p * 1.47) * 0.30) * instability * 3.0;
 
       char.verticalVelocity += waveVz;
       mod.appliedWaveVx = 0;

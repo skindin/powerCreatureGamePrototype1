@@ -51,7 +51,7 @@ export class ThrowCapability {
 
         return {
           id: "anticipated_throw",
-          abilityId: char.heldObject ? "throw" : "telekinesis",
+          abilityId: "throw",
           name: "🎯",
           color: char.heldObject ? "#f43f5e" : "#a855f7",
           amount: Math.round(metabolicJoules),

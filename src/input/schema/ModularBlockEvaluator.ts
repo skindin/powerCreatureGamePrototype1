@@ -285,6 +285,7 @@ export class ModularBlockEvaluator {
         char.throwChargeStartTime = null;
         char.throwChargeProgress = 0;
         (char as any)._throwRequiresFreshPress = false;
+        (char as any)._fireRequiresFreshPress = false;
         (char as any)._pickupPressCode = null;
       }
       isAimingTrajectory = true;
@@ -840,7 +841,7 @@ export class ModularBlockEvaluator {
             claimSlot(b.descendTrigger, b.id, "flight.descend", false);
           }
           const ascendSlot = b.ascendTrigger;
-          if (ascendSlot?.code && char.hasFlight) {
+          if (ascendSlot?.code) {
             const skipForConflict =
               ((isVomitAiming || (char as any).isChargingVomit || isVomitRequested) &&
                 (ascendSlot.code === vomitBlock?.chargeTrigger?.code ||
@@ -850,14 +851,30 @@ export class ModularBlockEvaluator {
                 (ascendSlot.code === laserBlock?.aimTrigger?.code ||
                  ascendSlot.code === laserBlock?.fireTrigger?.code));
             if (!skipForConflict) {
-              if (b.requireCleanAscendPress || ascendSlot.requireCleanPress) {
-                if (isSlotActive(ascendSlot, "down", true, b.id, "flight.ascend")) {
-                  isJumpHeld = true;
-                  claimSlot(ascendSlot, b.id, "flight.ascend", true);
+              const wantsAscend = (b.requireCleanAscendPress || ascendSlot.requireCleanPress)
+                ? isSlotActive(ascendSlot, "down", true, b.id, "flight.ascend")
+                : isSlotActive(ascendSlot, "hold", false, b.id, "flight.ascend");
+              if (wantsAscend) {
+                if (!char.flightModule.enabled && !char.jumpModule?.enabled && !char.isFlightDescendHeld) {
+                  const pool = char.energyPool;
+                  const canAffordLift = !char.flightModule.consumesEnergy || !pool || !pool.enabled || pool.infiniteEnergy ||
+                    (!pool.isExhausted && pool.getCurrentEnergy(char.properties) > 0.0001 && pool.getCurrentStamina(char.properties) > 0.0001);
+                  if (canAffordLift) {
+                    char.flightModule.enabled = true;
+                  } else if (pool) {
+                    pool.notifyInsufficientEnergy({
+                      abilityId: "flight",
+                      demandedAmount: Math.max(100, char.flightModule.getMaxPower(char.properties)),
+                      isBurst: false,
+                      unit: "W/s",
+                      registry: char.properties,
+                    });
+                  }
                 }
-              } else if (isSlotActive(ascendSlot, "hold", false, b.id, "flight.ascend")) {
-                isJumpHeld = true;
-                claimSlot(ascendSlot, b.id, "flight.ascend", false);
+                if (char.hasFlight) {
+                  isJumpHeld = true;
+                  claimSlot(ascendSlot, b.id, "flight.ascend", Boolean(b.requireCleanAscendPress || ascendSlot.requireCleanPress));
+                }
               }
             }
           }
