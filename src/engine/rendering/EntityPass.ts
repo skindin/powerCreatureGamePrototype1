@@ -122,10 +122,16 @@ export class EntityPass {
     ctx.save();
     ctx.globalAlpha = shouldBeTransparent ? 0.55 : 1.0;
 
-    // Gun Weapon Rendering: simple directional rectangle aligned with floating gun angle or holder facing angle
+    // Gun Weapon Rendering: simple directional rectangle aligned with holder/telekinetic gun angle, resetting to 0 when dropped
     if (obj.gunModule) {
-      const holder = obj.heldBy || allCharacters.find((c) => c.heldObject === obj);
-      const angle = (obj as any).facingAngle ?? (holder as any)?.facingAngle ?? 0;
+      const holder =
+        obj.heldBy ||
+        (obj as any).telekinesedBy ||
+        (obj as any).grappledBy ||
+        allCharacters.find((c) => c.heldObject === obj || c.telekineticTarget === obj || c.grappledTarget === obj);
+      const angle = holder
+        ? ((obj as any).facingAngle ?? (holder as any)?.facingAngle ?? 0)
+        : 0;
       const gunLength = Math.max(16, renderRadius * 2.2);
       const gunWidth = Math.max(8, renderRadius * 0.85);
 

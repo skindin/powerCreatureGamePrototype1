@@ -458,6 +458,9 @@ export class Character extends GameObject {
     this.heldObject = null;
     obj.isHeld = false;
     obj.heldBy = null;
+    if ((obj as any).facingAngle !== undefined) {
+      delete (obj as any).facingAngle;
+    }
     return obj;
   }
 

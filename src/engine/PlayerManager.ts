@@ -162,7 +162,7 @@ export class PlayerManager {
   public isKeyboardAimingTrajectory(): boolean {
     if (this.inputManager.devPanel?.isEditMode) return false;
     const kChar = this.players.get("keyboard")?.character ?? this.primaryCharacter;
-    if (!kChar || !kChar.heldObject) {
+    if (!kChar || (!kChar.heldObject && !(kChar.telekineticTarget && kChar.isTelekineticObjectControl))) {
       return false;
     }
     if (kChar.isLaserAiming || kChar.isEatingFood) return false;
@@ -1951,8 +1951,12 @@ export class PlayerManager {
           entry.aimMovedWhileInRange = true;
         }
 
-        // Keyboard cursor is always visible
-        if (this.inputManager.lockedAimPos || this.inputManager.isAwaitingUnlock || (typeof document !== "undefined" && document.pointerLockElement)) {
+        // Keyboard cursor is always visible (do NOT snap back to recordedMousePos when in Telekinetic Object Control Mode unless beginRawDrag locked aim)
+        if (
+          this.inputManager.lockedAimPos ||
+          this.inputManager.isAwaitingUnlock ||
+          (!this.inputManager.isTelekineticObjectControl && typeof document !== "undefined" && document.pointerLockElement)
+        ) {
           if (this.inputManager.recordedMousePos) {
             this.inputManager.mousePos.x = this.inputManager.recordedMousePos.x;
             this.inputManager.mousePos.y = this.inputManager.recordedMousePos.y;

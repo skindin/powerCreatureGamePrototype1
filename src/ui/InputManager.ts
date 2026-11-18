@@ -220,6 +220,11 @@ export class InputManager {
     this.isTelekineticObjectControl = true;
     if (!this.telekineticVirtualMouseActive) {
       this.telekineticVirtualMouseActive = true;
+      this.isAwaitingUnlock = false;
+      if (this.unlockTimeoutId) {
+        clearTimeout(this.unlockTimeoutId);
+        this.unlockTimeoutId = null;
+      }
       this.telekineticLastRawClientX = this.lastClientX;
       this.telekineticLastRawClientY = this.lastClientY;
       this.recordedMousePos = { x: anchorWorldPos.x, y: anchorWorldPos.y };
@@ -313,6 +318,12 @@ export class InputManager {
    * - Unhides the hardware cursor.
    */
   public endRawDrag(): void {
+    if (this.telekineticVirtualMouseActive) {
+      this.isRawDragging = false;
+      this.rawDragConsumer = null;
+      this.lockedAimPos = null;
+      return;
+    }
     if (!this.isRawDragging && !this.lockedAimPos && !this.isPointerLocked) return;
 
     this.isRawDragging = false;
@@ -883,6 +894,10 @@ export class InputManager {
 
     document.addEventListener("pointerlockerror", () => {
       this.isPointerLocked = false;
+      if (this.telekineticVirtualMouseActive) {
+        // Virtual reticle continues seamlessly via raw clientX/Y deltas even if pointer lock is denied
+        return;
+      }
       completeUnlock();
     });
 
@@ -903,7 +918,9 @@ export class InputManager {
       this.isKeyboardSuspended = false;
       this.updateCanvasCursorClass();
 
-      this.updateMousePos(e);
+      if (!this.telekineticVirtualMouseActive) {
+        this.updateMousePos(e);
+      }
 
       // If we just clicked to refocus/unpause the game view from Escape, don't trigger an accidental throw or grab
       if (wasSuspended) {
@@ -929,14 +946,16 @@ export class InputManager {
       if (e.button !== 0) return; // Only primary left click
       this.isMouseDown = true;
 
-      const isCombat = this.isCombatModifierActive(e);
-      if (isCombat) {
-        if (!this.isRightMouseDown) {
-          // Combat Modifier + Left Click (without RMB held) = Melee Punch (single punch per click)!
-          this.isKeyboardMeleeRequested = true;
+      if (!this.telekineticVirtualMouseActive) {
+        const isCombat = this.isCombatModifierActive(e);
+        if (isCombat) {
+          if (!this.isRightMouseDown) {
+            // Combat Modifier + Left Click (without RMB held) = Melee Punch (single punch per click)!
+            this.isKeyboardMeleeRequested = true;
+          }
+          // When Combat Modifier is held, Left Click is reserved for either Melee Punch or Laser Fire; do not run normal grab/throw
+          return;
         }
-        // When Combat Modifier is held, Left Click is reserved for either Melee Punch or Laser Fire; do not run normal grab/throw
-        return;
       }
 
       if (this.onMouseDown) {
@@ -974,15 +993,19 @@ export class InputManager {
       }
       if (e.button === 2) {
         this.isRightMouseDown = false;
-      this.isMiddleMouseDown = false;
+        this.isMiddleMouseDown = false;
         this.isKeyboardMeleeRequested = false;
-        const wasLocked = Boolean(this.lockedAimPos || this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
         this.aimLockRawDelta = 0;
         this.aimLockRawDx = 0;
         this.aimLockRawDy = 0;
         this.arcModulationDeltaY = 0;
         this.arcModulationCursor = null;
         this.arcDetentSide = null;
+        if (this.telekineticVirtualMouseActive) {
+          // Preserve virtual reticle position and keep pointer lock while Object Control Mode is held
+          return;
+        }
+        const wasLocked = Boolean(this.lockedAimPos || this.isPointerLocked || (typeof document !== "undefined" && document.pointerLockElement));
         this.lastClientX = null;
         this.lastClientY = null;
 
