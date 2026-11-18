@@ -40,7 +40,8 @@ export class PropertyControl {
     this._label = options.label;
     this._step = options.step ?? 0.05;
     this._min = options.min;
-    this._max = options.max;
+    // Never artificially cap non-ratio (> 1.0) editor values so designers can set any capacity, power, speed, or stat freely
+    this._max = (options.max !== undefined && options.max <= 1.0) ? options.max : undefined;
     this._decimals = options.decimals ?? (options.step && options.step < 0.01 ? 3 : 2);
     this._onUserChange = options.onUserChange;
 

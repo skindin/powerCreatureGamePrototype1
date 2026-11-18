@@ -29,6 +29,10 @@ export class EnergyPoolInspector {
         owner: char,
         label: "Max Energy Capacity (J)",
         step: 100.0,
+        min: 0.0,
+        onUserChange: (val) => {
+          ep.baseMaxEnergyProp.set(val, char.properties);
+        },
       });
       maxEnergyEl.appendChild(maxCtrl.element);
     }
@@ -52,8 +56,10 @@ export class EnergyPoolInspector {
         owner: char,
         label: "Stamina Reservoir Capacity (Joules)",
         step: 100.0,
-        min: 50.0,
-        max: 50000.0,
+        min: 0.0,
+        onUserChange: (val) => {
+          ep.baseMaxStaminaProp.set(val, char.properties);
+        },
       });
       maxStaminaEl.appendChild(msCtrl.element);
     }
@@ -66,7 +72,6 @@ export class EnergyPoolInspector {
         label: "Stamina Regen Rate (Watts = J/s)",
         step: 25.0,
         min: 0.0,
-        max: 5000.0,
       });
       regenEl.appendChild(rCtrl.element);
     }

@@ -29,7 +29,8 @@ export class FloatScrubber {
   constructor(options: FloatScrubberOptions) {
     this._value = options.value;
     this._min = options.min;
-    this._max = options.max;
+    // Never artificially cap non-ratio (> 1.0) editor values so designers can set any stat or capacity freely
+    this._max = (options.max !== undefined && options.max <= 1.0) ? options.max : undefined;
     this._step = options.step ?? 0.05;
     this._decimals = options.decimals ?? 2;
     this._onChange = options.onChange;
