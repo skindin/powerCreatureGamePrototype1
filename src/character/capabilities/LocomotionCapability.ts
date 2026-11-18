@@ -55,7 +55,8 @@ export class LocomotionCapability {
       }
     }
 
-    if (char.hasFlight && !char.isRestingOnSurface) {
+    // While FlightModule is active, flight owns horizontal & vertical locomotion (prevents free ground-walk bypass)
+    if (char.hasFlight) {
       return false;
     }
 
@@ -66,6 +67,37 @@ export class LocomotionCapability {
     );
   }
 
+  private static canAffordWalkEnergy(char: Character, rawWalkWatts: number, dt: number): boolean {
+    const wm = char.walkingModule;
+    const pool = char.energyPool;
+    if (!wm || !wm.walkConsumesEnergy || !pool || !pool.enabled || pool.infiniteEnergy) {
+      return true;
+    }
+    if (pool.isExhausted || pool.getCurrentStamina(char.properties) <= 0.0001 || pool.getCurrentEnergy(char.properties) <= 0.0001) {
+      return false;
+    }
+    if (!wm.walkAllowPartialPower) {
+      const walkCap = wm.maxWalkPowerProp.get(char.properties);
+      if (rawWalkWatts > walkCap || !pool.canSatisfyFullPower(rawWalkWatts, dt, char.properties, "walk")) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static computeRawWalkWatts(char: Character): number {
+    const wm = char.walkingModule;
+    if (!wm) return 0;
+    const carriedMass = char.carriedMass;
+    const baseMass = Math.max(0.2, char.baseMass || 1.2);
+    const loadFactor = carriedMass / (baseMass * 6.5);
+    const targetSpeed = wm.maxWalkSpeedProp.get(char.properties);
+    const v = targetSpeed / (1.0 + loadFactor);
+    const totalMass = char.hasMass ? Math.max(0.2, char.mass) : 1.0;
+    const resForce = totalMass * 9.81 * 0.28;
+    return (resForce * v) / 0.25;
+  }
+
   public static registerDemand(char: Character, movementInput: Vector2D): boolean {
     const canWalk = LocomotionCapability.canWalk(char);
     const inputMag = Math.hypot(movementInput.x, movementInput.y);
@@ -74,14 +106,20 @@ export class LocomotionCapability {
     let sprintingNow = isActivelySprinting;
 
     if (sprintingNow && char.walkingModule?.sprintConsumesEnergy) {
-      if (char.energyPool && (char.energyPool.isExhausted || char.energyPool.getCurrentStamina(char.properties) <= 0.0001)) {
+      const ep = char.energyPool;
+      if (
+        ep &&
+        ep.enabled &&
+        !ep.infiniteEnergy &&
+        (ep.isExhausted || ep.getCurrentStamina(char.properties) <= 0.0001 || ep.getCurrentEnergy(char.properties) <= 0.0001)
+      ) {
         sprintingNow = false;
         char.setSprinting(false);
         const Cr = 0.40;
         const totalMass = char.hasMass ? Math.max(0.2, char.mass) : 1.0;
         const targetSpeed = char.walkingModule.maxSprintSpeedProp.get(char.properties);
         const rawSprintWatts = (totalMass * 9.81 * Cr * targetSpeed) / 0.25;
-        char.energyPool.notifyInsufficientEnergy({
+        ep.notifyInsufficientEnergy({
           abilityId: "sprint",
           demandedAmount: rawSprintWatts,
           isBurst: false,
@@ -128,7 +166,25 @@ export class LocomotionCapability {
 
   public static actuate(char: Character, canWalk: boolean, movementInput: Vector2D, dt: number, arena: Arena): void {
     if (canWalk && char.walkingModule) {
-      char.walkingModule.update(char, movementInput, dt, arena);
+      let effectiveInput = movementInput;
+      const isMoving = Math.hypot(movementInput.x, movementInput.y) > 0.05;
+      if (isMoving && char.walkingModule.walkConsumesEnergy && char.energyPool?.enabled && !char.energyPool.infiniteEnergy) {
+        const rawWalkWatts = LocomotionCapability.computeRawWalkWatts(char);
+        if (!LocomotionCapability.canAffordWalkEnergy(char, rawWalkWatts, dt)) {
+          char.setSprinting(false);
+          char.isActivelyWalking = false;
+          char.energyPool.notifyInsufficientEnergy({
+            abilityId: "walk",
+            demandedAmount: rawWalkWatts,
+            isBurst: false,
+            unit: "W/s",
+            registry: char.properties,
+          });
+          // Pass zeroed input so WalkingModule applies its normal stopping/friction braking instead of moving
+          effectiveInput = { x: 0, y: 0 };
+        }
+      }
+      char.walkingModule.update(char, effectiveInput, dt, arena);
     } else {
       char.isActivelyWalking = false;
     }

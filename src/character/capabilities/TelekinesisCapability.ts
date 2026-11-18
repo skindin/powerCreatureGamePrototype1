@@ -461,12 +461,14 @@ export class TelekinesisCapability {
     let goalX = aimTargetPos ? aimTargetPos.x : char.position.x + Math.cos(char.facingAngle) * Math.min(2.2, reach * 0.6);
     let goalY = aimTargetPos ? aimTargetPos.y : char.position.y + Math.sin(char.facingAngle) * Math.min(2.2, reach * 0.6);
 
-    // Apply long-period, high-amplitude stability wave strictly to elevation (Z)
+    // Apply long-period, high-amplitude stability wave in all 3 dimensions (X, Y, Z)
     const tkStability = mod.getStability(reg);
     const tkInstability = Math.max(0, Math.min(1, 1.0 - tkStability));
     let waveGoalZ = 0;
     if (tkInstability > 0.001) {
       const p = mod.oscillationPhase;
+      goalX += (Math.sin(p * 0.71) * 0.68 + Math.cos(p * 1.33) * 0.32) * tkInstability * 2.5;
+      goalY += (Math.cos(p * 0.57 + 0.9) * 0.68 + Math.sin(p * 1.21) * 0.32) * tkInstability * 2.5;
       waveGoalZ = (Math.sin(p * 0.81 + 0.4) * 0.70 + Math.cos(p * 1.49) * 0.30) * tkInstability * 1.5;
     }
 

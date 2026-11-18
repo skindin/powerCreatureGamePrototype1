@@ -30,8 +30,12 @@ export class RollMovementCapability {
     const isMoving = inputMag > 0.05;
 
     let sprintingNow = isSprinting;
-    if (sprintingNow && mod.sprintConsumesEnergy && char.energyPool) {
-      if (char.energyPool.isExhausted || char.energyPool.getCurrentStamina(char.properties) <= 0.0001) {
+    if (sprintingNow && mod.sprintConsumesEnergy && char.energyPool && char.energyPool.enabled && !char.energyPool.infiniteEnergy) {
+      if (
+        char.energyPool.isExhausted ||
+        char.energyPool.getCurrentStamina(char.properties) <= 0.0001 ||
+        char.energyPool.getCurrentEnergy(char.properties) <= 0.0001
+      ) {
         sprintingNow = false;
         char.setSprinting(false);
       }
@@ -171,15 +175,28 @@ export class RollMovementCapability {
         }
 
         const abilityId = sprintingNow ? "sprint" : "roll";
-        const grantedWatts = char.energyPool.requestPower(
-          requestedWatts,
-          dt,
-          char.properties,
-          false,
-          abilityId,
-          allowPartial
-        );
-        powerScale = requestedWatts > 0 ? Math.min(1.0, grantedWatts / requestedWatts) : 0;
+        if (requestedWatts <= 0.0001) {
+          powerScale = 0;
+          if (rawWatts > 0.01) {
+            char.energyPool.notifyInsufficientEnergy({
+              abilityId,
+              demandedAmount: rawWatts,
+              isBurst: false,
+              unit: "W/s",
+              registry: char.properties,
+            });
+          }
+        } else {
+          const grantedWatts = char.energyPool.requestPower(
+            requestedWatts,
+            dt,
+            char.properties,
+            false,
+            abilityId,
+            allowPartial
+          );
+          powerScale = requestedWatts > 0 ? Math.min(1.0, grantedWatts / requestedWatts) : 0;
+        }
       }
 
       if (powerScale > 0.001) {

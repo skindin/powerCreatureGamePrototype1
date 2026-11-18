@@ -568,6 +568,10 @@ export class EnergyPool {
 
     const curS = this.getCurrentStamina(registry);
     if ((this.isExhausted && !allowWhenExhausted) || curS <= 0.0001) {
+      if (effectiveAbilityId) {
+        this._activeAllocations.delete(effectiveAbilityId);
+        this.notifyInsufficientEnergy({ abilityId: effectiveAbilityId, demandedAmount: requestedPowerWatts, isBurst: false, unit: "W/s", registry });
+      }
       return 0;
     }
 
@@ -582,7 +586,10 @@ export class EnergyPool {
     let targetWatts = requestedPowerWatts;
     if (targetWatts > maxWattsFromStamina + 0.001) {
       if (!allowPartialPower) {
-        if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
+        if (effectiveAbilityId) {
+          this._activeAllocations.delete(effectiveAbilityId);
+          this.notifyInsufficientEnergy({ abilityId: effectiveAbilityId, demandedAmount: requestedPowerWatts, isBurst: false, unit: "W/s", registry });
+        }
         return 0;
       }
       targetWatts = maxWattsFromStamina;
@@ -601,7 +608,10 @@ export class EnergyPool {
     const energyNeededJoules = targetWatts * dt;
     const curPoolE = this.getCurrentEnergy(registry);
     if (!allowPartialPower && curPoolE < energyNeededJoules - 0.001) {
-      if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
+      if (effectiveAbilityId) {
+        this._activeAllocations.delete(effectiveAbilityId);
+        this.notifyInsufficientEnergy({ abilityId: effectiveAbilityId, demandedAmount: requestedPowerWatts, isBurst: false, unit: "W/s", registry });
+      }
       return 0;
     }
 
@@ -616,7 +626,10 @@ export class EnergyPool {
 
     const grantedWatts = grantedJoules / dt;
     if (!allowPartialPower && grantedWatts < requestedPowerWatts - 0.001) {
-      if (effectiveAbilityId) this._activeAllocations.delete(effectiveAbilityId);
+      if (effectiveAbilityId) {
+        this._activeAllocations.delete(effectiveAbilityId);
+        this.notifyInsufficientEnergy({ abilityId: effectiveAbilityId, demandedAmount: requestedPowerWatts, isBurst: false, unit: "W/s", registry });
+      }
       return 0;
     }
 

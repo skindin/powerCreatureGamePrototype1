@@ -412,6 +412,9 @@ export class PrefabManager {
     flyerArchetype.grappleModule = null;
     if (flyerArchetype.walkingModule) {
       flyerArchetype.walkingModule.walkInAir = false;
+      flyerArchetype.walkingModule.walkConsumesEnergy = true;
+      flyerArchetype.walkingModule.sprintConsumesEnergy = true;
+      flyerArchetype.walkingModule.consumesEnergy = true;
       flyerArchetype.walkingModule.maxWalkSpeedProp.set(4.5, flyerArchetype.properties);
     }
     if (flyerArchetype.energyPool) {

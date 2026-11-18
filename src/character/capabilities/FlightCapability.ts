@@ -102,11 +102,8 @@ export class FlightCapability {
     } else if (verticalIntent < -0.05) {
       vzWant = verticalIntent * maxSinkSpeed; // Negative (controlled descent)
     } else {
-      // Hold altitude (hover at vz = 0)
-      // If character has no walking module (pure flyer) and is moving horizontally on the ground,
-      // gently lift to a low hover skim height (0.25u) so ground friction doesn't drag them.
-      const isPureFlyer = !char.walkingModule || !char.walkingModule.enabled;
-      if (!isAirborne && isPureFlyer && hasHorizInput && heightAboveSurface < 0.2) {
+      // Hold altitude (hover at vz = 0), or gently lift into a 0.2u hover skim when moving horizontally on ground
+      if (!isAirborne && hasHorizInput && heightAboveSurface < 0.2) {
         vzWant = Math.min(maxAscentSpeed, 1.5);
       } else {
         vzWant = 0;
