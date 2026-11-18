@@ -1886,7 +1886,7 @@ export class ControlsInspector {
         const b = block as FlightControlBlock;
         const isGp = this.activeTab === "gamepad";
         b.ascendTrigger = b.ascendTrigger || { code: isGp ? "GamepadA" : "Space", requireCleanPress: false };
-        b.descendTrigger = b.descendTrigger || { code: isGp ? "GamepadB" : "KeyC", requireCleanPress: false };
+        b.descendTrigger = b.descendTrigger || { code: isGp ? "GamepadB" : "ShiftLeft", requireCleanPress: false };
         b.flightToggleTrigger = b.flightToggleTrigger || { code: isGp ? "GamepadDpadDown" : "KeyG", requireCleanPress: true };
         const requireClean = b.requireCleanAscendPress === true || b.ascendTrigger.requireCleanPress === true;
         const faceFlight = b.faceFlightDirection !== false;
@@ -3511,7 +3511,7 @@ export class ControlsInspector {
               name: "Flight & Glide",
               enabled: true,
               ascendTrigger: { code: "Space", requireCleanPress: false },
-              descendTrigger: { code: "KeyC", requireCleanPress: false },
+              descendTrigger: { code: "ShiftLeft", requireCleanPress: false },
               flightToggleTrigger: { code: "KeyG", requireCleanPress: true },
               requireCleanAscendPress: false,
               faceFlightDirection: true,

@@ -1149,7 +1149,7 @@ export const SkyKestrelControlBlocks: ControlBlock[] = [
     name: "Flight & Glide",
     enabled: true,
     ascendTrigger: { code: "Space", requireCleanPress: false },
-    descendTrigger: { code: "KeyC", requireCleanPress: false },
+    descendTrigger: { code: "ShiftLeft", requireCleanPress: false },
     flightToggleTrigger: { code: "KeyG", requireCleanPress: true },
     requireCleanAscendPress: false,
     faceFlightDirection: true,
@@ -1303,7 +1303,7 @@ export const SkyKestrelGamepadControlBlocks: ControlBlock[] = [
 export const SkyKestrelControlSchema: ControlSchema = {
   id: "sky-kestrel",
   name: "Sky Kestrel (Flight & Telekinesis)",
-  description: "Telekinetic flight with Space/C altitude control, G glide toggle, and LMB-hold Object Control Mode.",
+  description: "Telekinetic flight with Space/Shift altitude control, G glide toggle, and LMB-hold Object Control Mode.",
   activeDevice: "keyboardMouse",
   stages: ["none", "throw", "melee"],
   stageGroups: [{ name: "default", stages: ["none", "throw", "melee"] }],

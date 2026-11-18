@@ -833,7 +833,11 @@ export class ModularBlockEvaluator {
               claimSlot(b.flightToggleTrigger, b.id, "flight.toggle", true);
             }
           }
-          if (b.descendTrigger?.code && isSlotActive(b.descendTrigger, "hold", false, b.id, "flight.descend")) {
+          if (
+            b.descendTrigger?.code &&
+            (isSlotActive(b.descendTrigger, "hold", false, b.id, "flight.descend") ||
+              (b.descendTrigger.code === "ShiftLeft" && tokens.isDown("ShiftRight")))
+          ) {
             char.isFlightDescendHeld = true;
             claimSlot(b.descendTrigger, b.id, "flight.descend", false);
           }
