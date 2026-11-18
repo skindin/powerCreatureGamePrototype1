@@ -1399,11 +1399,14 @@ export class PlayerManager {
         char.facingAngle = pkt.facingAngle;
       }
 
-      // Keep telekinetic target frozen horizontally at anchor point during Object Control Mode, Elevation Control Mode, or remote gun firing;
-      // otherwise track aimTarget normally.
+      // Keep telekinetic target frozen horizontally at anchor point during Object Control Mode, Elevation Control Mode, or while holding/firing a remote gun trigger;
+      // horizontal movement remains locked even if the gun overheats until the trigger / LMB is released.
       if (char.telekineticTarget) {
-        const isFiringTkGun = Boolean((char as any).isFiringWeapon && char.telekineticTarget.gunModule?.enabled);
-        if ((char.isTelekineticObjectControl || char.isTelekineticElevationControl) && char.telekineticFrozenPos) {
+        const isFiringTkGun = Boolean(
+          ((char as any).isFiringWeapon || (char as any).isHoldingTkGunFire) &&
+          char.telekineticTarget.gunModule?.enabled
+        );
+        if ((char.isTelekineticObjectControl || char.isTelekineticElevationControl || isFiringTkGun) && char.telekineticFrozenPos) {
           char.telekineticAimPos = { x: char.telekineticFrozenPos.x, y: char.telekineticFrozenPos.y };
         } else if (isFiringTkGun) {
           if (!char.telekineticAimPos) {
@@ -1413,6 +1416,7 @@ export class PlayerManager {
           char.telekineticAimPos = { x: aimTarget.x, y: aimTarget.y };
         }
       } else {
+        (char as any).isHoldingTkGunFire = false;
         char.telekineticAimPos = aimTarget ? { x: aimTarget.x, y: aimTarget.y } : null;
       }
 

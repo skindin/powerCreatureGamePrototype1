@@ -2269,20 +2269,36 @@ export class ModularBlockEvaluator {
           }
 
           const isGunOverheated = Boolean(activeGunObj?.gunModule?.isOverheated);
-          const isFireSlotActive = Boolean(
+          const isFireSlotHeldRaw = Boolean(
             !isTkElevationControlNow &&
             !isThrowOverrideActive &&
             !isFireBlockedByCleaning &&
-            !isGunOverheated &&
             b.fireWeapon && (
               isSlotActive(b.fireWeapon, "hold", false, b.id, "gun.fire") ||
               isSlotActive(b.fireWeapon, "down", false, b.id, "gun.fire") ||
               getSlotAnalogValue(b.fireWeapon) > 0.15
             )
           );
+          const isFireSlotActive = isFireSlotHeldRaw && !isGunOverheated;
 
-          // In Telekinetic Object Control Mode, continuously orient a telekinetically held gun toward the virtual mouse
-          if (char.isTelekineticObjectControl && char.telekineticTarget?.gunModule?.enabled) {
+          const isHoldingTkGunTrigger = Boolean(
+            isHoldingGunItem &&
+            activeGunObj &&
+            activeGunObj === char.telekineticTarget &&
+            !isThrowOverrideActive &&
+            (isFireSlotHeldRaw || isTkObjectControlNow)
+          );
+          (char as any).isHoldingTkGunFire = isHoldingTkGunTrigger;
+          if (isHoldingTkGunTrigger && activeGunObj && !char.telekineticFrozenPos) {
+            const tkMod = char.telekinesisModule;
+            char.telekineticFrozenPos = {
+              x: activeGunObj.position.x - (tkMod?.appliedWaveOffsetX ?? 0),
+              y: activeGunObj.position.y - (tkMod?.appliedWaveOffsetY ?? 0),
+            };
+          }
+
+          // In Telekinetic Object Control Mode (or while holding a telekinetic gun trigger), continuously orient the floating gun toward aim
+          if ((char.isTelekineticObjectControl || isHoldingTkGunTrigger) && char.telekineticTarget?.gunModule?.enabled) {
             const effAimGun = getEffectiveAimPos();
             const gDx = effAimGun.x - char.telekineticTarget.position.x;
             const gDy = effAimGun.y - char.telekineticTarget.position.y;
@@ -2343,6 +2359,11 @@ export class ModularBlockEvaluator {
             }
           } else {
             (char as any).isFiringWeapon = false;
+            if (isFireSlotHeldRaw && isHoldingGunItem && b.fireWeapon) {
+              claimSlot(b.fireWeapon, b.id, "gun.fire", false);
+            } else if (isHoldingTkGunTrigger && tkControlBlock?.objectControlTrigger) {
+              claimSlot(tkControlBlock.objectControlTrigger, b.id, "gun.fire", false);
+            }
           }
           break;
         }
@@ -2603,7 +2624,7 @@ export class ModularBlockEvaluator {
         targetAimPos.y = restorePos.y;
       }
       char.isTelekineticObjectControl = false;
-      if (!isTkElevationControlNow) {
+      if (!isTkElevationControlNow && !(char as any).isHoldingTkGunFire) {
         char.telekineticFrozenPos = null;
       }
       char.isChargingThrow = false;
@@ -2628,7 +2649,7 @@ export class ModularBlockEvaluator {
               }
             : null);
       char.isTelekineticElevationControl = false;
-      if (!isTkObjectControlNow && !char.isTelekineticObjectControl) {
+      if (!isTkObjectControlNow && !char.isTelekineticObjectControl && !(char as any).isHoldingTkGunFire) {
         char.telekineticFrozenPos = null;
         if (restorePos && !execCtx.gamepadStates) {
           input.recordedMousePos = { x: restorePos.x, y: restorePos.y };
@@ -2640,6 +2661,18 @@ export class ModularBlockEvaluator {
           targetAimPos.y = restorePos.y;
         }
       }
+    }
+
+    // Clear stale telekinetic frozen anchor if neither Object Control, Elevation Control, nor gun fire hold is active
+    if (
+      char.telekineticFrozenPos &&
+      !isTkObjectControlNow &&
+      !char.isTelekineticObjectControl &&
+      !isTkElevationControlNow &&
+      !char.isTelekineticElevationControl &&
+      !(char as any).isHoldingTkGunFire
+    ) {
+      char.telekineticFrozenPos = null;
     }
 
     const finalAimPos = getEffectiveAimPos();

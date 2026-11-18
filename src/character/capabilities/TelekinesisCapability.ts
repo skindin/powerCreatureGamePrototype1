@@ -125,6 +125,7 @@ export class TelekinesisCapability {
     char.telekineticTarget = null;
     char.isTelekineticObjectControl = false;
     char.isTelekineticElevationControl = false;
+    (char as any).isHoldingTkGunFire = false;
     char.telekineticFrozenPos = null;
     char.activeTrajectory = null;
     char.isThrowCancelZone = false;
