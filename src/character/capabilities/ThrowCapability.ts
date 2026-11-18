@@ -214,7 +214,13 @@ export class ThrowCapability {
         }
       } else {
         char.activeTrajectory = null;
-        char.isThrowCancelZone = false;
+        if (isTkGun && !isTkThrowOverride && isAimingInput && aimTargetPos) {
+          const tkGunShootDeadzone = Math.max(1.0, (tkObj.colliderRadius ?? 0.25) + 0.95);
+          const distToAim = Math.hypot(aimTargetPos.x - tkObj.position.x, aimTargetPos.y - tkObj.position.y);
+          char.isThrowCancelZone = distToAim < tkGunShootDeadzone;
+        } else {
+          char.isThrowCancelZone = false;
+        }
         char.throwChargingTowards = undefined;
       }
       return;
