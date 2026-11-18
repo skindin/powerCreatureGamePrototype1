@@ -31,6 +31,7 @@ export interface Bullet {
   bulletSpeed: number;
   color: string;
   shooterId: string;
+  shooterGunId?: string;
   lifeTime: number;
   maxLifeTime: number;
   trail: BulletTrailPoint[];
@@ -226,6 +227,7 @@ export class BulletManager {
       bulletSpeed: Math.hypot(vx, vy) || speed,
       color: gun.bulletColor || "#f59e0b",
       shooterId: char.id,
+      shooterGunId: gunEntity?.id,
       lifeTime: 0,
       maxLifeTime: 4.0,
       trail: [
@@ -558,7 +560,8 @@ export class BulletManager {
       // 4. Continuous collision with dynamic freebody objects
       for (const obj of objects) {
         if (obj.isHeld) continue;
-        if (characters.some((c) => c.heldObject === obj)) continue;
+        if (b.shooterGunId && obj.id === b.shooterGunId) continue;
+        if (characters.some((c) => c.heldObject === obj || (c.id === b.shooterId && c.telekineticTarget === obj))) continue;
 
         const objR = obj.colliderRadius > 0 ? obj.colliderRadius : 0.26;
         const tObj = sweptCircleHit(

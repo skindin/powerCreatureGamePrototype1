@@ -2110,7 +2110,29 @@ export class ModularBlockEvaluator {
             }
           }
 
-          if (isHoldingGunItem && activeGunObj && isFireSlotActive && execCtx.arena) {
+          // Release-to-shoot for Telekinetic Object Control Mode on a floating gun:
+          // Holding objectControlTrigger (LMB) aims the floating gun; releasing it fires a shot
+          // unless the player already fired via fireWeapon (RMB) during this hold or is throwing via KeyT.
+          const effAimForGunRelease = getEffectiveAimPos();
+          const tkGunDragDist = (activeGunObj && activeGunObj === char.telekineticTarget)
+            ? Math.hypot(effAimForGunRelease.x - activeGunObj.position.x, effAimForGunRelease.y - activeGunObj.position.y)
+            : 0;
+          const isTkGunReleaseShot = Boolean(
+            isHoldingGunItem &&
+            activeGunObj &&
+            activeGunObj === char.telekineticTarget &&
+            wasTkObjectControlActive &&
+            !isTkObjectControlNow &&
+            !isThrowOverrideActive &&
+            !isThrow &&
+            !isDrop &&
+            !isSwap &&
+            !isGunOverheated &&
+            !(char as any)._firedGunDuringTkControl &&
+            tkGunDragDist >= 0.25
+          );
+
+          if (isHoldingGunItem && activeGunObj && (isFireSlotActive || isTkGunReleaseShot) && execCtx.arena) {
             isGunAimFiring = true;
             const gun = activeGunObj.gunModule!;
             const effAim = getEffectiveAimPos();
@@ -2134,8 +2156,13 @@ export class ModularBlockEvaluator {
 
             isUsingItem = true;
             (char as any).isFiringWeapon = true;
+            if (isFireSlotActive && isTkObjectControlNow && activeGunObj === char.telekineticTarget) {
+              (char as any)._firedGunDuringTkControl = true;
+            }
             BulletManager.getInstance().fireBullet(char, gun, effAim, execCtx.arena, activeGunObj);
-            claimSlot(b.fireWeapon, b.id, "gun.fire", false);
+            if (isFireSlotActive) {
+              claimSlot(b.fireWeapon, b.id, "gun.fire", false);
+            }
           } else {
             (char as any).isFiringWeapon = false;
           }
@@ -2351,6 +2378,7 @@ export class ModularBlockEvaluator {
       char.throwChargeProgress = 0;
       char.activeTrajectory = null;
       char.isThrowCancelZone = false;
+      (char as any)._firedGunDuringTkControl = false;
     }
 
     const finalAimPos = getEffectiveAimPos();
