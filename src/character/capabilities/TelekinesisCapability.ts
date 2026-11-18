@@ -428,11 +428,26 @@ export class TelekinesisCapability {
         target.verticalVelocity += dvz;
       }
 
+      // When within groundAnchorRange, static gravity counter-force (g) is braced against the ground anchor;
+      // only active vertical acceleration (climbAccel = azCreate - g) and active horizontal movement apply recoil to the caster.
+      const g = arena.gravity || 30.0;
+      const wallAtTarget = arena.getWallAt(target.position.x, target.position.y);
+      const targetSurfZ = Math.max(
+        0,
+        target.supportingSurfaceHeight ?? 0,
+        wallAtTarget ? wallAtTarget.wallHeight : 0
+      );
+      const isTargetAnchored = Math.max(0, target.position.z - targetSurfZ) <= mod.getGroundAnchorRange(reg);
+      const azReaction = isTargetAnchored && target.hasGravity
+        ? (plan.azCreate - g)
+        : plan.azCreate;
+      const dvzReaction = azReaction * accelScale * safeDt;
+
       TelekinesisCapability.applyReactionImpulse(
         char,
         mObj * dvx,
         mObj * dvy,
-        mObj * dvz,
+        mObj * dvzReaction,
         arena
       );
     }

@@ -910,10 +910,7 @@ export class Character extends GameObject {
       FlightCapability.registerDemand(this, movementInput, flightVertIntent, dt, arena);
     }
 
-    // Phase 2: Actuate telekinetic manipulation BEFORE flight so kept recoil is seen by FlightCapability
-    TelekinesisCapability.actuate(this, tkAim, dt, arena);
-
-    // Phase 2: Actuate movement & vertical capabilities
+    // Phase 2: Actuate movement & vertical capabilities BEFORE telekinesis so Flight Stage 2 does not double-charge for same-tick telekinetic recoil
     ClimbingCapability.actuate(this, canClimb, movementInput, isClimbInput, dt, arena);
 
     if (canFly) {
@@ -923,6 +920,9 @@ export class Character extends GameObject {
       this.flightModule.appliedWaveVy = 0;
       this.flightModule.appliedWaveVz = 0;
     }
+
+    // Phase 2b: Actuate telekinetic manipulation (applies equal-and-opposite reaction to character velocity)
+    TelekinesisCapability.actuate(this, tkAim, dt, arena);
 
     const canJump = !canFly && JumpCapability.canJump(this);
     if (isClimbInput && !this.isClimbing && canJump) {

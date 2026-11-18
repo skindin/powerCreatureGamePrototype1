@@ -190,15 +190,14 @@ export class FlightCapability {
         }
       }
 
-      // 1d. Vertical Sink / Ascent-Cancel Braking:
-      // - If intentionally descending and currently rising (vzFree > 0), freely brake upward velocity toward 0.
-      // - If falling faster than allowed sink speed (vzFree < targetSinkFloor), freely brake downward excess.
-      if (isAirborne && verticalIntent < -0.05 && vzFree > 0) {
-        vzFree = Math.max(0, vzFree - maxBrakeDeltaV);
-      }
-      const targetSinkFloor = verticalIntent < -0.05 ? vzWant : -maxSinkSpeed;
-      if (isAirborne && vzFree < targetSinkFloor && targetSinkFloor < 0) {
-        vzFree = Math.min(targetSinkFloor, vzFree + maxBrakeDeltaV);
+      // 1d. Vertical Energy-Free Braking (ΔK <= 0):
+      // Only reduces |vz| toward vzWant without crossing 0 or creating speed from rest.
+      if (isAirborne) {
+        if (vzFree < -0.001 && vzWant >= vzFree) {
+          vzFree = Math.min(vzWant <= 0 ? vzWant : 0, vzFree + maxBrakeDeltaV);
+        } else if (vzFree > 0.001 && vzWant <= vzFree) {
+          vzFree = Math.max(vzWant >= 0 ? vzWant : 0, vzFree - maxBrakeDeltaV);
+        }
       }
     }
 
@@ -237,8 +236,8 @@ export class FlightCapability {
           azCreate = 0;
         } else {
           // Hovering (vzWant == 0) or Ascending (vzWant > 0):
-          // Must counter gravity g in uncurved space PLUS accelerate vzFree toward vzWant (including carrying telekinetic load)
-          const maxVertCreateAccel = 75.0;
+          // Must counter gravity g in uncurved space PLUS accelerate vzFree toward vzWant
+          const maxVertCreateAccel = 24.0;
           const dvZ = vzWant - vzFree;
           const climbAccel = Math.max(-g, Math.min(maxVertCreateAccel, dvZ / safeDt));
           azCreate = Math.max(0, g + climbAccel);

@@ -66,7 +66,7 @@ export class TelekinesisModule {
   public oscillationPhase: number = 0;
 
   constructor(options?: TelekinesisModuleOptions) {
-    this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 5000.0);
+    this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 2400.0);
     this.telekinesisReachProp = new DynamicProperty(options?.telekinesisReach ?? 6.5);
     this.maxMoveSpeedProp = new DynamicProperty(options?.maxMoveSpeed ?? 12.0);
     this.holdHoverHeightProp = new DynamicProperty(options?.holdHoverHeight ?? 0.65);
