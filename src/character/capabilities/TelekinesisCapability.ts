@@ -492,31 +492,39 @@ export class TelekinesisCapability {
     }
 
     // 3. Apply Long-Period, High-Amplitude 3D Stability Wave at 0 Energy Cost (cost stays constant while oscillating)
+    // While in Object Control Mode, freeze wave velocity while keeping appliedWaveOffset intact so returning to
+    // movement mode resumes smoothly around the exact same oscillation center with zero snap or velocity jolt.
     const stability = mod.getStability(reg);
     const instability = Math.max(0, Math.min(1, 1.0 - stability));
-    if (instability > 0.001 && !char.isTelekineticObjectControl) {
-      mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
-      const p = mod.oscillationPhase;
-      const waveX = (Math.sin(p * 0.71) * 0.68 + Math.cos(p * 1.33) * 0.32) * instability * 2.5;
-      const waveY = (Math.cos(p * 0.57 + 0.9) * 0.68 + Math.sin(p * 1.21) * 0.32) * instability * 2.5;
-      const waveZ = (Math.sin(p * 0.81 + 0.4) * 0.70 + Math.cos(p * 1.49) * 0.30) * instability * 1.5;
+    if (instability > 0.001) {
+      if (!char.isTelekineticObjectControl) {
+        mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
+        const p = mod.oscillationPhase;
+        const waveX = (Math.sin(p * 0.71) * 0.68 + Math.cos(p * 1.33) * 0.32) * instability * 2.5;
+        const waveY = (Math.cos(p * 0.57 + 0.9) * 0.68 + Math.sin(p * 1.21) * 0.32) * instability * 2.5;
+        const waveZ = (Math.sin(p * 0.81 + 0.4) * 0.70 + Math.cos(p * 1.49) * 0.30) * instability * 1.5;
 
-      const waveVx = (waveX - mod.appliedWaveOffsetX) / safeDt;
-      const waveVy = (waveY - mod.appliedWaveOffsetY) / safeDt;
-      const waveVz = target.hasVerticalVelocity ? (waveZ - mod.appliedWaveOffsetZ) / safeDt : 0;
+        const waveVx = (waveX - mod.appliedWaveOffsetX) / safeDt;
+        const waveVy = (waveY - mod.appliedWaveOffsetY) / safeDt;
+        const waveVz = target.hasVerticalVelocity ? (waveZ - mod.appliedWaveOffsetZ) / safeDt : 0;
 
-      target.velocity.x += waveVx;
-      target.velocity.y += waveVy;
-      if (target.hasVerticalVelocity) {
-        target.verticalVelocity += waveVz;
+        target.velocity.x += waveVx;
+        target.velocity.y += waveVy;
+        if (target.hasVerticalVelocity) {
+          target.verticalVelocity += waveVz;
+        }
+
+        mod.appliedWaveVx = waveVx;
+        mod.appliedWaveVy = waveVy;
+        mod.appliedWaveVz = waveVz;
+        mod.appliedWaveOffsetX = waveX;
+        mod.appliedWaveOffsetY = waveY;
+        mod.appliedWaveOffsetZ = waveZ;
+      } else {
+        mod.appliedWaveVx = 0;
+        mod.appliedWaveVy = 0;
+        mod.appliedWaveVz = 0;
       }
-
-      mod.appliedWaveVx = waveVx;
-      mod.appliedWaveVy = waveVy;
-      mod.appliedWaveVz = waveVz;
-      mod.appliedWaveOffsetX = waveX;
-      mod.appliedWaveOffsetY = waveY;
-      mod.appliedWaveOffsetZ = waveZ;
     } else {
       mod.appliedWaveOffsetX = 0;
       mod.appliedWaveOffsetY = 0;

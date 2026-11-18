@@ -285,11 +285,16 @@ export class ModularBlockEvaluator {
 
     if (isTkObjectControlNow && char.telekineticTarget) {
       if (!char.isTelekineticObjectControl) {
-        const freezePos = { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y };
-        char.telekineticFrozenPos = freezePos;
+        const tkMod = char.telekinesisModule;
+        const freezeCenter = {
+          x: char.telekineticTarget.position.x - (tkMod?.appliedWaveOffsetX ?? 0),
+          y: char.telekineticTarget.position.y - (tkMod?.appliedWaveOffsetY ?? 0),
+        };
+        const freezeVisualPos = { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y };
+        char.telekineticFrozenPos = freezeCenter;
         char.isTelekineticObjectControl = true;
         if (!execCtx.gamepadStates) {
-          input.beginTelekineticObjectControl(freezePos);
+          input.beginTelekineticObjectControl(freezeVisualPos);
         }
         // Prevent leftover throw state on entry until player initiates charge/throw
         char.isChargingThrow = false;
@@ -2443,11 +2448,21 @@ export class ModularBlockEvaluator {
 
     // Complete Telekinetic Object Control Mode exit AFTER throw block & launch trajectory extraction
     if (!isTkObjectControlNow && (char.isTelekineticObjectControl || (!execCtx.gamepadStates && input.isTelekineticObjectControl))) {
-      const restorePos = char.telekineticTarget
-        ? { x: char.telekineticTarget.position.x, y: char.telekineticTarget.position.y }
-        : char.telekineticFrozenPos;
+      const tkMod = char.telekinesisModule;
+      const restorePos = char.telekineticFrozenPos
+        ? { x: char.telekineticFrozenPos.x, y: char.telekineticFrozenPos.y }
+        : (char.telekineticTarget
+            ? {
+                x: char.telekineticTarget.position.x - (tkMod?.appliedWaveOffsetX ?? 0),
+                y: char.telekineticTarget.position.y - (tkMod?.appliedWaveOffsetY ?? 0),
+              }
+            : null);
       if (!execCtx.gamepadStates) {
         input.endTelekineticObjectControl(restorePos);
+      }
+      if (restorePos) {
+        targetAimPos.x = restorePos.x;
+        targetAimPos.y = restorePos.y;
       }
       char.isTelekineticObjectControl = false;
       char.telekineticFrozenPos = null;

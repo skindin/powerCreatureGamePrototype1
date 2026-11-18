@@ -273,6 +273,9 @@ export class InputManager {
         }
       }, 80);
     } else {
+      this.isAwaitingUnlock = false;
+      this.isRawDragging = false;
+      this.lockedAimPos = null;
       this.unhideCursor();
       if (typeof document !== "undefined") {
         document.body.classList.remove("pointer-locked");
