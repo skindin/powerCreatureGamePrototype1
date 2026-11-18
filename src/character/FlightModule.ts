@@ -77,7 +77,7 @@ export class FlightModule {
     this.maxPowerProp = new DynamicProperty(options?.maxPower ?? 3000.0);
     this.maxHorizontalSpeedProp = new DynamicProperty(options?.maxHorizontalSpeed ?? 7.5);
     this.maxAscentSpeedProp = new DynamicProperty(options?.maxAscentSpeed ?? 5.0);
-    this.maxSinkSpeedProp = new DynamicProperty(options?.maxSinkSpeed ?? 2.0);
+    this.maxSinkSpeedProp = new DynamicProperty(options?.maxSinkSpeed ?? 5.0);
     this.maxFlightAltitudeProp = new DynamicProperty(options?.maxFlightAltitude ?? 4.5);
     this.groundAnchorRangeProp = new DynamicProperty(options?.groundAnchorRange ?? 5.0);
     this.stabilityProp = new DynamicProperty(options?.stability ?? 0.85);

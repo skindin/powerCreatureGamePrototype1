@@ -188,9 +188,12 @@ export class FlightCapability {
         }
       }
 
-      // 1d. Vertical Parachute / Sink Braking:
-      // Requires ACTUAL downward velocity faster than the allowed sink speed (vzFree < -maxSinkSpeed).
-      // Brakes downward speed toward -maxSinkSpeed (strictly reducing |vz|, never crossing 0!).
+      // 1d. Vertical Sink / Ascent-Cancel Braking:
+      // - If intentionally descending and currently rising (vzFree > 0), freely brake upward velocity toward 0.
+      // - If falling faster than allowed sink speed (vzFree < targetSinkFloor), freely brake downward excess.
+      if (isAirborne && verticalIntent < -0.05 && vzFree > 0) {
+        vzFree = Math.max(0, vzFree - maxBrakeDeltaV);
+      }
       const targetSinkFloor = verticalIntent < -0.05 ? vzWant : -maxSinkSpeed;
       if (isAirborne && vzFree < targetSinkFloor && targetSinkFloor < 0) {
         vzFree = Math.min(targetSinkFloor, vzFree + maxBrakeDeltaV);

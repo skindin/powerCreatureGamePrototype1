@@ -432,7 +432,7 @@ export class PrefabManager {
       maxPower: 3000.0,
       maxHorizontalSpeed: 8.5,
       maxAscentSpeed: 5.5,
-      maxSinkSpeed: 2.2,
+      maxSinkSpeed: 5.5,
       maxFlightAltitude: 5.0,
       groundAnchorRange: 5.0,
       stability: 0.9,
