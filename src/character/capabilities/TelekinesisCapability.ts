@@ -97,6 +97,7 @@ export class TelekinesisCapability {
     mod.appliedWaveVx = 0;
     mod.appliedWaveVy = 0;
     mod.appliedWaveVz = 0;
+    mod.isGroundedHold = false;
     mod.targetHoldZ = Math.max(
       (target.supportingSurfaceHeight ?? 0) + mod.getHoldHoverHeight(char.properties),
       target.position.z
@@ -114,6 +115,7 @@ export class TelekinesisCapability {
     if (char.telekinesisModule) {
       const mod = char.telekinesisModule;
       mod.targetHoldZ = null;
+      mod.isGroundedHold = false;
       mod.appliedWaveOffsetX = 0;
       mod.appliedWaveOffsetY = 0;
       mod.appliedWaveOffsetZ = 0;
@@ -125,9 +127,6 @@ export class TelekinesisCapability {
     char.telekineticTarget = null;
     char.isTelekineticObjectControl = false;
     char.isTelekineticElevationControl = false;
-    (char as any).isHoldingTkGunFire = false;
-    (char as any)._tkObjectControlScreenAnchor = null;
-    (char as any)._tkObjectControlCharOffset = null;
     (char as any).isHoldingTkGunFire = false;
     (char as any)._tkObjectControlScreenAnchor = null;
     (char as any)._tkObjectControlCharOffset = null;
@@ -158,6 +157,26 @@ export class TelekinesisCapability {
     const mod = char.telekinesisModule;
     if (!mod || !char.hasMass) return;
 
+    const reg = char.properties;
+    const surfaceHeight = arena
+      ? Math.max(
+        0,
+        char.supportingSurfaceHeight ?? 0,
+        char.standingWall ? arena.wallHeight : 0
+      )
+      : (char.supportingSurfaceHeight ?? 0);
+    const heightAboveSurface = Math.max(0, char.position.z - surfaceHeight);
+    const anchorRange = Math.max(
+      mod.getGroundAnchorRange(reg),
+      char.flightModule?.getGroundAnchorRange(reg) ?? 0
+    );
+
+    // While flying within ground anchor range, Flight offloads equal-and-opposite telekinetic reaction momentum
+    // directly into the ground, leaving the flying character's velocity and position completely unaffected.
+    if (char.hasFlight && heightAboveSurface <= anchorRange + 0.15) {
+      return;
+    }
+
     const charMass = Math.max(0.2, char.mass);
     const availX = -appliedObjImpulseX;
     const availY = -appliedObjImpulseY;
@@ -168,17 +187,7 @@ export class TelekinesisCapability {
     char.velocity.y += availY / charMass;
 
     if (char.hasVerticalVelocity) {
-      const surfaceHeight = arena
-        ? Math.max(
-            0,
-            char.supportingSurfaceHeight ?? 0,
-            char.standingWall ? arena.wallHeight : 0
-          )
-        : (char.supportingSurfaceHeight ?? 0);
-      const heightAboveSurface = Math.max(0, char.position.z - surfaceHeight);
-      // When Flight is active, it sustains the character's elevation as an independent model;
-      // telekinetic vertical forces must not push a flying character down or increase Flight power cost.
-      // When resting on a surface, downward reaction is borne by ground normal force.
+      // When resting on a surface without Flight, downward reaction is borne by ground normal force.
       if (!char.hasFlight && (heightAboveSurface > 0.04 || availZ > 0)) {
         char.verticalVelocity += availZ / charMass;
       }
@@ -473,7 +482,7 @@ export class TelekinesisCapability {
 
       target.velocity.x += dvx;
       target.velocity.y += dvy;
-      if (target.hasVerticalVelocity) {
+      if (!mod.isGroundedHold && target.hasVerticalVelocity) {
         target.verticalVelocity += dvz;
       }
 
@@ -487,14 +496,14 @@ export class TelekinesisCapability {
         wallAtTarget ? wallAtTarget.wallHeight : 0
       );
       // Clear ground surface contact as soon as upward lift is applied so character ground friction (2.0x) does not drag the target
-      if (dvz > 0.05 && target.position.z - targetSurfZ <= 0.03) {
+      if (!mod.isGroundedHold && dvz > 0.05 && target.position.z - targetSurfZ <= 0.03) {
         target.position.z = targetSurfZ + 0.035;
       }
       const isTargetAnchored = Math.max(0, target.position.z - targetSurfZ) <= mod.getGroundAnchorRange(reg);
       const azReaction = isTargetAnchored && target.hasGravity
         ? (plan.azCreate - g)
         : plan.azCreate;
-      const dvzReaction = azReaction * vertScale * safeDt;
+      const dvzReaction = mod.isGroundedHold ? 0 : azReaction * vertScale * safeDt;
 
       TelekinesisCapability.applyReactionImpulse(
         char,
@@ -506,10 +515,10 @@ export class TelekinesisCapability {
     }
 
     // 3. Apply Long-Period, High-Amplitude 3D Stability Wave at 0 Energy Cost (cost stays constant while oscillating)
-    // Runs continuously in both movement mode and Object Control Mode since the character is actively levitating the object.
+    // Runs continuously in both movement mode and Object Control Mode unless intentionally grounded via isGroundedHold.
     const stability = mod.getStability(reg);
     const instability = Math.max(0, Math.min(1, 1.0 - stability));
-    if (instability > 0.001) {
+    if (!mod.isGroundedHold && instability > 0.001) {
       mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
       const p = mod.oscillationPhase;
       const waveX = (Math.sin(p * 0.71) * 0.68 + Math.cos(p * 1.33) * 0.32) * instability * 2.5;
@@ -573,6 +582,10 @@ export class TelekinesisCapability {
     const maxMoveSpeed = mod.getMaxMoveSpeed(reg);
     const hoverOffset = mod.getHoldHoverHeight(reg);
 
+    const meanPosX = target.position.x - mod.appliedWaveOffsetX;
+    const meanPosY = target.position.y - mod.appliedWaveOffsetY;
+    const meanPosZ = Math.max(0, target.position.z - mod.appliedWaveOffsetZ);
+
     // Desired 2D cursor goal clamped within telekinesisReach around the character (without stability wave so power cost stays constant)
     let goalX = aimTargetPos ? aimTargetPos.x : char.position.x + Math.cos(char.facingAngle) * Math.min(2.2, reach * 0.6);
     let goalY = aimTargetPos ? aimTargetPos.y : char.position.y + Math.sin(char.facingAngle) * Math.min(2.2, reach * 0.6);
@@ -582,44 +595,67 @@ export class TelekinesisCapability {
     const gDist = Math.hypot(gDx, gDy);
     const maxHorizHold = Math.max(0.5, reach * 0.92);
     if (gDist > maxHorizHold) {
-      goalX = char.position.x + (gDx / gDist) * maxHorizHold;
-      goalY = char.position.y + (gDy / gDist) * maxHorizHold;
+      const ox = meanPosX - char.position.x;
+      const oy = meanPosY - char.position.y;
+      const oDistSq = ox * ox + oy * oy;
+      const rSq = maxHorizHold * maxHorizHold;
+      if (oDistSq < rSq) {
+        // Intersect ray from meanPos toward desired cursor with the reach circle to preserve exact push angle
+        const dx = goalX - meanPosX;
+        const dy = goalY - meanPosY;
+        const a = dx * dx + dy * dy;
+        if (a > 1e-8) {
+          const b = 2 * (ox * dx + oy * dy);
+          const c = oDistSq - rSq;
+          const disc = Math.max(0, b * b - 4 * a * c);
+          const t = Math.min(1, (-b + Math.sqrt(disc)) / (2 * a));
+          goalX = meanPosX + t * dx;
+          goalY = meanPosY + t * dy;
+        }
+      } else {
+        goalX = char.position.x + (gDx / gDist) * maxHorizHold;
+        goalY = char.position.y + (gDy / gDist) * maxHorizHold;
+      }
     }
 
-    // Clamp inside arena walls bounds
-    const tr = Math.max(0.15, target.colliderRadius || 0.25);
-    goalX = Math.max(tr, Math.min(arena.width - tr, goalX));
-    goalY = Math.max(tr, Math.min(arena.height - tr, goalY));
-
-    const meanPosX = target.position.x - mod.appliedWaveOffsetX;
-    const meanPosY = target.position.y - mod.appliedWaveOffsetY;
-    const meanPosZ = Math.max(0, target.position.z - mod.appliedWaveOffsetZ);
+    // Clamp to arena outer bounds (allow pushing up against outer walls just like interior walls)
+    goalX = Math.max(0, Math.min(arena.width, goalX));
+    goalY = Math.max(0, Math.min(arena.height, goalY));
 
     const wallAtTarget = arena.getWallAt(meanPosX, meanPosY);
     const surfaceZ = Math.max(
       target.supportingSurfaceHeight ?? 0,
       wallAtTarget ? wallAtTarget.wallHeight : 0
     );
-    if (mod.targetHoldZ === null || mod.targetHoldZ === undefined) {
-      mod.targetHoldZ = Math.max(
-        (target.supportingSurfaceHeight ?? 0) + hoverOffset,
-        meanPosZ
-      );
-    }
     const wallTopDirectlyUnderTarget = (wallAtTarget && meanPosZ >= wallAtTarget.wallHeight - 0.05)
       ? wallAtTarget.wallHeight
       : 0;
-    const minHoldZ = Math.max(0.12, (target.supportingSurfaceHeight ?? 0) + 0.12, wallTopDirectlyUnderTarget + 0.12);
-    const maxHoldZ = char.position.z + Math.max(1.5, reach * 0.92);
-    const goalZ = Math.max(minHoldZ, Math.min(maxHoldZ, mod.targetHoldZ));
+    const currentFloorZ = Math.max(0, target.supportingSurfaceHeight ?? 0, wallTopDirectlyUnderTarget);
 
-    // Desired velocity toward goal in the wave-stripped mean frame (proportional spring clamped to maxMoveSpeed)
+    if (mod.targetHoldZ === null || mod.targetHoldZ === undefined) {
+      mod.targetHoldZ = mod.isGroundedHold
+        ? currentFloorZ
+        : Math.max((target.supportingSurfaceHeight ?? 0) + hoverOffset, meanPosZ);
+    }
+
+    let vzFree = target.verticalVelocity - mod.appliedWaveVz;
+    let vzWant = 0;
+    if (mod.isGroundedHold) {
+      mod.targetHoldZ = currentFloorZ;
+    } else {
+      const minHoldZ = Math.max(0.05, currentFloorZ + 0.05);
+      const maxHoldZ = char.position.z + Math.max(1.5, reach * 0.92);
+      const goalZ = Math.max(minHoldZ, Math.min(maxHoldZ, mod.targetHoldZ));
+      const errZ = goalZ - meanPosZ;
+      const kpVert = 10.0;
+      vzWant = Math.max(-maxMoveSpeed, Math.min(maxMoveSpeed, errZ * kpVert));
+    }
+
+    // Desired 2D velocity toward goal in the wave-stripped mean frame (proportional spring clamped to maxMoveSpeed)
     const errX = goalX - meanPosX;
     const errY = goalY - meanPosY;
-    const errZ = goalZ - meanPosZ;
 
     const kpHoriz = 11.0;
-    const kpVert = 10.0;
     let vxWant = errX * kpHoriz;
     let vyWant = errY * kpHoriz;
     const wantHorizMag = Math.hypot(vxWant, vyWant);
@@ -627,11 +663,9 @@ export class TelekinesisCapability {
       vxWant = (vxWant / wantHorizMag) * maxMoveSpeed;
       vyWant = (vyWant / wantHorizMag) * maxMoveSpeed;
     }
-    const vzWant = Math.max(-maxMoveSpeed, Math.min(maxMoveSpeed, errZ * kpVert));
 
     let vxFree = target.velocity.x - mod.appliedWaveVx;
     let vyFree = target.velocity.y - mod.appliedWaveVy;
-    let vzFree = target.verticalVelocity - mod.appliedWaveVz;
 
     // Stage 1: Energy-Free Braking / Transfer (strictly reduces speed or matches direction without creating from 0)
     const maxBrakeDeltaV = 42.0 * safeDt;
@@ -666,11 +700,13 @@ export class TelekinesisCapability {
       vyFree = vParNew * uy + vPerpY * perpScale;
     }
 
-    // Vertical energy-free braking: only reduces |vz| when moving faster than vzWant in the same sign or opposing vzWant
-    if (vzFree < -0.001 && vzWant >= vzFree) {
-      vzFree = Math.min(vzWant <= 0 ? vzWant : 0, vzFree + maxBrakeDeltaV);
-    } else if (vzFree > 0.001 && vzWant <= vzFree) {
-      vzFree = Math.max(vzWant >= 0 ? vzWant : 0, vzFree - maxBrakeDeltaV);
+    // Vertical energy-free braking (skipped when grounded hold intentionally turns off vertical levitation)
+    if (!mod.isGroundedHold) {
+      if (vzFree < -0.001 && vzWant >= vzFree) {
+        vzFree = Math.min(vzWant <= 0 ? vzWant : 0, vzFree + maxBrakeDeltaV);
+      } else if (vzFree > 0.001 && vzWant <= vzFree) {
+        vzFree = Math.max(vzWant >= 0 ? vzWant : 0, vzFree - maxBrakeDeltaV);
+      }
     }
 
     // Stage 2: Active Momentum Creation (Equivalence-Principle counter-gravity + acceleration toward goal)
@@ -683,13 +719,17 @@ export class TelekinesisCapability {
     const axCreate = rawAHMag > 0.0001 ? (rawAx / rawAHMag) * clampedAHMag : 0;
     const ayCreate = rawAHMag > 0.0001 ? (rawAy / rawAHMag) * clampedAHMag : 0;
 
-    // Must counter gravity g in uncurved space + accelerate vzFree toward vzWant
-    const climbAccel = Math.max(-g, Math.min(maxVertCreateAccel, (vzWant - vzFree) / safeDt));
-    const azCreate = target.hasGravity ? Math.max(0, g + climbAccel) : Math.max(0, climbAccel);
-    const isTargetAnchored = Math.max(0, target.position.z - surfaceZ) <= mod.getGroundAnchorRange(reg);
-    // When braced against the ground anchor, static hover counter-gravity has a 0.55x bracing efficiency
-    const effHoverG = isTargetAnchored ? g * 0.55 : g;
-    const azDemand = target.hasGravity ? Math.max(0, effHoverG + climbAccel) : Math.max(0, climbAccel);
+    let azCreate = 0;
+    let azDemand = 0;
+    if (!mod.isGroundedHold) {
+      // Must counter gravity g in uncurved space + accelerate vzFree toward vzWant
+      const climbAccel = Math.max(-g, Math.min(maxVertCreateAccel, (vzWant - vzFree) / safeDt));
+      azCreate = target.hasGravity ? Math.max(0, g + climbAccel) : Math.max(0, climbAccel);
+      const isTargetAnchored = Math.max(0, target.position.z - surfaceZ) <= mod.getGroundAnchorRange(reg);
+      // When braced against the ground anchor, static hover counter-gravity has a 0.55x bracing efficiency
+      const effHoverG = isTargetAnchored ? g * 0.55 : g;
+      azDemand = target.hasGravity ? Math.max(0, effHoverG + climbAccel) : Math.max(0, climbAccel);
+    }
 
     const mObj = Math.max(0.2, target.hasMass ? target.mass : 1.0);
     const mChar = Math.max(0.2, char.hasMass ? char.mass : 1.2);
@@ -706,7 +746,9 @@ export class TelekinesisCapability {
 
     const efficiency = Math.max(0.01, char.energyPool ? char.energyPool.getMuscleEfficiency(reg) : 0.25);
     const horizWatts = (0.5 * mObj * recoilWorkMult * (axCreate * axCreate + ayCreate * ayCreate)) / efficiency;
-    const vertWatts = (0.5 * mObj * recoilWorkMult * (azDemand * azDemand)) / efficiency;
+    const vertWatts = mod.isGroundedHold
+      ? 0
+      : (0.5 * mObj * recoilWorkMult * (azDemand * azDemand)) / efficiency;
     const rawDemandedWatts = horizWatts + vertWatts;
 
     const cap = mod.getMaxPower(reg);

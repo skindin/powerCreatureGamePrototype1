@@ -527,7 +527,7 @@ export class ModularBlockEvaluator {
         initTkScreenAnchor(freezeCenter);
         char.isTelekineticElevationControl = true;
         if (tkMod && (tkMod.targetHoldZ === null || tkMod.targetHoldZ === undefined)) {
-          tkMod.targetHoldZ = Math.max(0.12, char.telekineticTarget.position.z - (tkMod.appliedWaveOffsetZ ?? 0));
+          tkMod.targetHoldZ = Math.max(0, char.telekineticTarget.position.z - (tkMod.appliedWaveOffsetZ ?? 0));
         }
         if (!execCtx.gamepadStates) {
           input.recordedMousePos = { x: freezeCenter.x, y: freezeCenter.y };
@@ -558,6 +558,43 @@ export class ModularBlockEvaluator {
       if (tkElevCtrlSlot && tkControlBlock) {
         claimSlot(tkElevCtrlSlot, tkControlBlock.id, "tk.elevationControl", false);
       }
+
+      const applyElevationDelta = (
+        mod: NonNullable<typeof char.telekinesisModule>,
+        tkObj: NonNullable<typeof char.telekineticTarget>,
+        dz: number
+      ) => {
+        const checkX = char.telekineticFrozenPos?.x ?? (tkObj.position.x - mod.appliedWaveOffsetX);
+        const checkY = char.telekineticFrozenPos?.y ?? (tkObj.position.y - mod.appliedWaveOffsetY);
+        const wallAtTarget = execCtx.arena?.getWallAt(checkX, checkY);
+        const curObjMeanZ = Math.max(0, tkObj.position.z - mod.appliedWaveOffsetZ);
+        const wallTopFloor = (wallAtTarget && curObjMeanZ >= wallAtTarget.wallHeight - 0.05)
+          ? wallAtTarget.wallHeight
+          : 0;
+        const groundFloorZ = Math.max(0, tkObj.supportingSurfaceHeight ?? 0, wallTopFloor);
+        const curMeanZ = mod.isGroundedHold
+          ? groundFloorZ
+          : (mod.targetHoldZ ?? Math.max(groundFloorZ, tkObj.position.z - mod.appliedWaveOffsetZ));
+        const maxZ = char.position.z + Math.max(1.5, mod.getTelekinesisReach(char.properties) * 0.92);
+        const rawNextZ = curMeanZ + dz;
+
+        if (dz < 0 && rawNextZ <= groundFloorZ + 0.04) {
+          mod.isGroundedHold = true;
+          mod.targetHoldZ = groundFloorZ;
+        } else if (dz > 0 && mod.isGroundedHold) {
+          mod.isGroundedHold = false;
+          mod.targetHoldZ = Math.max(groundFloorZ + 0.05, Math.min(maxZ, rawNextZ));
+        } else if (!mod.isGroundedHold) {
+          const clampedZ = Math.max(groundFloorZ, Math.min(maxZ, rawNextZ));
+          if (clampedZ <= groundFloorZ + 0.005) {
+            mod.isGroundedHold = true;
+            mod.targetHoldZ = groundFloorZ;
+          } else {
+            mod.targetHoldZ = clampedZ;
+          }
+        }
+      };
+
       if (!execCtx.gamepadStates) {
         activeRawDragThisFrame = true;
         ModularBlockEvaluator.activeRawDragBlockId = tkControlBlock?.id || "block-kestrel-tk";
@@ -568,26 +605,13 @@ export class ModularBlockEvaluator {
           const ppu = Math.max(10, input.pixelsPerUnit || 48);
           const hoverScale = Math.max(0.25, execCtx.arena?.visualAltitudeScale ?? 0.5);
           const dzPerPx = 1.0 / (ppu * hoverScale);
-          const curMeanZ = mod.targetHoldZ ?? Math.max(0.12, tkObj.position.z - mod.appliedWaveOffsetZ);
-          const checkX = char.telekineticFrozenPos?.x ?? (tkObj.position.x - mod.appliedWaveOffsetX);
-          const checkY = char.telekineticFrozenPos?.y ?? (tkObj.position.y - mod.appliedWaveOffsetY);
-          const wallAtTarget = execCtx.arena?.getWallAt(checkX, checkY);
-          const curObjMeanZ = Math.max(0, tkObj.position.z - mod.appliedWaveOffsetZ);
-          const wallTopFloor = (wallAtTarget && curObjMeanZ >= wallAtTarget.wallHeight - 0.05)
-            ? wallAtTarget.wallHeight
-            : 0;
-          const minZ = Math.max(0.12, (tkObj.supportingSurfaceHeight ?? 0) + 0.12, wallTopFloor + 0.12);
-          const maxZ = char.position.z + Math.max(1.5, mod.getTelekinesisReach(char.properties) * 0.92);
-          mod.targetHoldZ = Math.max(minZ, Math.min(maxZ, curMeanZ - dy * dzPerPx));
+          applyElevationDelta(mod, tkObj, -dy * dzPerPx);
         });
       } else if (tkMod) {
         const gpRightStick = (execCtx.gamepadStates as any)?.rightStick ?? execCtx.getGamepadAxis(execCtx.gamepadStates.slotIndex, "RightStick");
         const ry = gpRightStick?.y ?? 0;
         if (Math.abs(ry) > 0.12) {
-          const curMeanZ = tkMod.targetHoldZ ?? Math.max(0.12, char.telekineticTarget.position.z - tkMod.appliedWaveOffsetZ);
-          const minZ = Math.max(0.12, (char.telekineticTarget.supportingSurfaceHeight ?? 0) + 0.12);
-          const maxZ = char.position.z + Math.max(1.5, tkMod.getTelekinesisReach(char.properties) * 0.92);
-          tkMod.targetHoldZ = Math.max(minZ, Math.min(maxZ, curMeanZ - ry * 7.5 * execCtx.dt));
+          applyElevationDelta(tkMod, char.telekineticTarget, -ry * 7.5 * execCtx.dt);
         }
       }
     }

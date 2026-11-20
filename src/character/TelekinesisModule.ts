@@ -68,6 +68,9 @@ export class TelekinesisModule {
   /** Target mean hover elevation (world Z) maintained during movement unless adjusted via Elevation Control Mode */
   public targetHoldZ: number | null = null;
 
+  /** When true, vertical levitation is intentionally switched off (0 W) so gravity rests the object on the surface while horizontal TK control stays active */
+  public isGroundedHold: boolean = false;
+
   /** Current zero-cost stability wave position & velocity offsets (excluded from power demand calculation) */
   public appliedWaveOffsetX: number = 0;
   public appliedWaveOffsetY: number = 0;
@@ -196,6 +199,8 @@ export class TelekinesisModule {
   public release(character: Character): GameObject | null {
     const target = character.telekineticTarget;
     if (!target) return null;
+    this.targetHoldZ = null;
+    this.isGroundedHold = false;
     character.telekineticTarget = null;
     character.isTelekineticObjectControl = false;
     character.telekineticFrozenPos = null;
