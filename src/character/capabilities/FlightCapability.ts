@@ -6,10 +6,14 @@ export interface FlightKinematicsPlan {
   /** Desired active 3D acceleration vector created by pushing against the ground anchor (u/s^2) */
   axCreate: number;
   ayCreate: number;
-  azCreate: number;
-  /** Uncapped horizontal and vertical metabolic power demand (Watts) */
+  /** Tier 1 anti-gravity / anti-fall / sink-cap vertical acceleration (u/s^2) */
+  hoverAz: number;
+  /** Tier 2 voluntary extra upward climb acceleration (u/s^2) */
+  extraAz: number;
+  /** Uncapped horizontal, Tier 1 hover, and Tier 2 extra vertical metabolic power demand (Watts) */
   horizWatts: number;
-  vertWatts: number;
+  hoverWatts: number;
+  extraVertWatts: number;
   /** Uncapped total metabolic watts required for full 3D thrust vector */
   rawDemandedWatts: number;
   /** Capped metabolic watts to request from EnergyPool */
@@ -114,7 +118,14 @@ export class FlightCapability {
 
     let axCreate = 0;
     let ayCreate = 0;
-    let azCreate = 0;
+    let hoverAz = 0;
+    let extraAz = 0;
+
+    const totalMass = Math.max(0.2, char.hasMass ? char.mass : 1.2) + (char.carriedMass || 0);
+    const efficiency = Math.max(0.01, char.energyPool ? char.energyPool.getMuscleEfficiency(reg) : 0.25);
+    const cap = mod.getMaxPower(reg);
+    const forcePowerFactor = 0.5 * g;
+    const aMaxAtCap = cap > 0 ? (cap * efficiency) / (forcePowerFactor * totalMass) : 60.0;
 
     const isActivelyDescending = verticalIntent < -0.05;
     const isFlyingActive = isAnchored && (isAirborne || vzWant > 0.01 || hasHorizInput);
@@ -126,9 +137,13 @@ export class FlightCapability {
       if (isAirborne || hasHorizInput || vzWant > 0.01) {
         const dvx = vxWant - vx0;
         const dvy = vyWant - vy0;
-        if (Math.hypot(dvx, dvy) > 0.001) {
-          axCreate = dvx / safeDt;
-          ayCreate = dvy / safeDt;
+        const dvMag = Math.hypot(dvx, dvy);
+        if (dvMag > 0.001) {
+          const maxHorizA = Math.max(36.0, aMaxAtCap);
+          const rawAH = dvMag / safeDt;
+          const clampedAH = Math.min(maxHorizA, rawAH);
+          axCreate = (dvx / dvMag) * clampedAH;
+          ayCreate = (dvy / dvMag) * clampedAH;
         }
       }
 
@@ -136,30 +151,36 @@ export class FlightCapability {
         if (isActivelyDescending) {
           if (vz0 > vzWant) {
             // Player wants to descend and hasn't exceeded maxSinkSpeed yet: gravity accelerates downward for 0 W
-            azCreate = 0;
+            hoverAz = 0;
+            extraAz = 0;
           } else {
-            // Sink speed exceeded: paid upward thrust to cap descent at maxSinkSpeed
-            azCreate = g + Math.max(0, (vzWant - vz0) / safeDt);
+            // Sink speed exceeded: paid upward thrust to cap descent at maxSinkSpeed stays Tier 1
+            hoverAz = g + Math.max(0, (vzWant - vz0) / safeDt);
+            extraAz = 0;
           }
+        } else if (verticalIntent > 0.05) {
+          // Voluntary Space ascent: holding against gravity + any downward fall/recoil is Tier 1;
+          // voluntary upward climb acceleration is Tier 2 so holding Space + WASD shares remaining power.
+          const antiFallAz = g + Math.max(0, -vz0 / safeDt);
+          const desiredTotalAz = Math.max(0, g + Math.max(-g, (vzWant - vz0) / safeDt));
+          hoverAz = Math.min(desiredTotalAz, antiFallAz);
+          extraAz = Math.min(Math.max(24.0, aMaxAtCap * 0.6), Math.max(0, desiredTotalAz - hoverAz));
         } else {
-          // Hovering (vzWant == 0) or Ascending (vzWant > 0):
-          // Must counter gravity g PLUS accelerate vz0 toward vzWant
+          // Hovering (verticalIntent <= 0.05): keep altitude stability as Tier 1
           const climbAccel = Math.max(-g, (vzWant - vz0) / safeDt);
-          azCreate = Math.max(0, g + climbAccel);
+          hoverAz = Math.max(0, g + climbAccel);
+          extraAz = 0;
         }
       }
     }
 
     // Unified Force-Proportional Power Law:
     // Metabolic power scales directly with total 3D thrust force magnitude: P = (0.5 * g * ||F||) / efficiency
-    const totalMass = Math.max(0.2, char.hasMass ? char.mass : 1.2) + (char.carriedMass || 0);
-    const efficiency = Math.max(0.01, char.energyPool ? char.energyPool.getMuscleEfficiency(reg) : 0.25);
-    const cap = mod.getMaxPower(reg);
-    const forcePowerFactor = 0.5 * g;
     const horizForce = totalMass * Math.hypot(axCreate, ayCreate);
-    const vertForce = totalMass * Math.abs(azCreate);
+    const hoverWatts = (forcePowerFactor * totalMass * hoverAz) / efficiency;
+    const extraVertWatts = (forcePowerFactor * totalMass * Math.abs(extraAz)) / efficiency;
     const horizWatts = (forcePowerFactor * horizForce) / efficiency;
-    const vertWatts = (forcePowerFactor * vertForce) / efficiency;
+    const vertForce = totalMass * Math.abs(hoverAz + extraAz);
     const rawDemandedWatts = (forcePowerFactor * Math.hypot(horizForce, vertForce)) / efficiency;
 
     let requestedWatts = rawDemandedWatts;
@@ -170,9 +191,11 @@ export class FlightCapability {
     return {
       axCreate,
       ayCreate,
-      azCreate,
+      hoverAz,
+      extraAz,
       horizWatts,
-      vertWatts,
+      hoverWatts,
+      extraVertWatts,
       rawDemandedWatts,
       requestedWatts,
       isFlyingActive,
@@ -264,10 +287,12 @@ export class FlightCapability {
       return;
     }
 
-    // Resolve Euclidean 3D power budget prioritizing vertical lift over horizontal thrust
+    // Resolve 2-tier Euclidean 3D power budget:
+    // Tier 1: Anti-gravity / anti-fall / sink-cap hold (hoverWatts).
+    // Tier 2: Orthogonal share of horizontal movement/recoil resistance + voluntary extra ascent.
     const cap = mod.getMaxPower(reg);
-    let vertScale = 0;
-    let horizScale = 0;
+    let hoverScale = 0;
+    let extraScale = 0;
     if (plan.rawDemandedWatts > 0.01) {
       let budgetWatts = 0;
       if (checksEnergy && char.energyPool) {
@@ -295,20 +320,29 @@ export class FlightCapability {
       }
 
       if (budgetWatts > 0.0001) {
-        const vertGranted = Math.min(budgetWatts, plan.vertWatts);
-        vertScale = plan.vertWatts > 0.0001 ? Math.min(1.0, vertGranted / plan.vertWatts) : 1.0;
-        const horizBudget = Math.sqrt(Math.max(0, budgetWatts * budgetWatts - vertGranted * vertGranted));
-        horizScale = plan.horizWatts > 0.0001 ? Math.min(1.0, horizBudget / plan.horizWatts) : 1.0;
+        if (budgetWatts <= plan.hoverWatts + 1e-6) {
+          hoverScale = plan.hoverWatts > 0.0001 ? Math.min(1.0, budgetWatts / plan.hoverWatts) : 0;
+          extraScale = 0;
+        } else {
+          hoverScale = 1.0;
+          const A = plan.horizWatts * plan.horizWatts + plan.extraVertWatts * plan.extraVertWatts;
+          const B = 2.0 * plan.hoverWatts * (plan.extraAz >= 0 ? plan.extraVertWatts : -plan.extraVertWatts);
+          const C = plan.hoverWatts * plan.hoverWatts - budgetWatts * budgetWatts;
+          extraScale = A > 1e-6
+            ? Math.max(0, Math.min(1.0, (-B + Math.sqrt(Math.max(0, B * B - 4 * A * C))) / (2 * A)))
+            : 1.0;
+        }
       }
     }
 
     // Apply paid 3D acceleration (pushing against ground anchor within energy/power limits)
-    if (horizScale > 0.0001) {
-      char.velocity.x += plan.axCreate * horizScale * safeDt;
-      char.velocity.y += plan.ayCreate * horizScale * safeDt;
+    const actualAz = plan.hoverAz * hoverScale + plan.extraAz * extraScale;
+    if (extraScale > 0.0001) {
+      char.velocity.x += plan.axCreate * extraScale * safeDt;
+      char.velocity.y += plan.ayCreate * extraScale * safeDt;
     }
-    if (vertScale > 0.0001) {
-      char.verticalVelocity += plan.azCreate * vertScale * safeDt;
+    if (Math.abs(actualAz) > 0.0001) {
+      char.verticalVelocity += actualAz * safeDt;
     }
 
     // Apply Long-Period, High-Amplitude Telekinetic Stability Wave on elevation (Z) strictly while powered & airborne
@@ -337,7 +371,7 @@ export class FlightCapability {
     }
 
     const isAnchoredNow = heightAboveSurface <= mod.getGroundAnchorRange(reg) + 0.05;
-    const canSustainHover = isAnchoredNow && plan.azCreate > 0.01 && (!checksEnergy || vertScale > 0.0001);
+    const canSustainHover = isAnchoredNow && actualAz > 0.01 && (!checksEnergy || hoverScale > 0.0001 || extraScale > 0.0001);
     if (instability > 0.001 && isAirborne && canSustainHover) {
       mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
       const p = mod.oscillationPhase;

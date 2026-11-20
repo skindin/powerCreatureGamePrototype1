@@ -381,10 +381,11 @@ export class TelekinesisCapability {
     const plan = TelekinesisCapability.computePlan(char, target, aimTargetPos, safeDt, arena);
     if (!plan) return;
 
-    // Resolve Euclidean 3D power budget prioritizing vertical lift (vertWatts) first
+    // Resolve 2-tier Euclidean 3D power budget:
+    // Tier 1: Anti-gravity hold (hoverWatts). Tier 2: Orthogonal share of horizontal movement + extra vertical climb.
     const cap = mod.getMaxPower(reg);
-    let vertScale = 0;
-    let horizScale = 0;
+    let hoverScale = 0;
+    let extraScale = 0;
     if (plan.rawDemandedWatts > 0.01) {
       let budgetWatts = cap > 0 ? Math.min(plan.rawDemandedWatts, cap) : plan.rawDemandedWatts;
       if (mod.consumesEnergy && char.energyPool && char.energyPool.enabled) {
@@ -415,10 +416,18 @@ export class TelekinesisCapability {
           : grantedWatts;
       }
 
-      const vertGranted = Math.min(budgetWatts, plan.vertWatts);
-      vertScale = plan.vertWatts > 0.0001 ? Math.min(1.0, vertGranted / plan.vertWatts) : 1.0;
-      const horizBudget = Math.sqrt(Math.max(0, budgetWatts * budgetWatts - vertGranted * vertGranted));
-      horizScale = plan.horizWatts > 0.0001 ? Math.min(1.0, horizBudget / plan.horizWatts) : 1.0;
+      if (budgetWatts <= plan.hoverWatts + 1e-6) {
+        hoverScale = plan.hoverWatts > 0.0001 ? Math.min(1.0, budgetWatts / plan.hoverWatts) : 0;
+        extraScale = 0;
+      } else {
+        hoverScale = 1.0;
+        const A = plan.horizWatts * plan.horizWatts + plan.extraVertWatts * plan.extraVertWatts;
+        const B = 2.0 * plan.hoverWatts * (plan.extraAz >= 0 ? plan.extraVertWatts : -plan.extraVertWatts);
+        const C = plan.hoverWatts * plan.hoverWatts - budgetWatts * budgetWatts;
+        extraScale = A > 1e-6
+          ? Math.max(0, Math.min(1.0, (-B + Math.sqrt(Math.max(0, B * B - 4 * A * C))) / (2 * A)))
+          : 1.0;
+      }
     }
 
     const mObj = Math.max(0.2, target.hasMass ? target.mass : 1.0);
@@ -434,10 +443,11 @@ export class TelekinesisCapability {
     mod.appliedWaveVz = 0;
 
     // Apply paid acceleration to target and full equal-and-opposite reaction impulse to caster
-    if (vertScale > 0.0001 || horizScale > 0.0001) {
-      const dvx = plan.axCreate * horizScale * safeDt;
-      const dvy = plan.ayCreate * horizScale * safeDt;
-      const dvz = mod.isGroundedHold ? 0 : plan.azCreate * vertScale * safeDt;
+    if (hoverScale > 0.0001 || extraScale > 0.0001) {
+      const dvx = plan.axCreate * extraScale * safeDt;
+      const dvy = plan.ayCreate * extraScale * safeDt;
+      const actualAz = mod.isGroundedHold ? 0 : (plan.hoverAz * hoverScale + plan.extraAz * extraScale);
+      const dvz = actualAz * safeDt;
 
       target.velocity.x += dvx;
       target.velocity.y += dvy;
@@ -451,8 +461,11 @@ export class TelekinesisCapability {
         target.supportingSurfaceHeight ?? 0,
         wallAtTarget ? wallAtTarget.wallHeight : 0
       );
-      // Clear ground surface contact as soon as upward lift is applied so character ground friction (2.0x) does not drag the target
-      if (!mod.isGroundedHold && dvz > 0.05 && target.position.z - targetSurfZ <= 0.03) {
+      // Clear ground surface contact only when applied lift actually overcomes gravity (or zero-g push > 0.05)
+      const canLiftOffSurface = !mod.isGroundedHold && (
+        target.hasGravity ? actualAz > (arena.gravity || 30.0) + 0.05 : dvz > 0.05
+      );
+      if (canLiftOffSurface && target.position.z - targetSurfZ <= 0.03) {
         target.position.z = targetSurfZ + 0.035;
       }
 
@@ -514,9 +527,11 @@ export class TelekinesisCapability {
   ): {
     axCreate: number;
     ayCreate: number;
-    azCreate: number;
+    hoverAz: number;
+    extraAz: number;
     horizWatts: number;
-    vertWatts: number;
+    hoverWatts: number;
+    extraVertWatts: number;
     rawDemandedWatts: number;
     requestedWatts: number;
   } | null {
@@ -529,6 +544,17 @@ export class TelekinesisCapability {
     const reach = mod.getTelekinesisReach(reg);
     const maxMoveSpeed = mod.getMaxMoveSpeed(reg);
     const hoverOffset = mod.getHoldHoverHeight(reg);
+
+    const maxHorizCreateAccel = 36.0;
+    const maxVertCreateAccel = 36.0;
+    const mObj = Math.max(0.2, target.hasMass ? target.mass : 1.0);
+    const efficiency = Math.max(0.01, char.energyPool ? char.energyPool.getMuscleEfficiency(reg) : 0.25);
+    const cap = mod.getMaxPower(reg);
+    const forcePowerFactor = 0.5 * g;
+    const hoverWattsCapEst = (!mod.isGroundedHold && target.hasGravity) ? (forcePowerFactor * mObj * g) / efficiency : 0;
+    const horizBudgetAtHover = cap > hoverWattsCapEst ? Math.sqrt(Math.max(0, cap * cap - hoverWattsCapEst * hoverWattsCapEst)) : 0;
+    const aHorizAvail = (horizBudgetAtHover * efficiency) / (forcePowerFactor * mObj);
+    const aVertAvail = (!mod.isGroundedHold && cap > hoverWattsCapEst) ? ((cap - hoverWattsCapEst) * efficiency) / (forcePowerFactor * mObj) : 0;
 
     const meanPosX = target.position.x - mod.appliedWaveOffsetX;
     const meanPosY = target.position.y - mod.appliedWaveOffsetY;
@@ -595,10 +621,15 @@ export class TelekinesisCapability {
       const goalZ = Math.max(minHoldZ, Math.min(maxHoldZ, mod.targetHoldZ));
       const errZ = goalZ - meanPosZ;
       const kpVert = 10.0;
-      vzWant = Math.max(-maxMoveSpeed, Math.min(maxMoveSpeed, errZ * kpVert));
+      if (errZ > 0) {
+        const vStopSafeZ = aVertAvail > 0.05 ? Math.sqrt(2.0 * (0.75 * Math.min(maxVertCreateAccel, aVertAvail)) * errZ) : maxMoveSpeed;
+        vzWant = Math.min(maxMoveSpeed, errZ * kpVert, vStopSafeZ);
+      } else {
+        vzWant = Math.max(-maxMoveSpeed, errZ * kpVert);
+      }
     }
 
-    // Desired 2D velocity toward goal in the wave-stripped mean frame (proportional spring clamped to maxMoveSpeed)
+    // Desired 2D velocity toward goal in the wave-stripped mean frame with critically-damped arrival braking curve
     const errX = goalX - meanPosX;
     const errY = goalY - meanPosY;
     const errDist = Math.hypot(errX, errY);
@@ -610,17 +641,12 @@ export class TelekinesisCapability {
     const groundedDeadzone = Math.max(0.04, (staticSpeed / kpHoriz) * 1.25);
     const inGroundedDeadzone = mod.isGroundedHold && errDist <= groundedDeadzone;
 
-    let vxWant = (inGroundedDeadzone || errDist <= 0.004) ? 0 : errX * kpHoriz;
-    let vyWant = (inGroundedDeadzone || errDist <= 0.004) ? 0 : errY * kpHoriz;
-    const wantHorizMag = Math.hypot(vxWant, vyWant);
-    if (wantHorizMag > maxMoveSpeed) {
-      vxWant = (vxWant / wantHorizMag) * maxMoveSpeed;
-      vyWant = (vyWant / wantHorizMag) * maxMoveSpeed;
-    }
+    const vStopSafe = aHorizAvail > 0.05 ? Math.sqrt(2.0 * (0.72 * Math.min(maxHorizCreateAccel, aHorizAvail)) * errDist) : maxMoveSpeed;
+    const wantHorizSpeed = (inGroundedDeadzone || errDist <= 0.004) ? 0 : Math.min(maxMoveSpeed, errDist * kpHoriz, vStopSafe);
+    const vxWant = (errDist > 1e-6 && wantHorizSpeed > 0) ? (errX / errDist) * wantHorizSpeed : 0;
+    const vyWant = (errDist > 1e-6 && wantHorizSpeed > 0) ? (errY / errDist) * wantHorizSpeed : 0;
 
     // Paid 3D acceleration directly toward (vxWant, vyWant, vzWant)
-    const maxHorizCreateAccel = 36.0;
-    const maxVertCreateAccel = 36.0;
     const rawAx = inGroundedDeadzone ? 0 : (vxWant - vx0) / safeDt;
     const rawAy = inGroundedDeadzone ? 0 : (vyWant - vy0) / safeDt;
     const rawAHMag = Math.hypot(rawAx, rawAy);
@@ -628,27 +654,32 @@ export class TelekinesisCapability {
     const axCreate = (!inGroundedDeadzone && rawAHMag > 0.0001) ? (rawAx / rawAHMag) * clampedAHMag : 0;
     const ayCreate = (!inGroundedDeadzone && rawAHMag > 0.0001) ? (rawAy / rawAHMag) * clampedAHMag : 0;
 
-    let azCreate = 0;
+    let hoverAz = 0;
+    let extraAz = 0;
     if (!mod.isGroundedHold) {
       if (target.hasGravity) {
-        const climbAccel = Math.max(-g, Math.min(maxVertCreateAccel, (vzWant - vz0) / safeDt));
-        azCreate = Math.max(0, g + climbAccel);
+        const rawClimb = (vzWant - vz0) / safeDt;
+        const horizActive = Math.hypot(axCreate, ayCreate) > 0.5;
+        const climbCap = (horizActive && rawClimb > 0 && aVertAvail > 0.05)
+          ? Math.min(maxVertCreateAccel, Math.max(0.5, aVertAvail * 0.5))
+          : maxVertCreateAccel;
+        const climbAccel = Math.max(-g, Math.min(climbCap, rawClimb));
+        const totalAz = Math.max(0, g + climbAccel);
+        hoverAz = Math.min(totalAz, g);
+        extraAz = Math.max(0, totalAz - g);
       } else {
-        azCreate = Math.max(-maxVertCreateAccel, Math.min(maxVertCreateAccel, (vzWant - vz0) / safeDt));
+        hoverAz = 0;
+        extraAz = Math.max(-maxVertCreateAccel, Math.min(maxVertCreateAccel, (vzWant - vz0) / safeDt));
       }
     }
 
     // Unified Force-Proportional Power Law: P = (0.5 * g * ||F||) / efficiency
-    const mObj = Math.max(0.2, target.hasMass ? target.mass : 1.0);
-    const efficiency = Math.max(0.01, char.energyPool ? char.energyPool.getMuscleEfficiency(reg) : 0.25);
-    const forcePowerFactor = 0.5 * g;
-    const horizForce = mObj * Math.hypot(axCreate, ayCreate);
-    const vertForce = mod.isGroundedHold ? 0 : mObj * Math.abs(azCreate);
-    const horizWatts = (forcePowerFactor * horizForce) / efficiency;
-    const vertWatts = (forcePowerFactor * vertForce) / efficiency;
-    const rawDemandedWatts = (forcePowerFactor * Math.hypot(horizForce, vertForce)) / efficiency;
+    const hoverWatts = (forcePowerFactor * mObj * hoverAz) / efficiency;
+    const extraVertWatts = (forcePowerFactor * mObj * Math.abs(extraAz)) / efficiency;
+    const horizWatts = (forcePowerFactor * mObj * Math.hypot(axCreate, ayCreate)) / efficiency;
+    const totalVertForce = mod.isGroundedHold ? 0 : mObj * Math.abs(hoverAz + extraAz);
+    const rawDemandedWatts = (forcePowerFactor * Math.hypot(mObj * Math.hypot(axCreate, ayCreate), totalVertForce)) / efficiency;
 
-    const cap = mod.getMaxPower(reg);
     let requestedWatts = rawDemandedWatts;
     if (requestedWatts > cap) {
       requestedWatts = mod.allowPartialPower ? cap : 0;
@@ -657,9 +688,11 @@ export class TelekinesisCapability {
     return {
       axCreate,
       ayCreate,
-      azCreate,
+      hoverAz,
+      extraAz,
       horizWatts,
-      vertWatts,
+      hoverWatts,
+      extraVertWatts,
       rawDemandedWatts,
       requestedWatts,
     };
