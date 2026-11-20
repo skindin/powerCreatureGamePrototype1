@@ -82,6 +82,12 @@ export class EnergyPool {
   public staminaRegenRateProp: DynamicProperty;
 
   /**
+   * When enabled (default), stamina continues passively regenerating even during ticks
+   * when energy/stamina is actively being consumed.
+   */
+  public regenStaminaWhileUsingEnergy: boolean = true;
+
+  /**
    * Exhaustion threshold ratio: how much of maxStamina must be recovered
    * after hitting 0 before the creature can use energy again (default 0.20 = 20%).
    */
@@ -133,6 +139,7 @@ export class EnergyPool {
     maxStamina?: number;
     currentStamina?: number;
     staminaRegenRate?: number;
+    regenStaminaWhileUsingEnergy?: boolean;
     recoveryThresholdRatio?: number;
     muscleEfficiency?: number;
     infiniteEnergy?: boolean;
@@ -166,6 +173,10 @@ export class EnergyPool {
     const rawRegen = options?.staminaRegenRate ?? 500.0;
     const regenWatts = rawRegen <= 10.0 ? rawRegen * 500.0 : rawRegen;
     this.staminaRegenRateProp = new DynamicProperty(regenWatts);
+
+    if (options?.regenStaminaWhileUsingEnergy !== undefined) {
+      this.regenStaminaWhileUsingEnergy = options.regenStaminaWhileUsingEnergy;
+    }
 
     if (options?.recoveryThresholdRatio !== undefined) {
       this.recoveryThresholdRatio = options.recoveryThresholdRatio;
@@ -970,9 +981,9 @@ export class EnergyPool {
     let curS = this.getCurrentStamina(registry);
     const regen = this.getStaminaRegenRate(registry);
 
-    // Recover stamina when physically resting (no physical exertion this tick)
-    const isResting = !this.hadPhysicalExertion;
-    if (isResting && curS < maxS) {
+    // Recover stamina (always if regenStaminaWhileUsingEnergy is true, or when physically resting)
+    const canRegenStamina = this.regenStaminaWhileUsingEnergy || !this.hadPhysicalExertion;
+    if (canRegenStamina && curS < maxS) {
       curS = Math.min(maxS, curS + regen * dt);
       this.currentStaminaProp.set(curS, registry);
     }

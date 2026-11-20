@@ -1022,6 +1022,7 @@ export class EntityModuleLifecycle {
             if (srcChar.energyPool.muscleEfficiencyProp && destChar.energyPool.muscleEfficiencyProp) {
               destChar.energyPool.muscleEfficiencyProp.set(srcChar.energyPool.muscleEfficiencyProp.get(src.properties), dest.properties);
             }
+            destChar.energyPool.regenStaminaWhileUsingEnergy = srcChar.energyPool.regenStaminaWhileUsingEnergy;
             destChar.energyPool.infiniteEnergy = srcChar.energyPool.infiniteEnergy;
             destChar.energyPool.debugAutoRefillOnEmpty = srcChar.energyPool.debugAutoRefillOnEmpty;
           } else {

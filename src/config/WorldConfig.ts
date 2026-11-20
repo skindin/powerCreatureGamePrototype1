@@ -323,6 +323,7 @@ export interface SerializedCharacterConfig {
     enabled?: boolean;
     staminaCapacity?: number;
     staminaRegenRate?: number;
+    regenStaminaWhileUsingEnergy?: boolean;
     energyPoolCapacity?: number;
     maxPowerOutput?: number;
     currentStamina?: number;
@@ -675,6 +676,7 @@ export function serializeCharacter(char: Character): SerializedCharacterConfig {
       enabled: char.energyPool.enabled,
       staminaCapacity: char.energyPool.maxStaminaProp?.get(char.properties) ?? 5000,
       staminaRegenRate: char.energyPool.staminaRegenRateProp?.get(char.properties) ?? 500,
+      regenStaminaWhileUsingEnergy: char.energyPool.regenStaminaWhileUsingEnergy,
       energyPoolCapacity: char.energyPool.maxEnergyProp?.get(char.properties) ?? 10000,
       currentStamina: char.energyPool.currentStaminaProp?.get(char.properties),
       currentEnergy: char.energyPool.currentEnergyProp?.get(char.properties),
@@ -1178,6 +1180,9 @@ export function applyCharacterConfig(char: Character, config: SerializedCharacte
         if (config.energyPool.staminaRegenRate !== undefined && ep.staminaRegenRateProp) {
           ep.staminaRegenRateProp.set(config.energyPool.staminaRegenRate, char.properties);
           char.properties?.set("staminaRegenRate", config.energyPool.staminaRegenRate);
+        }
+        if (config.energyPool.regenStaminaWhileUsingEnergy !== undefined) {
+          ep.regenStaminaWhileUsingEnergy = config.energyPool.regenStaminaWhileUsingEnergy;
         }
         if (config.energyPool.energyPoolCapacity !== undefined && ep.maxEnergyProp) {
           ep.maxEnergyProp.set(config.energyPool.energyPoolCapacity, char.properties);

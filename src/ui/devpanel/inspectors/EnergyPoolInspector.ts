@@ -76,6 +76,11 @@ export class EnergyPoolInspector {
       regenEl.appendChild(rCtrl.element);
     }
 
+    const checkRegenWhileActive = container.querySelector("#check-energy-regen-while-active") as HTMLInputElement | null;
+    checkRegenWhileActive?.addEventListener("change", () => {
+      ep.regenStaminaWhileUsingEnergy = checkRegenWhileActive.checked;
+    });
+
     const effEl = container.querySelector("#prop-socket-energy-efficiency");
     if (effEl) {
       const eCtrl = new PropertyControl({

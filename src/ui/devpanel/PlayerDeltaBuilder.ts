@@ -338,6 +338,7 @@ export class PlayerDeltaBuilder {
       "Stamina Capacity (J)": "energyPool.staminaCapacity",
       staminaRegenRate: "energyPool.staminaRegenRate",
       "Stamina Regen Rate (W)": "energyPool.staminaRegenRate",
+      regenStaminaWhileUsingEnergy: "energyPool.regenStaminaWhileUsingEnergy",
       currentEnergy: "energyPool.currentEnergy",
       "Current Energy (J)": "energyPool.currentEnergy",
       energyPoolCapacity: "energyPool.energyPoolCapacity",

@@ -389,7 +389,7 @@ export class EntityModuleCardsHtml {
         `;
       }
 
-      
+
       if (hasRollMovementModule && char.rollMovementModule) {
         attachedCount++;
         html += `
@@ -940,6 +940,10 @@ export class EntityModuleCardsHtml {
           <div id="prop-socket-energy-stamina-cur"></div>
           <div id="prop-socket-energy-stamina-max"></div>
           <div id="prop-socket-energy-stamina-regen"></div>
+          <div class="toggle-row" style="margin-top: 4px; margin-bottom: 4px;">
+            <span style="font-size: 0.8rem; color: #cbd5e1;">Regenerate Stamina While Using Energy</span>
+            <input type="checkbox" id="check-energy-regen-while-active" ${ep.regenStaminaWhileUsingEnergy ? "checked" : ""}>
+          </div>
           <div id="prop-socket-energy-efficiency"></div>
 
           <div style="margin-top: 6px; padding: 4px 0;">
