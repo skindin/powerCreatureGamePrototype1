@@ -3,15 +3,14 @@ import type { Vector2D } from "../../engine/GameObject.js";
 import type { Arena } from "../../engine/Arena.js";
 
 export interface FlightKinematicsPlan {
-  /** Post-transfer (0-energy) horizontal and vertical velocity */
-  vxFree: number;
-  vyFree: number;
-  vzFree: number;
-  /** Desired active acceleration vector to be created via energy (u/s^2) */
+  /** Desired active 3D acceleration vector created by pushing against the ground anchor (u/s^2) */
   axCreate: number;
   ayCreate: number;
   azCreate: number;
-  /** Uncapped metabolic watts required for full desired active acceleration */
+  /** Uncapped horizontal and vertical metabolic power demand (Watts) */
+  horizWatts: number;
+  vertWatts: number;
+  /** Uncapped total metabolic watts required for full 3D thrust vector */
   rawDemandedWatts: number;
   /** Capped metabolic watts to request from EnergyPool */
   requestedWatts: number;
@@ -22,16 +21,11 @@ export interface FlightKinematicsPlan {
 /**
  * Isolated 1-to-1 capability slice for Telekinetic & Aerodynamic Flight (`FlightModule`).
  *
- * Implements the two-stage minimum-energy flight solver:
- * 1. Energy-Free Relative Momentum Transfer / Redirection (ΔK <= 0, 0 W):
- *    Strictly requires actual non-zero velocity. Brakes excess horizontal/vertical speed into
- *    the ground anchor (never reversing velocity sign or creating velocity from rest) and can
- *    elastically redirect actual downward fall speed (vz < 0) into horizontal glide speed.
- * 2. Active Momentum Creation (ΔK > 0, Costs Energy):
- *    Calculates the remaining 3D acceleration deficit (including Equivalence-Principle hover
- *    power 0.5 * m * g^2 in uncurved space), caps against maxPower, and when allowPartialPower
- *    is enabled, scales created acceleration by sqrt(P_granted / P_rawDemanded) so the character
- *    always attempts to fly even when underpowered.
+ * Implements the unified paid Newton's 3rd Law momentum-exchange model:
+ * - Pushing off the ground (within `groundAnchorRange`) generates equal-and-opposite thrust on the
+ *   character to sustain hover, climb, brake incoming recoil/knockback, and accelerate horizontally.
+ * - Requires continuous metabolic power `P = (0.5 * g * ||F||) / efficiency`, strictly bounded by
+ *   `maxPower`, stamina, and caloric energy reserve (vertical lift prioritized over horizontal thrust).
  */
 export class FlightCapability {
   public static canFly(char: Character): boolean {
@@ -51,8 +45,8 @@ export class FlightCapability {
   }
 
   /**
-   * Computes the two-stage flight kinematics plan (0-energy transfer + active creation demand)
-   * without mutating velocity yet, so `registerDemand` and `actuate` share identical math.
+   * Computes the paid flight thrust plan without mutating velocity yet,
+   * so `registerDemand` and `actuate` share identical math.
    */
   public static computePlan(
     char: Character,
@@ -113,100 +107,11 @@ export class FlightCapability {
       }
     }
 
-    // Current actual velocities before flight actuation (strip previous tick's Z-wave bias so Stage 1/2 don't fight it)
+    // Current actual velocities before flight actuation (strip previous tick's Z-wave bias so demand stays steady)
     const vx0 = char.velocity.x;
     const vy0 = char.velocity.y;
     const vz0 = char.verticalVelocity - mod.appliedWaveVz;
 
-    let vxFree = vx0;
-    let vyFree = vy0;
-    let vzFree = vz0;
-
-    // =========================================================================
-    // STAGE 1: Energy-Free Momentum Transfer & Redirection (ΔK <= 0, 0 W Cost)
-    // Strictly requires actual non-zero velocity; never creates speed from 0
-    // and never reverses the sign of a velocity component.
-    // =========================================================================
-    const maxBrakeAccel = 38.0; // Passive ground-anchor braking rate (u/s^2)
-    const maxBrakeDeltaV = maxBrakeAccel * safeDt;
-
-    if (isAnchored) {
-      if (!hasHorizInput) {
-        // Player wants 0 horizontal speed: brake existing horizontal speed toward 0
-        const curHorizSpeed = Math.hypot(vxFree, vyFree);
-        if (curHorizSpeed > 0.0001) {
-          const newSpeed = Math.max(0, curHorizSpeed - maxBrakeDeltaV);
-          const scale = newSpeed / curHorizSpeed;
-          vxFree *= scale;
-          vyFree *= scale;
-        }
-      } else {
-        // Decompose existing horizontal velocity into parallel and perpendicular to (ux, uy)
-        const vPar0 = vxFree * ux + vyFree * uy;
-        const vPerpX = vxFree - vPar0 * ux;
-        const vPerpY = vyFree - vPar0 * uy;
-        const vPerpMag = Math.hypot(vPerpX, vPerpY);
-
-        // 1a. Brake perpendicular drift toward 0 (strictly reduces speed: |vPerpNew| <= |vPerp0|)
-        let vPerpScale = 0;
-        if (vPerpMag > 0.0001) {
-          const newPerpMag = Math.max(0, vPerpMag - maxBrakeDeltaV);
-          vPerpScale = newPerpMag / vPerpMag;
-        }
-
-        // 1b. Brake parallel velocity ONLY if moving opposite to desired direction (vPar0 < 0 -> up to 0)
-        //     OR if moving faster than vWantMag (vPar0 > vWantMag -> down to vWantMag).
-        //     Never accelerates past 0 or increases |vPar|!
-        let vParNew = vPar0;
-        if (vPar0 < 0) {
-          vParNew = Math.min(0, vPar0 + maxBrakeDeltaV);
-        } else if (vPar0 > vWantMag) {
-          vParNew = Math.max(vWantMag, vPar0 - maxBrakeDeltaV);
-        }
-
-        vxFree = vParNew * ux + vPerpX * vPerpScale;
-        vyFree = vParNew * uy + vPerpY * vPerpScale;
-      }
-
-      // 1c. Elastic Glide Redirection (Downward Fall -> Horizontal Glide, ΔK <= 0):
-      // If the character is ACTUALLY falling downward (vzFree < -0.05) and wants more horizontal speed
-      // along (ux, uy), they can redirect a portion of their actual downward kinetic energy into
-      // horizontal velocity while preserving or reducing total 3D speed (v_after^2 <= v_before^2).
-      const curPar = hasHorizInput ? (vxFree * ux + vyFree * uy) : 0;
-      if (isAirborne && vzFree < -0.05 && hasHorizInput && curPar >= 0 && curPar < vWantMag) {
-        const availFallSpeed = Math.abs(vzFree);
-        // Energy conservation bound: (curPar + dVh)^2 + vzNew^2 <= curPar^2 + availFallSpeed^2
-        // Maximum horizontal speed reachable if 100% of fall kinetic energy were redirected:
-        const maxRedirectedPar = Math.hypot(curPar, availFallSpeed * 0.85);
-        const targetPar = Math.min(vWantMag, maxRedirectedPar, curPar + maxBrakeDeltaV * 0.8);
-        if (targetPar > curPar) {
-          const keUsed = targetPar * targetPar - curPar * curPar;
-          const newFallSq = Math.max(0, availFallSpeed * availFallSpeed - keUsed);
-          // Notice vzFree becomes less negative (slowing the fall while speeding up horizontally, ΔK <= 0)
-          vzFree = -Math.sqrt(newFallSq);
-          const vPerpX = vxFree - curPar * ux;
-          const vPerpY = vyFree - curPar * uy;
-          vxFree = targetPar * ux + vPerpX;
-          vyFree = targetPar * uy + vPerpY;
-        }
-      }
-
-      // 1d. Vertical Energy-Free Braking (ΔK <= 0):
-      // Only reduces |vz| toward vzWant without crossing 0 or creating speed from rest.
-      if (isAirborne) {
-        if (vzFree < -0.001 && vzWant >= vzFree) {
-          vzFree = Math.min(vzWant <= 0 ? vzWant : 0, vzFree + maxBrakeDeltaV);
-        } else if (vzFree > 0.001 && vzWant <= vzFree) {
-          vzFree = Math.max(vzWant >= 0 ? vzWant : 0, vzFree - maxBrakeDeltaV);
-        }
-      }
-    }
-
-    // =========================================================================
-    // STAGE 2: Active Momentum Creation (ΔK > 0, Costs Energy)
-    // Computes the remaining acceleration deficit that cannot be achieved by
-    // 0-energy momentum transfer, plus Equivalence-Principle hover acceleration.
-    // =========================================================================
     let axCreate = 0;
     let ayCreate = 0;
     let azCreate = 0;
@@ -215,56 +120,47 @@ export class FlightCapability {
     const isFlyingActive = isAnchored && (isAirborne || vzWant > 0.01 || hasHorizInput);
 
     // Ground-anchored thrust (horizontal & vertical lift) only works while within groundAnchorRange of a surface.
-    // Above groundAnchorRange, the creature cannot maintain hover or steer until gravity brings them back within reach.
     if (isAnchored) {
-      const maxHorizCreateAccel = 26.0;
-      if (hasHorizInput) {
-        const vParFree = vxFree * ux + vyFree * uy;
-        if (vParFree < vWantMag) {
-          const dvH = vWantMag - vParFree;
-          const aH = Math.min(maxHorizCreateAccel, dvH / safeDt);
-          axCreate = ux * aH;
-          ayCreate = uy * aH;
+      const vxWant = hasHorizInput ? ux * vWantMag : 0;
+      const vyWant = hasHorizInput ? uy * vWantMag : 0;
+      if (isAirborne || hasHorizInput || vzWant > 0.01) {
+        const dvx = vxWant - vx0;
+        const dvy = vyWant - vy0;
+        if (Math.hypot(dvx, dvy) > 0.001) {
+          axCreate = dvx / safeDt;
+          ayCreate = dvy / safeDt;
         }
       }
 
       if (isAirborne || vzWant > 0.01) {
-        if (isActivelyDescending && vzFree <= vzWant + 0.05) {
-          // Player is intentionally descending at sink speed: let gravity pull down and Stage 1 brake excess
-          azCreate = 0;
-        } else if (isActivelyDescending) {
-          // Player wants to descend, and is currently above sink speed: let gravity accelerate them down for 0 W
-          azCreate = 0;
+        if (isActivelyDescending) {
+          if (vz0 > vzWant) {
+            // Player wants to descend and hasn't exceeded maxSinkSpeed yet: gravity accelerates downward for 0 W
+            azCreate = 0;
+          } else {
+            // Sink speed exceeded: paid upward thrust to cap descent at maxSinkSpeed
+            azCreate = g + Math.max(0, (vzWant - vz0) / safeDt);
+          }
         } else {
           // Hovering (vzWant == 0) or Ascending (vzWant > 0):
-          // Must counter gravity g in uncurved space PLUS accelerate vzFree toward vzWant
-          const maxVertCreateAccel = 24.0;
-          const dvZ = vzWant - vzFree;
-          const climbAccel = Math.max(-g, Math.min(maxVertCreateAccel, dvZ / safeDt));
+          // Must counter gravity g PLUS accelerate vz0 toward vzWant
+          const climbAccel = Math.max(-g, (vzWant - vz0) / safeDt);
           azCreate = Math.max(0, g + climbAccel);
         }
       }
     }
 
-    // Equivalence-Principle Power in uncurved space:
-    // Accelerating mass m at 3D rate ||aCreate|| requires mechanical power P_mech = 0.5 * m * ||aCreate||^2
+    // Unified Force-Proportional Power Law:
+    // Metabolic power scales directly with total 3D thrust force magnitude: P = (0.5 * g * ||F||) / efficiency
     const totalMass = Math.max(0.2, char.hasMass ? char.mass : 1.2) + (char.carriedMass || 0);
     const efficiency = Math.max(0.01, char.energyPool ? char.energyPool.getMuscleEfficiency(reg) : 0.25);
     const cap = mod.getMaxPower(reg);
-
-    // Prioritize vertical hover/lift over horizontal acceleration when near power capacity so steering never steals lift and causes unwanted sinking
-    const horizWatts = (0.5 * totalMass * (axCreate * axCreate + ayCreate * ayCreate)) / efficiency;
-    const vertWatts = (0.5 * totalMass * (azCreate * azCreate)) / efficiency;
-    if (!isActivelyDescending && azCreate > 0.01 && horizWatts + vertWatts > cap && mod.allowPartialPower) {
-      const remainingWatts = Math.max(0, cap - vertWatts);
-      const horizScale = horizWatts > 0.0001 ? Math.sqrt(Math.min(1, remainingWatts / horizWatts)) : 0;
-      axCreate *= horizScale;
-      ayCreate *= horizScale;
-    }
-
-    const aSq = axCreate * axCreate + ayCreate * ayCreate + azCreate * azCreate;
-    const mechWatts = 0.5 * totalMass * aSq;
-    const rawDemandedWatts = mechWatts / efficiency;
+    const forcePowerFactor = 0.5 * g;
+    const horizForce = totalMass * Math.hypot(axCreate, ayCreate);
+    const vertForce = totalMass * Math.abs(azCreate);
+    const horizWatts = (forcePowerFactor * horizForce) / efficiency;
+    const vertWatts = (forcePowerFactor * vertForce) / efficiency;
+    const rawDemandedWatts = (forcePowerFactor * Math.hypot(horizForce, vertForce)) / efficiency;
 
     let requestedWatts = rawDemandedWatts;
     if (requestedWatts > cap) {
@@ -272,12 +168,11 @@ export class FlightCapability {
     }
 
     return {
-      vxFree,
-      vyFree,
-      vzFree,
       axCreate,
       ayCreate,
       azCreate,
+      horizWatts,
+      vertWatts,
       rawDemandedWatts,
       requestedWatts,
       isFlyingActive,
@@ -322,8 +217,8 @@ export class FlightCapability {
   }
 
   /**
-   * Phase 2 of Character tick: Applies 0-energy momentum transfer, requests power from EnergyPool,
-   * scales created 3D acceleration by sqrt(P_granted / P_rawDemanded), and applies stability oscillation.
+   * Phase 2 of Character tick: Requests power from EnergyPool, resolves Euclidean 3D force budget
+   * (prioritizing vertical lift over horizontal thrust), applies paid acceleration, and applies stability oscillation.
    */
   public static actuate(
     char: Character,
@@ -348,8 +243,8 @@ export class FlightCapability {
     mod.appliedWaveVx = 0;
     mod.appliedWaveVy = 0;
 
-    // When out of energy, out of stamina, or exhausted: no flight lift, no 0-energy fall braking/gliding,
-    // and no stability wave — character must fall naturally under gravity.
+    // When out of energy, out of stamina, or exhausted: no flight lift and no stability wave —
+    // character must fall naturally under gravity.
     if (
       checksEnergy &&
       char.energyPool &&
@@ -369,13 +264,14 @@ export class FlightCapability {
       return;
     }
 
-    // Resolve power budget BEFORE Stage 1 braking so powerless flight cannot slow down falling
-    let accelScale = 1.0;
+    // Resolve Euclidean 3D power budget prioritizing vertical lift over horizontal thrust
+    const cap = mod.getMaxPower(reg);
+    let vertScale = 0;
+    let horizScale = 0;
     if (plan.rawDemandedWatts > 0.01) {
+      let budgetWatts = 0;
       if (checksEnergy && char.energyPool) {
-        if (plan.requestedWatts <= 0) {
-          accelScale = 0;
-        } else {
+        if (plan.requestedWatts > 0) {
           const grantedWatts = char.energyPool.requestPower(
             plan.requestedWatts,
             safeDt,
@@ -392,28 +288,30 @@ export class FlightCapability {
           ) {
             return;
           }
-          // Because P = 0.5 * m * a^2 / efficiency, achievable acceleration scales with sqrt(P_granted / P_rawDemanded)
-          const powerRatio = Math.max(0, Math.min(1.0, grantedWatts / plan.rawDemandedWatts));
-          accelScale = Math.sqrt(powerRatio);
+          budgetWatts = grantedWatts;
         }
+      } else {
+        budgetWatts = cap > 0 ? Math.min(plan.rawDemandedWatts, cap) : plan.rawDemandedWatts;
       }
-    } else {
-      accelScale = 0;
+
+      if (budgetWatts > 0.0001) {
+        const vertGranted = Math.min(budgetWatts, plan.vertWatts);
+        vertScale = plan.vertWatts > 0.0001 ? Math.min(1.0, vertGranted / plan.vertWatts) : 1.0;
+        const horizBudget = Math.sqrt(Math.max(0, budgetWatts * budgetWatts - vertGranted * vertGranted));
+        horizScale = plan.horizWatts > 0.0001 ? Math.min(1.0, horizBudget / plan.horizWatts) : 1.0;
+      }
     }
 
-    // 1. Apply Stage 1 (0-Energy Momentum Transfer / Braking / Glide Redirection)
-    char.velocity.x = plan.vxFree;
-    char.velocity.y = plan.vyFree;
-    char.verticalVelocity = plan.vzFree;
-
-    // 2. Apply Stage 2 (Active Momentum Creation, scaled by available power)
-    if (accelScale > 0.0001) {
-      char.velocity.x += plan.axCreate * accelScale * safeDt;
-      char.velocity.y += plan.ayCreate * accelScale * safeDt;
-      char.verticalVelocity += plan.azCreate * accelScale * safeDt;
+    // Apply paid 3D acceleration (pushing against ground anchor within energy/power limits)
+    if (horizScale > 0.0001) {
+      char.velocity.x += plan.axCreate * horizScale * safeDt;
+      char.velocity.y += plan.ayCreate * horizScale * safeDt;
+    }
+    if (vertScale > 0.0001) {
+      char.verticalVelocity += plan.azCreate * vertScale * safeDt;
     }
 
-    // 3. Apply Long-Period, High-Amplitude Telekinetic Stability Wave on elevation (Z) strictly while powered & airborne
+    // Apply Long-Period, High-Amplitude Telekinetic Stability Wave on elevation (Z) strictly while powered & airborne
     const stability = mod.getStability(reg);
     const instability = Math.max(0, Math.min(1, 1.0 - stability));
     const surfaceHeight = Math.max(
@@ -439,7 +337,7 @@ export class FlightCapability {
     }
 
     const isAnchoredNow = heightAboveSurface <= mod.getGroundAnchorRange(reg) + 0.05;
-    const canSustainHover = isAnchoredNow && (!checksEnergy || accelScale > 0.0001 || !isAirborne);
+    const canSustainHover = isAnchoredNow && plan.azCreate > 0.01 && (!checksEnergy || vertScale > 0.0001);
     if (instability > 0.001 && isAirborne && canSustainHover) {
       mod.oscillationPhase += safeDt * (1.25 + instability * 1.15);
       const p = mod.oscillationPhase;

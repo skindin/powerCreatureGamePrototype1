@@ -21,13 +21,10 @@ export interface TelekinesisModuleOptions {
  * Allows a character to remotely grab, levitate, move, and throw objects/entities at range,
  * as well as fire held guns remotely from their floating 3D positions.
  *
- * Uses the same minimum-energy physics law as FlightModule:
- * 1. Energy-Free Relative Momentum Transfer / Braking (ΔK_rel <= 0, 0 W):
- *    Brakes moving objects or transfers unwanted equal-and-opposite reaction into the ground
- *    anchor (when within groundAnchorRange) for 0 extra energy.
- * 2. Active Momentum Creation (ΔK_rel > 0, Costs Energy, Capped by maxPowerProp):
- *    Levitates and accelerates the target using Equivalence-Principle work, applying aligned
- *    recoil to the character (or full two-body recoil when unanchored in mid-air).
+ * Uses a unified paid Newton's 3rd Law momentum-exchange model:
+ * Every acceleration force `||F||` applied to the target consumes metabolic power
+ * `P = (0.5 * g * ||F||) / efficiency` (capped at `maxPowerProp` and gated by stamina/energy)
+ * and imparts the equal-and-opposite reaction impulse `-Δp` directly onto the caster.
  */
 export class TelekinesisModule {
   public id = "telekinesis";

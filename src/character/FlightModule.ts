@@ -17,14 +17,13 @@ export interface FlightModuleOptions {
 /**
  * FlightModule ("Telekinetic & Aerodynamic Flight")
  *
- * Allows a character to levitate, hover against gravity in uncurved space, ascend/descend,
- * and fly horizontally by combining:
- * 1. Energy-Free Relative Momentum Transfer / Redirection (ΔK <= 0):
- *    Requires actual non-zero velocity; brakes excess speed into the ground anchor or
- *    elastically redirects existing downward fall velocity into horizontal glide velocity for 0 W.
- * 2. Active Momentum Creation (ΔK > 0):
- *    Spends metabolic power from EnergyPool (capped by maxPowerProp) to create new momentum
- *    toward the desired 3D velocity and counter gravity via the Equivalence Principle (0.5 * m * g^2).
+ * Allows a character to levitate, hover against gravity, ascend/descend, and fly horizontally
+ * by pushing against the ground within `groundAnchorRange`.
+ *
+ * Uses a unified paid Newton's 3rd Law momentum-exchange model:
+ * Every acceleration/thrust force `||F||` applied to the character pushes back against the
+ * ground anchor and consumes metabolic power `P = (0.5 * g * ||F||) / efficiency`, capped
+ * at `maxPowerProp` and gated by stamina and caloric energy reserves.
  */
 export class FlightModule {
   public id = "flight";
