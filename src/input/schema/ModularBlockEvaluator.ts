@@ -526,8 +526,16 @@ export class ModularBlockEvaluator {
         };
         initTkScreenAnchor(freezeCenter);
         char.isTelekineticElevationControl = true;
-        if (tkMod && (tkMod.targetHoldZ === null || tkMod.targetHoldZ === undefined)) {
-          tkMod.targetHoldZ = Math.max(0, char.telekineticTarget.position.z - (tkMod.appliedWaveOffsetZ ?? 0));
+        if (tkMod) {
+          tkMod.groundedLiftAccum = 0;
+          if (!tkMod.isGroundedHold) {
+            const curObjMeanZ = Math.max(0, char.telekineticTarget.position.z - (tkMod.appliedWaveOffsetZ ?? 0));
+            if (tkMod.targetHoldZ === null || tkMod.targetHoldZ === undefined) {
+              tkMod.targetHoldZ = curObjMeanZ;
+            } else if (tkMod.targetHoldZ > curObjMeanZ + 0.35) {
+              tkMod.targetHoldZ = curObjMeanZ;
+            }
+          }
         }
         if (!execCtx.gamepadStates) {
           input.recordedMousePos = { x: freezeCenter.x, y: freezeCenter.y };
@@ -559,6 +567,46 @@ export class ModularBlockEvaluator {
         claimSlot(tkElevCtrlSlot, tkControlBlock.id, "tk.elevationControl", false);
       }
 
+      const engageGroundedHold = (
+        mod: NonNullable<typeof char.telekinesisModule>,
+        tkObj: NonNullable<typeof char.telekineticTarget>,
+        groundFloorZ: number
+      ) => {
+        const wasGrounded = mod.isGroundedHold;
+        mod.isGroundedHold = true;
+        mod.targetHoldZ = groundFloorZ;
+        mod.groundedLiftAccum = 0;
+        if (!wasGrounded) {
+          tkObj.velocity.x -= mod.appliedWaveVx;
+          tkObj.velocity.y -= mod.appliedWaveVy;
+          if (tkObj.hasVerticalVelocity) {
+            tkObj.verticalVelocity -= mod.appliedWaveVz;
+          }
+          mod.appliedWaveOffsetX = 0;
+          mod.appliedWaveOffsetY = 0;
+          mod.appliedWaveOffsetZ = 0;
+          mod.appliedWaveVx = 0;
+          mod.appliedWaveVy = 0;
+          mod.appliedWaveVz = 0;
+
+          const groundedPos = { x: tkObj.position.x, y: tkObj.position.y };
+          initTkScreenAnchor(groundedPos);
+          targetAimPos.x = groundedPos.x;
+          targetAimPos.y = groundedPos.y;
+          if (!execCtx.gamepadStates) {
+            input.recordedMousePos = { x: groundedPos.x, y: groundedPos.y };
+            if (input.lockedAimPos) {
+              input.lockedAimPos = { x: groundedPos.x, y: groundedPos.y };
+            }
+            input.mousePos.x = groundedPos.x;
+            input.mousePos.y = groundedPos.y;
+            input.actualMousePos.x = groundedPos.x;
+            input.actualMousePos.y = groundedPos.y;
+            input.syncClientPosFromWorldPos(groundedPos);
+          }
+        }
+      };
+
       const applyElevationDelta = (
         mod: NonNullable<typeof char.telekinesisModule>,
         tkObj: NonNullable<typeof char.telekineticTarget>,
@@ -578,19 +626,31 @@ export class ModularBlockEvaluator {
         const maxZ = char.position.z + Math.max(1.5, mod.getTelekinesisReach(char.properties) * 0.92);
         const rawNextZ = curMeanZ + dz;
 
-        if (dz < 0 && rawNextZ <= groundFloorZ + 0.04) {
-          mod.isGroundedHold = true;
-          mod.targetHoldZ = groundFloorZ;
-        } else if (dz > 0 && mod.isGroundedHold) {
-          mod.isGroundedHold = false;
-          mod.targetHoldZ = Math.max(groundFloorZ + 0.05, Math.min(maxZ, rawNextZ));
-        } else if (!mod.isGroundedHold) {
-          const clampedZ = Math.max(groundFloorZ, Math.min(maxZ, rawNextZ));
-          if (clampedZ <= groundFloorZ + 0.005) {
-            mod.isGroundedHold = true;
+        if (mod.isGroundedHold) {
+          if (dz <= 0) {
+            mod.groundedLiftAccum = 0;
             mod.targetHoldZ = groundFloorZ;
           } else {
-            mod.targetHoldZ = clampedZ;
+            mod.groundedLiftAccum += dz;
+            if (mod.groundedLiftAccum >= 0.22) {
+              mod.isGroundedHold = false;
+              mod.targetHoldZ = Math.max(groundFloorZ + 0.08, Math.min(maxZ, groundFloorZ + mod.groundedLiftAccum));
+              mod.groundedLiftAccum = 0;
+            } else {
+              mod.targetHoldZ = groundFloorZ;
+            }
+          }
+        } else {
+          mod.groundedLiftAccum = 0;
+          if (dz < 0 && (rawNextZ <= groundFloorZ + 0.06 || tkObj.position.z <= groundFloorZ + 0.025)) {
+            engageGroundedHold(mod, tkObj, groundFloorZ);
+          } else {
+            const clampedZ = Math.max(groundFloorZ, Math.min(maxZ, rawNextZ));
+            if (clampedZ <= groundFloorZ + 0.01) {
+              engageGroundedHold(mod, tkObj, groundFloorZ);
+            } else {
+              mod.targetHoldZ = clampedZ;
+            }
           }
         }
       };
@@ -2735,6 +2795,9 @@ export class ModularBlockEvaluator {
     // Complete Telekinetic Elevation Movement Mode exit
     if (!isTkElevationControlNow && (char.isTelekineticElevationControl || wasTkElevationControlActive)) {
       const tkMod = char.telekinesisModule;
+      if (tkMod) {
+        tkMod.groundedLiftAccum = 0;
+      }
       const restorePos = char.telekineticFrozenPos
         ? { x: char.telekineticFrozenPos.x, y: char.telekineticFrozenPos.y }
         : (char.telekineticTarget

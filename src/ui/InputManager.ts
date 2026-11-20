@@ -296,6 +296,7 @@ export class InputManager {
     }
 
     this.isRawDragging = true;
+    this.rawDragSkipNextLockJump = false;
     this.rawDragConsumer = onDelta || null;
     this.rawDragLastClientX = this.lastClientX;
     this.rawDragLastClientY = this.lastClientY;
@@ -326,6 +327,7 @@ export class InputManager {
   public endRawDrag(): void {
     if (this.telekineticVirtualMouseActive) {
       this.isRawDragging = false;
+      this.rawDragSkipNextLockJump = false;
       this.rawDragConsumer = null;
       this.lockedAimPos = null;
       return;
@@ -333,6 +335,7 @@ export class InputManager {
     if (!this.isRawDragging && !this.lockedAimPos && !this.isPointerLocked) return;
 
     this.isRawDragging = false;
+    this.rawDragSkipNextLockJump = false;
     this.rawDragConsumer = null;
 
     if (this.recordedMousePos) {
@@ -366,6 +369,7 @@ export class InputManager {
     this.unhideCursor();
     this.isAwaitingUnlock = false;
     this.isRawDragging = false;
+    this.rawDragSkipNextLockJump = false;
     this.lockedAimPos = null;
     this.rawDragLastClientX = null;
     this.rawDragLastClientY = null;
@@ -390,6 +394,7 @@ export class InputManager {
   public lastClientY: number | null = null;
   private rawDragLastClientX: number | null = null;
   private rawDragLastClientY: number | null = null;
+  private rawDragSkipNextLockJump: boolean = false;
   public isKeyboardMeleeRequested: boolean = false;
 
   public isCombatModifierActive(e?: MouseEvent | KeyboardEvent | WheelEvent): boolean {
@@ -835,14 +840,27 @@ export class InputManager {
       this.lastMouseMoveTime = performance.now();
 
       if (this.isRawDragging || (this.isRightMouseDown && this.lockedAimPos) || this.lockedAimPos) {
+        if (this.rawDragSkipNextLockJump) {
+          this.rawDragSkipNextLockJump = false;
+          this.rawDragLastClientX = e.clientX;
+          this.rawDragLastClientY = e.clientY;
+          if (this.recordedMousePos) {
+            this.mousePos.x = this.recordedMousePos.x;
+            this.mousePos.y = this.recordedMousePos.y;
+            this.actualMousePos.x = this.recordedMousePos.x;
+            this.actualMousePos.y = this.recordedMousePos.y;
+          }
+          return;
+        }
         // While locked, take raw mouse input to increase/decrease arc height or elevation without corrupting unlocked screen coordinates
+        const isLockedNow = Boolean(typeof document !== "undefined" && document.pointerLockElement === this.canvas);
         const prevClientX = this.rawDragLastClientX ?? this.lastClientX;
         const prevClientY = this.rawDragLastClientY ?? this.lastClientY;
-        const movementDy = (e.movementY !== undefined && e.movementY !== 0)
-          ? e.movementY
+        const movementDy = (isLockedNow || (e.movementY !== undefined && e.movementY !== 0))
+          ? (e.movementY || 0)
           : (prevClientY !== null ? e.clientY - prevClientY : 0);
-        const movementDx = (e.movementX !== undefined && e.movementX !== 0)
-          ? e.movementX
+        const movementDx = (isLockedNow || (e.movementX !== undefined && e.movementX !== 0))
+          ? (e.movementX || 0)
           : (prevClientX !== null ? e.clientX - prevClientX : 0);
         this.rawDragLastClientX = e.clientX;
         this.rawDragLastClientY = e.clientY;
@@ -891,6 +909,12 @@ export class InputManager {
         this.telekineticSkipNextLockJump = true;
         this.telekineticLastRawClientX = null;
         this.telekineticLastRawClientY = null;
+      }
+      if (this.isRawDragging || this.lockedAimPos) {
+        // Absorb Chromium's single center-snap mousemove event emitted right on lock/unlock transition
+        this.rawDragSkipNextLockJump = true;
+        this.rawDragLastClientX = null;
+        this.rawDragLastClientY = null;
       }
       if (!this.isPointerLocked && this.isAwaitingUnlock) {
         // Defer completion to next animation frame so the browser finishes restoring hardware cursor coordinates first

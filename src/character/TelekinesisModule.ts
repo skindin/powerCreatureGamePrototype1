@@ -71,6 +71,9 @@ export class TelekinesisModule {
   /** When true, vertical levitation is intentionally switched off (0 W) so gravity rests the object on the surface while horizontal TK control stays active */
   public isGroundedHold: boolean = false;
 
+  /** Accumulated deliberate upward elevation delta required to lift out of Grounded Hold Mode */
+  public groundedLiftAccum: number = 0;
+
   /** Current zero-cost stability wave position & velocity offsets (excluded from power demand calculation) */
   public appliedWaveOffsetX: number = 0;
   public appliedWaveOffsetY: number = 0;
@@ -201,6 +204,7 @@ export class TelekinesisModule {
     if (!target) return null;
     this.targetHoldZ = null;
     this.isGroundedHold = false;
+    this.groundedLiftAccum = 0;
     character.telekineticTarget = null;
     character.isTelekineticObjectControl = false;
     character.telekineticFrozenPos = null;

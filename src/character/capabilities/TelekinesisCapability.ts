@@ -98,6 +98,7 @@ export class TelekinesisCapability {
     mod.appliedWaveVy = 0;
     mod.appliedWaveVz = 0;
     mod.isGroundedHold = false;
+    mod.groundedLiftAccum = 0;
     mod.targetHoldZ = Math.max(
       (target.supportingSurfaceHeight ?? 0) + mod.getHoldHoverHeight(char.properties),
       target.position.z
@@ -116,6 +117,7 @@ export class TelekinesisCapability {
       const mod = char.telekinesisModule;
       mod.targetHoldZ = null;
       mod.isGroundedHold = false;
+      mod.groundedLiftAccum = 0;
       mod.appliedWaveOffsetX = 0;
       mod.appliedWaveOffsetY = 0;
       mod.appliedWaveOffsetZ = 0;
@@ -654,10 +656,17 @@ export class TelekinesisCapability {
     // Desired 2D velocity toward goal in the wave-stripped mean frame (proportional spring clamped to maxMoveSpeed)
     const errX = goalX - meanPosX;
     const errY = goalY - meanPosY;
+    const errDist = Math.hypot(errX, errY);
 
     const kpHoriz = 11.0;
-    let vxWant = errX * kpHoriz;
-    let vyWant = errY * kpHoriz;
+    const staticSpeed = (target.hasFriction && !(target.rollModule && target.rollModule.enabled))
+      ? (arena.staticFrictionThreshold ?? 0.16) * (target.staticGroundFrictionMod ?? 1.0)
+      : 0;
+    const groundedDeadzone = Math.max(0.04, (staticSpeed / kpHoriz) * 1.25);
+    const inGroundedDeadzone = mod.isGroundedHold && errDist <= groundedDeadzone;
+
+    let vxWant = (inGroundedDeadzone || errDist <= 0.004) ? 0 : errX * kpHoriz;
+    let vyWant = (inGroundedDeadzone || errDist <= 0.004) ? 0 : errY * kpHoriz;
     const wantHorizMag = Math.hypot(vxWant, vyWant);
     if (wantHorizMag > maxMoveSpeed) {
       vxWant = (vxWant / wantHorizMag) * maxMoveSpeed;
@@ -712,12 +721,12 @@ export class TelekinesisCapability {
     // Stage 2: Active Momentum Creation (Equivalence-Principle counter-gravity + acceleration toward goal)
     const maxHorizCreateAccel = 36.0;
     const maxVertCreateAccel = 18.0;
-    const rawAx = (vxWant - vxFree) / safeDt;
-    const rawAy = (vyWant - vyFree) / safeDt;
+    const rawAx = inGroundedDeadzone ? 0 : (vxWant - vxFree) / safeDt;
+    const rawAy = inGroundedDeadzone ? 0 : (vyWant - vyFree) / safeDt;
     const rawAHMag = Math.hypot(rawAx, rawAy);
     const clampedAHMag = Math.min(maxHorizCreateAccel, rawAHMag);
-    const axCreate = rawAHMag > 0.0001 ? (rawAx / rawAHMag) * clampedAHMag : 0;
-    const ayCreate = rawAHMag > 0.0001 ? (rawAy / rawAHMag) * clampedAHMag : 0;
+    const axCreate = (!inGroundedDeadzone && rawAHMag > 0.0001) ? (rawAx / rawAHMag) * clampedAHMag : 0;
+    const ayCreate = (!inGroundedDeadzone && rawAHMag > 0.0001) ? (rawAy / rawAHMag) * clampedAHMag : 0;
 
     let azCreate = 0;
     let azDemand = 0;
